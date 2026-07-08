@@ -1,0 +1,49 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+firebase-debug.log*
+firestore-debug.log*
+dataconnect-debug.log*
+pglite-debug.log*
+ui-debug.log*
+
+node_modules
+dist
+dist-ssr
+dev-dist
+*.local
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+*.pem
+serviceAccountKey*.json
+google-services.json
+GoogleService-Info.plist
+
+# Firebase local state
+.firebase/
+.firebaserc.local
+firebase-export-*/
+firebase-debug.log
+
+# Firebase Data Connect generated SDKs (regenerate via `firebase dataconnect:sdk:generate`)
+dataconnect-generated/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.claude/settings.local.json
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
