@@ -17,6 +17,7 @@ import {
   type ListBoatsData,
   type ListCustomersData,
 } from '@dataconnect/generated'
+import { BackButton } from '../components/BackButton'
 import { orderLocationLabel, formatOrderCode } from '../lib/orderCode'
 
 interface EngineDraft {
@@ -248,6 +249,7 @@ export function NewOrderPage() {
 
   return (
     <div className="flex-1 p-4">
+      <BackButton to="/" />
       <h1 className="text-lg font-semibold text-eb-blue-dark">Nueva orden de trabajo</h1>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getWorkOrderDetail, type GetWorkOrderDetailData } from '@dataconnect/generated'
+import { BackButton } from '../components/BackButton'
 import { PdfViewer } from '../components/PdfViewer'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
@@ -17,15 +18,26 @@ export function OrderDetailPage() {
   }, [id])
 
   if (order === undefined) {
-    return <p className="flex-1 p-4 text-sm text-slate-500">Cargando...</p>
+    return (
+      <div className="flex-1 p-4">
+        <BackButton to="/orders" />
+        <p className="text-sm text-slate-500">Cargando...</p>
+      </div>
+    )
   }
 
   if (order === null) {
-    return <p className="flex-1 p-4 text-sm text-slate-500">Orden no encontrada.</p>
+    return (
+      <div className="flex-1 p-4">
+        <BackButton to="/orders" />
+        <p className="text-sm text-slate-500">Orden no encontrada.</p>
+      </div>
+    )
   }
 
   return (
     <div className="flex-1 p-4">
+      <BackButton to="/orders" />
       <div className="flex items-center justify-between">
         <h1 className="font-mono text-lg font-semibold text-eb-blue-dark">{order.code}</h1>
         <span className="rounded-full bg-eb-teal/10 px-2.5 py-1 text-xs text-eb-teal-dark">

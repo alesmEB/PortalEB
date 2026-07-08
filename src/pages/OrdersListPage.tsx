@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listWorkOrders, type ListWorkOrdersData } from '@dataconnect/generated'
+import { BackButton } from '../components/BackButton'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 
@@ -14,6 +15,7 @@ export function OrdersListPage() {
 
   return (
     <div className="flex-1 p-4">
+      <BackButton to="/" />
       <h1 className="text-lg font-semibold text-eb-blue-dark">Órdenes de trabajo</h1>
 
       {orders === null && <p className="mt-4 text-sm text-slate-500">Cargando...</p>}
