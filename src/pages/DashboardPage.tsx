@@ -32,24 +32,33 @@ export function DashboardPage() {
       </header>
 
       <main className="flex-1 p-4">
-        <HasPermission
-          permission="orders:create"
-          fallback={
-            <button
-              disabled
-              className="w-full rounded-lg bg-slate-200 py-3 text-base font-semibold text-slate-400"
-            >
-              Nueva orden de trabajo (sin permiso)
-            </button>
-          }
-        >
-          <button
-            onClick={() => navigate('/orders/new')}
-            className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <HasPermission
+            permission="orders:create"
+            fallback={
+              <button
+                disabled
+                className="w-full rounded-lg bg-slate-200 py-3 text-base font-semibold text-slate-400"
+              >
+                Nueva orden de trabajo (sin permiso)
+              </button>
+            }
           >
-            Nueva orden de trabajo
+            <button
+              onClick={() => navigate('/orders/new')}
+              className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+            >
+              Nueva orden de trabajo
+            </button>
+          </HasPermission>
+
+          <button
+            onClick={() => navigate('/orders')}
+            className="w-full rounded-lg bg-eb-blue py-3 text-base font-semibold text-white transition-colors hover:bg-eb-blue-dark"
+          >
+            Lista de órdenes
           </button>
-        </HasPermission>
+        </div>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <p className="text-sm font-medium text-eb-blue-dark">Permisos concedidos</p>

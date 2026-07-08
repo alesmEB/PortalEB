@@ -49,6 +49,24 @@ query GetOrderSequence($locationCode: OrderLocation!) @auth(level: USER) {
   }
 }
 
+# Summary rows for the main orders list screen.
+query ListWorkOrders @auth(level: USER) {
+  workOrders(orderBy: { createdAt: DESC }) {
+    id
+    code
+    status
+    locationCode
+    assetLocation
+    createdAt
+    customer {
+      name
+    }
+    boat {
+      name
+    }
+  }
+}
+
 query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
   workOrders(where: { customerId: { eq: $customerId } }, orderBy: { createdAt: DESC }) {
     id

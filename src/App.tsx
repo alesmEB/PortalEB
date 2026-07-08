@@ -5,6 +5,8 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
+import { OrdersListPage } from './pages/OrdersListPage'
+import { OrderDetailPage } from './pages/OrderDetailPage'
 
 function App() {
   return (
@@ -27,6 +29,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <NewOrderPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/:id"
+            element={
+              <ProtectedRoute>
+                <OrderDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <OrdersListPage />
               </ProtectedRoute>
             }
           />
