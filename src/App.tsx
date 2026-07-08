@@ -1,21 +1,31 @@
 import { Route, Routes } from 'react-router-dom'
+import { AppBackground } from './components/AppBackground'
+import { Footer } from './components/Footer'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 
 function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-    </Routes>
+    <div className="flex min-h-svh flex-col">
+      <AppBackground />
+
+      <div className="flex flex-1 flex-col">
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </div>
+
+      <Footer />
+    </div>
   )
 }
 

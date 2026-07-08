@@ -1,7 +1,14 @@
 @import 'tailwindcss';
 
+@theme {
+  --color-eb-blue: #005ea5;
+  --color-eb-blue-dark: #002f54;
+  --color-eb-teal: #00b08d;
+  --color-eb-teal-dark: #005565;
+}
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

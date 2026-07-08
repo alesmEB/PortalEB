@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
+import logoElias from '../assets/branding/logo-elias.png'
 import { useAuth } from '../contexts/AuthContext'
 
 export function LoginPage() {
@@ -25,17 +26,17 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-slate-950 px-4">
+    <div className="flex flex-1 items-center justify-center px-4 py-12">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl"
+        className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-xl backdrop-blur-sm"
       >
-        <h1 className="text-xl font-semibold text-slate-100">PortalEB</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <img src={logoElias} alt="Elías Blanco naval · industrial" className="h-14 w-auto" />
+        <p className="mt-3 text-sm text-slate-500">
           Control de órdenes de trabajo del taller
         </p>
 
-        <label className="mt-6 block text-sm font-medium text-slate-300">
+        <label className="mt-6 block text-sm font-medium text-eb-blue-dark">
           Email
           <input
             type="email"
@@ -43,11 +44,11 @@ export function LoginPage() {
             autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-base text-slate-100 outline-none focus:border-amber-400"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none focus:border-eb-blue focus:ring-1 focus:ring-eb-blue"
           />
         </label>
 
-        <label className="mt-4 block text-sm font-medium text-slate-300">
+        <label className="mt-4 block text-sm font-medium text-eb-blue-dark">
           Contraseña
           <input
             type="password"
@@ -55,16 +56,16 @@ export function LoginPage() {
             autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-base text-slate-100 outline-none focus:border-amber-400"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 outline-none focus:border-eb-blue focus:ring-1 focus:ring-eb-blue"
           />
         </label>
 
-        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
           disabled={submitting}
-          className="mt-6 w-full rounded-lg bg-amber-400 py-2.5 text-base font-semibold text-slate-950 disabled:opacity-60"
+          className="mt-6 w-full rounded-lg bg-eb-blue py-2.5 text-base font-semibold text-white transition-colors hover:bg-eb-blue-dark disabled:opacity-60"
         >
           {submitting ? 'Entrando...' : 'Entrar'}
         </button>

@@ -20,8 +20,8 @@ export default defineConfig({
         short_name: 'PortalEB',
         description:
           'Control de órdenes de trabajo para taller naval e industrial: presupuestos, asignación de técnicos, fichaje de horas, incidencias y chat por orden.',
-        theme_color: '#0f2a43',
-        background_color: '#0f2a43',
+        theme_color: '#005ea5',
+        background_color: '#f8fafc',
         display: 'standalone',
         orientation: 'portrait-primary',
         start_url: '/',
