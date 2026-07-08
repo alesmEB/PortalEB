@@ -83,12 +83,26 @@ export function NewOrderPage() {
 
   function handleBoatNameChange(value: string) {
     setBoatName(value)
-    const match = boats.find((b) => b.name.toLowerCase() === value.toLowerCase())
+    // Once a customer is picked, only THEIR boats can be matched as existing -
+    // typing another customer's boat name just falls through to "new boat".
+    const candidates = selectedCustomerId
+      ? boats.filter((b) => b.ownerId === selectedCustomerId)
+      : boats
+    const match = candidates.find((b) => b.name.toLowerCase() === value.toLowerCase())
     if (match) {
       setSelectedBoatId(match.id)
       setRegistrationNumber(match.registrationNumber ?? '')
       setExistingEngines(match.engines)
       setNewEngines([])
+      // Picking an existing boat pins the customer to its real owner, even if
+      // a different (or no) customer was selected/typed beforehand.
+      const owner = customers.find((c) => c.id === match.ownerId)
+      if (owner) {
+        setSelectedCustomerId(owner.id)
+        setCustomerName(owner.name)
+        setContactName(owner.contactName)
+        setPhone(owner.phone)
+      }
     } else {
       setSelectedBoatId(null)
       setRegistrationNumber('')
@@ -276,7 +290,7 @@ export function NewOrderPage() {
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Cliente</h2>
-          {selectedCustomerId && (
+          {selectedCustomerId && !selectedBoatId && (
             <button
               type="button"
               onClick={resetCustomerSelection}
@@ -287,13 +301,21 @@ export function NewOrderPage() {
           )}
         </div>
 
+        {selectedBoatId && (
+          <p className="mt-2 text-xs text-slate-500">
+            Cliente determinado por la embarcación/máquina seleccionada. Para cambiarlo, usa
+            "Usar otra embarcación/máquina" primero.
+          </p>
+        )}
+
         <label className="mt-2 block text-sm font-medium text-slate-600">
           Nombre de empresa/particular
           <input
             list="customer-names"
             value={customerName}
+            disabled={!!selectedBoatId}
             onChange={(e) => handleCustomerNameChange(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue"
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue disabled:bg-slate-100 disabled:text-slate-500"
           />
           <datalist id="customer-names">
             {customers.map((c) => (
@@ -342,11 +364,21 @@ export function NewOrderPage() {
             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue"
           />
           <datalist id="boat-names">
-            {boats.map((b) => (
+            {(selectedCustomerId
+              ? boats.filter((b) => b.ownerId === selectedCustomerId)
+              : boats
+            ).map((b) => (
               <option key={b.id} value={b.name} />
             ))}
           </datalist>
         </label>
+        {selectedCustomerId && !selectedBoatId && (
+          <p className="mt-1 text-xs text-slate-500">
+            {boats.some((b) => b.ownerId === selectedCustomerId)
+              ? 'Solo se sugieren las embarcaciones/máquinas de este cliente. Escribe un nombre nuevo para registrar otra.'
+              : 'Este cliente todavía no tiene embarcaciones/máquinas registradas.'}
+          </p>
+        )}
 
         <label className="mt-3 block text-sm font-medium text-slate-600">
           Matrícula (opcional)
