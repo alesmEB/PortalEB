@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import logoElias from '../assets/branding/logo-elias.png'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
@@ -10,6 +11,7 @@ const roleLabel: Record<string, string> = {
 
 export function DashboardPage() {
   const { profile, permissions, signOut } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <div className="flex flex-1 flex-col">
@@ -41,7 +43,10 @@ export function DashboardPage() {
             </button>
           }
         >
-          <button className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark">
+          <button
+            onClick={() => navigate('/orders/new')}
+            className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+          >
             Nueva orden de trabajo
           </button>
         </HasPermission>

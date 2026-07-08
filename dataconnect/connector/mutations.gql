@@ -2,21 +2,68 @@
 # OrderTracking row from the client/Cloud Function right after it succeeds,
 # so the audit trail stays authoritative for who/what/when.
 
+mutation CreateCustomer(
+  $name: String!
+  $contactName: String!
+  $phone: String!
+  $email: String
+) @auth(level: USER) {
+  customer_insert(
+    data: { name: $name, contactName: $contactName, phone: $phone, email: $email }
+  )
+}
+
+mutation CreateBoat($ownerId: UUID!, $name: String!, $registrationNumber: String) @auth(level: USER) {
+  boat_insert(data: { ownerId: $ownerId, name: $name, registrationNumber: $registrationNumber })
+}
+
+mutation CreateEngine(
+  $boatId: UUID!
+  $engineType: String!
+  $chassisNumber: String!
+  $propellerSerialNumber: String!
+) @auth(level: USER) {
+  engine_insert(
+    data: {
+      boatId: $boatId
+      engineType: $engineType
+      chassisNumber: $chassisNumber
+      propellerSerialNumber: $propellerSerialNumber
+    }
+  )
+}
+
+# Read-then-write: fine for a single small admin team, see OrderSequence
+# comment in schema.gql for the tradeoff.
+mutation UpsertOrderSequence($locationCode: OrderLocation!, $lastNumber: Int!) @auth(level: USER) {
+  orderSequence_upsert(data: { locationCode: $locationCode, lastNumber: $lastNumber })
+}
+
 mutation CreateWorkOrder(
   $code: String!
+  $locationCode: OrderLocation!
+  $sequenceNumber: Int!
   $customerId: UUID!
   $boatId: UUID!
+  $assetLocation: String!
   $description: String
 ) @auth(level: USER) {
   workOrder_insert(
     data: {
       code: $code
+      locationCode: $locationCode
+      sequenceNumber: $sequenceNumber
       customerId: $customerId
       boatId: $boatId
       createdById_expr: "auth.uid"
+      assetLocation: $assetLocation
       description: $description
     }
   )
+}
+
+mutation CreateWorkOrderTask($workOrderId: UUID!, $description: String!) @auth(level: USER) {
+  workOrderTask_insert(data: { workOrderId: $workOrderId, description: $description })
 }
 
 mutation LogOrderEvent($workOrderId: UUID!, $eventType: OrderEventType!, $metadata: Any) @auth(level: USER) {

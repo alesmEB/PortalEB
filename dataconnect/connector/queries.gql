@@ -15,6 +15,40 @@ query GetCurrentUser @auth(level: USER) {
   }
 }
 
+# Autocomplete source for the "reuse an existing customer" step of order
+# creation.
+query ListCustomers @auth(level: USER) {
+  customers(orderBy: { name: ASC }) {
+    id
+    name
+    contactName
+    phone
+  }
+}
+
+# Autocomplete source for the "reuse an existing boat/machine" step of order
+# creation; each boat comes with its already-registered engines.
+query ListBoats @auth(level: USER) {
+  boats(orderBy: { name: ASC }) {
+    id
+    name
+    registrationNumber
+    ownerId
+    engines: engines_on_boat(orderBy: { createdAt: ASC }) {
+      id
+      engineType
+      chassisNumber
+      propellerSerialNumber
+    }
+  }
+}
+
+query GetOrderSequence($locationCode: OrderLocation!) @auth(level: USER) {
+  orderSequences(where: { locationCode: { eq: $locationCode } }) {
+    lastNumber
+  }
+}
+
 query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
   workOrders(where: { customerId: { eq: $customerId } }, orderBy: { createdAt: DESC }) {
     id
@@ -22,7 +56,7 @@ query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
     status
     boat {
       name
-      engineModel
+      registrationNumber
     }
     createdAt
   }
@@ -47,20 +81,26 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
   workOrder(id: $id) {
     id
     code
+    locationCode
+    sequenceNumber
     status
+    assetLocation
     description
     quoteAttempts
     finalReportUrl
     customer {
-      fullName
-      email
+      name
+      contactName
       phone
     }
     boat {
       name
-      engineManufacturer
-      engineModel
-      engineHours
+      registrationNumber
+      engines: engines_on_boat {
+        engineType
+        chassisNumber
+        propellerSerialNumber
+      }
     }
     tasks: workOrderTasks_on_workOrder {
       id

@@ -1,15 +1,15 @@
 # PortalEB relational schema (Firebase Data Connect / PostgreSQL)
 #
 # Firestore is used only for the per-order chat (see firestore.rules).
-# Every other entity - users, permissions, customers, boats, work orders,
-# quotes, technician assignments, time logs, incidents, photos and the
-# audit trail - lives here so PostgreSQL can enforce referential
-# integrity via real foreign keys.
+# Every other entity - users, permissions, customers, boats/machines and
+# their engines, work orders, quotes, technician assignments, time logs,
+# incidents, photos and the audit trail - lives here so PostgreSQL can
+# enforce referential integrity via real foreign keys.
 #
 # Conventions:
 # - Every table has a `UUID! @default(expr: "uuidV4()")` surrogate key,
-#   except `User`, whose id is the Firebase Auth uid (`auth.uid`) and is
-#   therefore a `String!`.
+#   except `User` (Firebase Auth uid, `String!`) and `OrderSequence`
+#   (keyed by `locationCode` directly).
 # - Every foreign key is declared as its own scalar field (e.g.
 #   `workOrderId: UUID!`) right next to the `@ref` relation field that
 #   points at it, so the foreign keys are explicit and readable instead of
@@ -25,6 +25,12 @@ enum UserRole {
   ADMIN
   CLIENT
   TECHNICIAN
+}
+
+enum OrderLocation {
+  ALGECIRAS # code "A"
+  LA_LINEA # code "V"
+  SOTOGRANDE # code "S"
 }
 
 enum WorkOrderStatus {
@@ -107,10 +113,10 @@ type UserPermission @table(name: "user_permissions", key: ["user", "permission"]
 
 type Customer @table(name: "customers") {
   id: UUID! @default(expr: "uuidV4()")
-  fullName: String!
-  companyName: String
-  email: String!
-  phone: String!
+  name: String! # nombre de empresa o particular
+  contactName: String! # nombre del responsable
+  phone: String! # telefono del responsable
+  email: String
   taxId: String
   address: String
   # Set only if this customer also has a portal login (role CLIENT).
@@ -119,6 +125,8 @@ type Customer @table(name: "customers") {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
+# A boat or piece of industrial machinery. Stored independently of any one
+# WorkOrder so both the asset and its engines can be reused across orders.
 type Boat @table(name: "boats") {
   id: UUID! @default(expr: "uuidV4()")
   ownerId: UUID!
@@ -127,13 +135,18 @@ type Boat @table(name: "boats") {
   registrationNumber: String
   hullMaterial: String
   loaMeters: Float
-  # Engine data is the focus per the workshop's inspection/repair scope.
-  engineManufacturer: String
-  engineModel: String
-  engineSerialNumber: String
-  enginePowerHp: Int
-  engineHours: Float
-  fuelType: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# A boat/machine can have several engines; each is captured separately so
+# more can be added later without touching the Boat row.
+type Engine @table(name: "engines") {
+  id: UUID! @default(expr: "uuidV4()")
+  boatId: UUID!
+  boat: Boat! @ref(fields: ["boatId"])
+  engineType: String! # tipo de motor
+  chassisNumber: String! # numero de chasis del motor
+  propellerSerialNumber: String! # numero de serie del propulsor
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
@@ -141,9 +154,21 @@ type Boat @table(name: "boats") {
 # Work orders, tasks, quotes & technician assignment
 # ---------------------------------------------------------------------------
 
+# One row per OrderLocation, tracking the last issued sequence number so
+# order codes ("A-000001", "V-000001", "S-000001") increment independently
+# per location. Incremented read-then-write from the client - fine for a
+# single small admin team; revisit with a transactional Cloud Function if
+# concurrent order creation ever becomes a real race.
+type OrderSequence @table(name: "order_sequences", key: ["locationCode"]) {
+  locationCode: OrderLocation!
+  lastNumber: Int! @default(value: 0)
+}
+
 type WorkOrder @table(name: "work_orders") {
   id: UUID! @default(expr: "uuidV4()")
-  code: String! @unique
+  code: String! @unique # e.g. "A-000001", formatted from locationCode + sequenceNumber
+  locationCode: OrderLocation!
+  sequenceNumber: Int!
   customerId: UUID!
   customer: Customer! @ref(fields: ["customerId"])
   boatId: UUID!
@@ -151,7 +176,8 @@ type WorkOrder @table(name: "work_orders") {
   createdById: String!
   createdBy: User! @ref(fields: ["createdById"])
   status: WorkOrderStatus! @default(value: PENDING_QUOTE)
-  description: String
+  assetLocation: String! # donde esta ubicada la embarcacion/maquina
+  description: String # comentarios adicionales
   # Enforced at the application layer: never exceeds 2 (see Quote below).
   quoteAttempts: Int! @default(value: 0)
   finalReportUrl: String
