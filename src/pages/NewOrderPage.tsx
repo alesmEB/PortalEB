@@ -18,6 +18,7 @@ import {
   type ListCustomersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel, formatOrderCode } from '../lib/orderCode'
 
 interface EngineDraft {
@@ -57,8 +58,8 @@ export function NewOrderPage() {
   const [successReportUrl, setSuccessReportUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    listCustomers().then((res) => setCustomers(res.data.customers))
-    listBoats().then((res) => setBoats(res.data.boats))
+    listCustomers(FRESH).then((res) => setCustomers(res.data.customers))
+    listBoats(FRESH).then((res) => setBoats(res.data.boats))
   }, [])
 
   function handleCustomerNameChange(value: string) {
@@ -168,7 +169,7 @@ export function NewOrderPage() {
         await createEngine({ boatId, ...engine })
       }
 
-      const sequenceRes = await getOrderSequence({ locationCode })
+      const sequenceRes = await getOrderSequence({ locationCode }, FRESH)
       const lastNumber = sequenceRes.data.orderSequences[0]?.lastNumber ?? 0
       const sequenceNumber = lastNumber + 1
       await upsertOrderSequence({ locationCode, lastNumber: sequenceNumber })

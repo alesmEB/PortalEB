@@ -58,6 +58,25 @@ export function DashboardPage() {
           >
             Lista de órdenes
           </button>
+
+          <HasPermission
+            permission="admin:manage"
+            fallback={
+              <button
+                disabled
+                className="w-full rounded-lg bg-slate-200 py-3 text-base font-semibold text-slate-400"
+              >
+                Administración (sin permiso)
+              </button>
+            }
+          >
+            <button
+              onClick={() => navigate('/admin')}
+              className="w-full rounded-lg bg-eb-blue-dark py-3 text-base font-semibold text-white transition-colors hover:opacity-90"
+            >
+              Administración
+            </button>
+          </HasPermission>
         </div>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">

@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import { AppBackground } from './components/AppBackground'
 import { Footer } from './components/Footer'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { AdminPage } from './pages/AdminPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
@@ -45,6 +46,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <OrdersListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPage />
               </ProtectedRoute>
             }
           />

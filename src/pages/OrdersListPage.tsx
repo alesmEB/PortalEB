@@ -8,6 +8,7 @@ import {
   type ListWorkOrdersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 
@@ -31,7 +32,7 @@ export function OrdersListPage() {
     (searchText.trim() ? 1 : 0)
 
   useEffect(() => {
-    listWorkOrders().then((res) => setOrders(res.data.workOrders))
+    listWorkOrders(FRESH).then((res) => setOrders(res.data.workOrders))
   }, [])
 
   const filteredOrders = useMemo(() => {

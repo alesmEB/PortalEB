@@ -23,6 +23,7 @@ query ListCustomers @auth(level: USER) {
     name
     contactName
     phone
+    email
   }
 }
 
@@ -34,12 +35,40 @@ query ListBoats @auth(level: USER) {
     name
     registrationNumber
     ownerId
+    owner {
+      name
+    }
     engines: engines_on_boat(orderBy: { createdAt: ASC }) {
       id
       engineType
       chassisNumber
       propellerSerialNumber
     }
+  }
+}
+
+# Admin section: users, boats and customers management.
+query ListUsers @auth(level: USER) {
+  users(orderBy: { displayName: ASC }) {
+    id
+    email
+    displayName
+    role
+    isActive
+    userPermissions: userPermissions_on_user {
+      permission {
+        id
+        key
+      }
+    }
+  }
+}
+
+query ListPermissions @auth(level: USER) {
+  permissions(orderBy: { key: ASC }) {
+    id
+    key
+    description
   }
 }
 

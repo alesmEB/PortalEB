@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { getWorkOrderDetail, type GetWorkOrderDetailData } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
 import { PdfViewer } from '../components/PdfViewer'
+import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 
@@ -14,7 +15,7 @@ export function OrderDetailPage() {
 
   useEffect(() => {
     if (!id) return
-    getWorkOrderDetail({ id }).then((res) => setOrder(res.data.workOrder))
+    getWorkOrderDetail({ id }, FRESH).then((res) => setOrder(res.data.workOrder))
   }, [id])
 
   if (order === undefined) {

@@ -13,6 +13,7 @@ import {
 } from 'firebase/auth'
 import { getCurrentUser, UserRole } from '@dataconnect/generated'
 import { auth } from '../lib/firebase'
+import { FRESH } from '../lib/dataConnectOptions'
 
 export type { UserRole }
 
@@ -36,7 +37,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 async function loadProfile(): Promise<{ profile: AuthUserProfile | null; permissions: string[] }> {
-  const { data } = await getCurrentUser()
+  const { data } = await getCurrentUser(FRESH)
   if (!data.user) return { profile: null, permissions: [] }
 
   return {
