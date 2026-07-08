@@ -1,0 +1,51 @@
+rules_version = '2';
+
+// Photos (start/incident/final), uploaded quotes and generated PDF reports
+// for each work order. Fine-grained per-order participant checks (client
+// owns the order / technician is assigned to it) require a relational
+// lookup that Storage rules can't perform against Data Connect, so for now
+// authorization is role/permission based via Auth custom claims. Tighten
+// further with a Cloud Function-issued short-lived token or by mirroring
+// order participants into custom claims once that sync exists.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function hasPermission(permission) {
+      return isSignedIn() &&
+        request.auth.token.permissions is list &&
+        permission in request.auth.token.permissions;
+    }
+
+    match /workOrders/{orderId}/photos/{stage}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('photos:upload') &&
+        stage in ['start', 'incident', 'final'] &&
+        request.resource.size < 15 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    match /workOrders/{orderId}/quotes/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('quotes:upload') &&
+        request.resource.size < 20 * 1024 * 1024 &&
+        request.resource.contentType == 'application/pdf';
+    }
+
+    match /workOrders/{orderId}/reports/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if (role() == 'admin' || hasPermission('orders:create')) &&
+        request.resource.contentType == 'application/pdf';
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

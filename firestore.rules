@@ -1,0 +1,62 @@
+rules_version = '2';
+
+// Firestore is used exclusively for the real-time chat attached to each work
+// order. All other entities (users, boats, work orders, time logs, audit
+// trail) live in Firebase Data Connect / PostgreSQL — see dataconnect/schema.
+//
+// Role and permissions are synced onto the Auth custom claims (by a Cloud
+// Function reacting to Data Connect UserPermissions changes) as:
+//   token.role: 'admin' | 'client' | 'technician'
+//   token.permissions: string[] e.g. ['chat:write', 'orders:create']
+//   token.assignedOrderIds: string[] work order ids the technician is on
+//
+// Each work order chat document keeps its own `participants` (uids) array so
+// rules don't need to look up relational data at request time.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function hasPermission(permission) {
+      return isSignedIn() &&
+        request.auth.token.permissions is list &&
+        permission in request.auth.token.permissions;
+    }
+
+    function isParticipant(chatData) {
+      return isSignedIn() &&
+        chatData.participants is list &&
+        request.auth.uid in chatData.participants;
+    }
+
+    match /workOrderChats/{orderId} {
+      allow get: if isParticipant(resource.data) || role() == 'admin';
+
+      // Participants are maintained by backend logic when technicians are
+      // assigned/unassigned; clients never write this document directly.
+      allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isParticipant(get(/databases/$(database)/documents/workOrderChats/$(orderId)).data) ||
+          role() == 'admin';
+
+        allow create: if hasPermission('chat:write') &&
+          (isParticipant(get(/databases/$(database)/documents/workOrderChats/$(orderId)).data) || role() == 'admin') &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.createdAt == request.time;
+
+        // Messages are immutable once sent.
+        allow update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
