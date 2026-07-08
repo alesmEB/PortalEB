@@ -62,6 +62,10 @@ mutation CreateWorkOrder(
   )
 }
 
+mutation SetWorkOrderReportUrl($workOrderId: UUID!, $finalReportUrl: String!) @auth(level: USER) {
+  workOrder_update(id: $workOrderId, data: { finalReportUrl: $finalReportUrl })
+}
+
 mutation CreateWorkOrderTask($workOrderId: UUID!, $description: String!) @auth(level: USER) {
   workOrderTask_insert(data: { workOrderId: $workOrderId, description: $description })
 }

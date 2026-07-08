@@ -12,6 +12,7 @@ import {
   listBoats,
   listCustomers,
   logOrderEvent,
+  setWorkOrderReportUrl,
   upsertOrderSequence,
   type ListBoatsData,
   type ListCustomersData,
@@ -52,6 +53,7 @@ export function NewOrderPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successCode, setSuccessCode] = useState<string | null>(null)
+  const [successReportUrl, setSuccessReportUrl] = useState<string | null>(null)
 
   useEffect(() => {
     listCustomers().then((res) => setCustomers(res.data.customers))
@@ -188,8 +190,8 @@ export function NewOrderPage() {
 
       await logOrderEvent({ workOrderId, eventType: OrderEventType.ORDER_CREATED })
 
-      const { downloadWorkOrderPdf } = await import('../lib/pdf/WorkOrderPdf')
-      await downloadWorkOrderPdf({
+      const { uploadWorkOrderPdf } = await import('../lib/pdf/WorkOrderPdf')
+      const reportUrl = await uploadWorkOrderPdf({
         code,
         locationLabel: orderLocationLabel[locationCode],
         createdAt: new Date(),
@@ -203,7 +205,9 @@ export function NewOrderPage() {
         tasks: filledTasks,
         comments: comments.trim() || undefined,
       })
+      await setWorkOrderReportUrl({ workOrderId, finalReportUrl: reportUrl })
 
+      setSuccessReportUrl(reportUrl)
       setSuccessCode(code)
     } catch {
       setError('No se pudo crear la orden. Inténtalo de nuevo.')
@@ -218,7 +222,20 @@ export function NewOrderPage() {
         <p className="text-lg font-semibold text-eb-blue-dark">
           Orden {successCode} creada correctamente
         </p>
-        <p className="text-sm text-slate-500">Se ha descargado el PDF con los datos de la orden.</p>
+        <p className="text-sm text-slate-500">
+          El informe se ha guardado en Storage, carpeta{' '}
+          <span className="font-mono">work-orders/{successCode}</span>.
+        </p>
+        {successReportUrl && (
+          <a
+            href={successReportUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-eb-blue underline"
+          >
+            Ver informe PDF
+          </a>
+        )}
         <button
           onClick={() => navigate('/')}
           className="rounded-lg bg-eb-blue px-4 py-2 text-sm font-semibold text-white"

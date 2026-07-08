@@ -1,46 +1,52 @@
 rules_version = '2';
 
-// Photos (start/incident/final), uploaded quotes and generated PDF reports
-// for each work order. Fine-grained per-order participant checks (client
-// owns the order / technician is assigned to it) require a relational
-// lookup that Storage rules can't perform against Data Connect, so for now
-// authorization is role/permission based via Auth custom claims. Tighten
-// further with a Cloud Function-issued short-lived token or by mirroring
-// order participants into custom claims once that sync exists.
+// Everything for a work order lives under a single folder named after its
+// human-readable code (e.g. "work-orders/A-000001/..."): the generated PDF
+// report directly inside, and photos/quotes in their own subfolders as
+// those features are built.
+//
+// Authorization is currently "signed in" only, same as the Data Connect
+// connector (every operation there is @auth(level: USER), not permission-
+// scoped either) - role/permission enforcement is a client-side UI concern
+// for now (see usePermission/HasPermission). There's no Cloud Function yet
+// syncing Data Connect role/permissions onto Auth custom claims, so rules
+// here can't check them. Once that sync exists, tighten these back to
+// role()/hasPermission() checks (kept below, commented out, as the target
+// shape) and add per-order participant checks.
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function role() {
-      return request.auth.token.role;
-    }
+    // function role() {
+    //   return request.auth.token.role;
+    // }
+    //
+    // function hasPermission(permission) {
+    //   return isSignedIn() &&
+    //     request.auth.token.permissions is list &&
+    //     permission in request.auth.token.permissions;
+    // }
 
-    function hasPermission(permission) {
-      return isSignedIn() &&
-        request.auth.token.permissions is list &&
-        permission in request.auth.token.permissions;
-    }
-
-    match /workOrders/{orderId}/photos/{stage}/{fileName} {
+    // Generated report(s), directly inside the order's folder.
+    match /work-orders/{code}/{fileName} {
       allow read: if isSignedIn();
-      allow write: if hasPermission('photos:upload') &&
+      allow write: if isSignedIn() && request.resource.contentType == 'application/pdf';
+    }
+
+    match /work-orders/{code}/photos/{stage}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() &&
         stage in ['start', 'incident', 'final'] &&
         request.resource.size < 15 * 1024 * 1024 &&
         request.resource.contentType.matches('image/.*');
     }
 
-    match /workOrders/{orderId}/quotes/{fileName} {
+    match /work-orders/{code}/quotes/{fileName} {
       allow read: if isSignedIn();
-      allow write: if hasPermission('quotes:upload') &&
+      allow write: if isSignedIn() &&
         request.resource.size < 20 * 1024 * 1024 &&
-        request.resource.contentType == 'application/pdf';
-    }
-
-    match /workOrders/{orderId}/reports/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if (role() == 'admin' || hasPermission('orders:create')) &&
         request.resource.contentType == 'application/pdf';
     }
 

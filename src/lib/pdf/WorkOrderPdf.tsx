@@ -131,12 +131,18 @@ function WorkOrderDocument({ data }: { data: WorkOrderPdfData }) {
   )
 }
 
-export async function downloadWorkOrderPdf(data: WorkOrderPdfData) {
+/**
+ * Uploads the report into the order's own Storage folder
+ * ("work-orders/{code}/informe.pdf") rather than downloading it locally -
+ * photos and other order documents will land alongside it in that same
+ * folder as those features are built.
+ */
+export async function uploadWorkOrderPdf(data: WorkOrderPdfData): Promise<string> {
+  const { storage } = await import('../firebase')
+  const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage')
+
   const blob = await pdf(<WorkOrderDocument data={data} />).toBlob()
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `orden-${data.code}.pdf`
-  link.click()
-  URL.revokeObjectURL(url)
+  const storageRef = ref(storage, `work-orders/${data.code}/informe.pdf`)
+  await uploadBytes(storageRef, blob, { contentType: 'application/pdf' })
+  return getDownloadURL(storageRef)
 }
