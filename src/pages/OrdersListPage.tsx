@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -21,6 +22,13 @@ export function OrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [boatFilter, setBoatFilter] = useState('')
   const [searchText, setSearchText] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+
+  const activeFilterCount =
+    (locationFilter !== 'ALL' ? 1 : 0) +
+    (statusFilter !== 'ALL' ? 1 : 0) +
+    (boatFilter.trim() ? 1 : 0) +
+    (searchText.trim() ? 1 : 0)
 
   useEffect(() => {
     listWorkOrders().then((res) => setOrders(res.data.workOrders))
@@ -49,71 +57,93 @@ export function OrdersListPage() {
       <BackButton to="/" />
       <h1 className="text-lg font-semibold text-eb-blue-dark">Órdenes de trabajo</h1>
 
-      <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <div>
-          <p className="text-xs font-medium text-slate-500">Localización</p>
-          <div className="mt-1 flex flex-wrap gap-2">
-            <button
-              onClick={() => setLocationFilter('ALL')}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${
-                locationFilter === 'ALL'
-                  ? 'border-eb-blue bg-eb-blue text-white'
-                  : 'border-slate-300 text-slate-600'
-              }`}
-            >
-              Todas
-            </button>
-            {Object.values(OrderLocation).map((loc) => (
-              <button
-                key={loc}
-                onClick={() => setLocationFilter(loc)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${
-                  locationFilter === loc
-                    ? 'border-eb-blue bg-eb-blue text-white'
-                    : 'border-slate-300 text-slate-600'
-                }`}
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white/90 backdrop-blur-sm">
+        <button
+          onClick={() => setFiltersOpen((open) => !open)}
+          className="flex w-full items-center justify-between p-4"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-eb-blue-dark">
+            <SlidersHorizontal className="h-4 w-4" />
+            Filtros
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-eb-blue px-2 py-0.5 text-xs text-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 text-slate-500 transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {filtersOpen && (
+          <div className="space-y-3 border-t border-slate-200 p-4">
+            <div>
+              <p className="text-xs font-medium text-slate-500">Localización</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setLocationFilter('ALL')}
+                  className={`rounded-lg border px-3 py-1.5 text-sm ${
+                    locationFilter === 'ALL'
+                      ? 'border-eb-blue bg-eb-blue text-white'
+                      : 'border-slate-300 text-slate-600'
+                  }`}
+                >
+                  Todas
+                </button>
+                {Object.values(OrderLocation).map((loc) => (
+                  <button
+                    key={loc}
+                    onClick={() => setLocationFilter(loc)}
+                    className={`rounded-lg border px-3 py-1.5 text-sm ${
+                      locationFilter === loc
+                        ? 'border-eb-blue bg-eb-blue text-white'
+                        : 'border-slate-300 text-slate-600'
+                    }`}
+                  >
+                    {orderLocationLabel[loc]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="block text-xs font-medium text-slate-500">
+              Estado
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
               >
-                {orderLocationLabel[loc]}
-              </button>
-            ))}
+                <option value="ALL">Todos</option>
+                {Object.values(WorkOrderStatus).map((status) => (
+                  <option key={status} value={status}>
+                    {workOrderStatusLabel[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-xs font-medium text-slate-500">
+              Embarcación / máquina
+              <input
+                value={boatFilter}
+                onChange={(e) => setBoatFilter(e.target.value)}
+                placeholder="Nombre de la embarcación o máquina"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+              />
+            </label>
+
+            <label className="block text-xs font-medium text-slate-500">
+              Búsqueda libre
+              <input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Código, cliente, embarcación, ubicación..."
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+              />
+            </label>
           </div>
-        </div>
-
-        <label className="block text-xs font-medium text-slate-500">
-          Estado
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
-          >
-            <option value="ALL">Todos</option>
-            {Object.values(WorkOrderStatus).map((status) => (
-              <option key={status} value={status}>
-                {workOrderStatusLabel[status]}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block text-xs font-medium text-slate-500">
-          Embarcación / máquina
-          <input
-            value={boatFilter}
-            onChange={(e) => setBoatFilter(e.target.value)}
-            placeholder="Nombre de la embarcación o máquina"
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
-          />
-        </label>
-
-        <label className="block text-xs font-medium text-slate-500">
-          Búsqueda libre
-          <input
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            placeholder="Código, cliente, embarcación, ubicación..."
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
-          />
-        </label>
+        )}
       </div>
 
       {orders === null && <p className="mt-4 text-sm text-slate-500">Cargando...</p>}
