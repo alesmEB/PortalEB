@@ -1,0 +1,261 @@
+# PortalEB relational schema (Firebase Data Connect / PostgreSQL)
+#
+# Firestore is used only for the per-order chat (see firestore.rules).
+# Every other entity - users, permissions, customers, boats, work orders,
+# quotes, technician assignments, time logs, incidents, photos and the
+# audit trail - lives here so PostgreSQL can enforce referential
+# integrity via real foreign keys.
+#
+# Conventions:
+# - Every table has a `UUID! @default(expr: "uuidV4()")` surrogate key,
+#   except `User`, whose id is the Firebase Auth uid (`auth.uid`) and is
+#   therefore a `String!`.
+# - Every foreign key is declared as its own scalar field (e.g.
+#   `workOrderId: UUID!`) right next to the `@ref` relation field that
+#   points at it, so the foreign keys are explicit and readable instead of
+#   hidden behind hidden the auto-generated columns.
+# - Timestamps default to `request.time` (server time at mutation) so
+#   clients can't backdate audit-relevant fields.
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  CLIENT
+  TECHNICIAN
+}
+
+enum WorkOrderStatus {
+  PENDING_QUOTE # awaiting the 1st/2nd budget upload from the admin
+  QUOTE_REJECTED # client rejected the latest quote; admin may upload a 2nd
+  AWAITING_ASSIGNMENT # quote accepted, waiting for technicians to be assigned
+  ASSIGNED # technicians assigned, work not started yet
+  IN_PROGRESS # at least one technician has clocked in
+  COMPLETED # final photos uploaded and report generated
+  CANCELLED # both quote attempts were rejected; order is archived
+}
+
+enum QuoteDecision {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum PhotoStage {
+  START
+  INCIDENT
+  FINAL
+}
+
+enum OrderEventType {
+  ORDER_CREATED
+  QUOTE_UPLOADED
+  QUOTE_ACCEPTED
+  QUOTE_REJECTED
+  ORDER_CANCELLED
+  TECHNICIANS_ASSIGNED
+  TECHNICIAN_UNASSIGNED
+  WORK_STARTED
+  WORK_STOPPED
+  INCIDENT_REPORTED
+  INCIDENT_RESOLVED
+  PHOTO_UPLOADED
+  ORDER_COMPLETED
+  REPORT_GENERATED
+}
+
+# ---------------------------------------------------------------------------
+# Identity & access (RBAC + granular permissions)
+# ---------------------------------------------------------------------------
+
+type User @table(name: "users") {
+  id: String! @default(expr: "auth.uid")
+  email: String! @unique
+  displayName: String!
+  phone: String
+  role: UserRole!
+  isActive: Boolean! @default(value: true)
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp @default(expr: "request.time")
+}
+
+# Catalog of permission strings, e.g. "orders:create", "quotes:upload",
+# "quotes:approve", "hours:log", "chat:write", "photos:upload".
+type Permission @table(name: "permissions") {
+  id: UUID! @default(expr: "uuidV4()")
+  key: String! @unique
+  description: String!
+}
+
+# Many-to-many User <-> Permission, kept as an explicit join table (instead
+# of a flat array column) so PostgreSQL enforces that both sides exist.
+type UserPermission @table(name: "user_permissions", key: ["user", "permission"]) {
+  userId: String!
+  user: User! @ref(fields: ["userId"])
+  permissionId: UUID!
+  permission: Permission! @ref(fields: ["permissionId"])
+  grantedById: String
+  grantedBy: User @ref(fields: ["grantedById"])
+  grantedAt: Timestamp! @default(expr: "request.time")
+}
+
+# ---------------------------------------------------------------------------
+# Customers & boats/machinery
+# ---------------------------------------------------------------------------
+
+type Customer @table(name: "customers") {
+  id: UUID! @default(expr: "uuidV4()")
+  fullName: String!
+  companyName: String
+  email: String!
+  phone: String!
+  taxId: String
+  address: String
+  # Set only if this customer also has a portal login (role CLIENT).
+  linkedUserId: String
+  linkedUser: User @ref(fields: ["linkedUserId"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type Boat @table(name: "boats") {
+  id: UUID! @default(expr: "uuidV4()")
+  ownerId: UUID!
+  owner: Customer! @ref(fields: ["ownerId"])
+  name: String!
+  registrationNumber: String
+  hullMaterial: String
+  loaMeters: Float
+  # Engine data is the focus per the workshop's inspection/repair scope.
+  engineManufacturer: String
+  engineModel: String
+  engineSerialNumber: String
+  enginePowerHp: Int
+  engineHours: Float
+  fuelType: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# ---------------------------------------------------------------------------
+# Work orders, tasks, quotes & technician assignment
+# ---------------------------------------------------------------------------
+
+type WorkOrder @table(name: "work_orders") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique
+  customerId: UUID!
+  customer: Customer! @ref(fields: ["customerId"])
+  boatId: UUID!
+  boat: Boat! @ref(fields: ["boatId"])
+  createdById: String!
+  createdBy: User! @ref(fields: ["createdById"])
+  status: WorkOrderStatus! @default(value: PENDING_QUOTE)
+  description: String
+  # Enforced at the application layer: never exceeds 2 (see Quote below).
+  quoteAttempts: Int! @default(value: 0)
+  finalReportUrl: String
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp @default(expr: "request.time")
+  completedAt: Timestamp
+  cancelledAt: Timestamp
+}
+
+# The list of jobs to perform, captured at order creation.
+type WorkOrderTask @table(name: "work_order_tasks") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  description: String!
+  isCompleted: Boolean! @default(value: false)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Up to 2 rows per WorkOrder (attemptNumber 1 and 2); a 2nd rejection
+# cancels/archives the order. Enforced in the connector's mutation logic,
+# not as a DB constraint, since Data Connect has no CHECK directive.
+type Quote @table(name: "quotes") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  attemptNumber: Int!
+  fileUrl: String!
+  amount: Float
+  uploadedById: String!
+  uploadedBy: User! @ref(fields: ["uploadedById"])
+  decision: QuoteDecision! @default(value: PENDING)
+  rejectionReason: String
+  decidedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Many-to-many User(technician) <-> WorkOrder.
+type TechnicianAssignment
+  @table(name: "technician_assignments", key: ["workOrder", "technician"]) {
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  technicianId: String!
+  technician: User! @ref(fields: ["technicianId"])
+  assignedById: String!
+  assignedBy: User! @ref(fields: ["assignedById"])
+  assignedAt: Timestamp! @default(expr: "request.time")
+  unassignedAt: Timestamp
+}
+
+# ---------------------------------------------------------------------------
+# Execution: time tracking, incidents & photos
+# ---------------------------------------------------------------------------
+
+type TimeLog @table(name: "time_logs") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  technicianId: String!
+  technician: User! @ref(fields: ["technicianId"])
+  clockIn: Timestamp! @default(expr: "request.time")
+  clockOut: Timestamp
+  durationMinutes: Int
+  notes: String
+}
+
+type Incident @table(name: "incidents") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  reportedById: String!
+  reportedBy: User! @ref(fields: ["reportedById"])
+  description: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+  resolvedAt: Timestamp
+}
+
+type WorkOrderPhoto @table(name: "work_order_photos") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  stage: PhotoStage!
+  # Only set when stage == INCIDENT.
+  incidentId: UUID
+  incident: Incident @ref(fields: ["incidentId"])
+  storageUrl: String!
+  uploadedById: String!
+  uploadedBy: User! @ref(fields: ["uploadedById"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# ---------------------------------------------------------------------------
+# Audit trail (critical requirement: who / what / when for every event)
+# ---------------------------------------------------------------------------
+
+type OrderTracking @table(name: "order_tracking") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  actorId: String!
+  actor: User! @ref(fields: ["actorId"]) # who performed the action
+  eventType: OrderEventType! # what happened
+  # Free-form JSON with event-specific detail (previous/new status,
+  # rejection reason, assigned technician ids, etc).
+  metadata: Any
+  occurredAt: Timestamp! @default(expr: "request.time") # exact server time
+}

@@ -34,7 +34,9 @@ firebase-export-*/
 firebase-debug.log
 
 # Firebase Data Connect generated SDKs (regenerate via `firebase dataconnect:sdk:generate`)
+# and the emulator's local schema-reload cache
 dataconnect-generated/
+dataconnect/.dataconnect/
 
 # Editor directories and files
 .vscode/*

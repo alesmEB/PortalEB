@@ -1,0 +1,14 @@
+specVersion: "v2"
+serviceId: "portaleb-workshop"
+location: "us-central1"
+schema:
+  source: "schema"
+  datasource:
+    postgresql:
+      database: "portaleb"
+      cloudSql:
+        # Placeholder - replace with the real Cloud SQL instance id once
+        # provisioned (`firebase dataconnect:sql:setup`). Not needed to run
+        # against the local PGlite emulator.
+        instanceId: "portaleb-dataconnect-instance"
+connectorDirs: ["connector"]

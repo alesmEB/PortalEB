@@ -1,0 +1,6 @@
+connectorId: "default"
+generate:
+  javascriptSdk:
+    - outputDir: "../../src/dataconnect-generated"
+      package: "@dataconnect/generated"
+      react: true

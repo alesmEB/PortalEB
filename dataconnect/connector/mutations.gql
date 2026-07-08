@@ -1,0 +1,42 @@
+# Starter mutations. Each business action should also insert an
+# OrderTracking row from the client/Cloud Function right after it succeeds,
+# so the audit trail stays authoritative for who/what/when.
+
+mutation CreateWorkOrder(
+  $code: String!
+  $customerId: UUID!
+  $boatId: UUID!
+  $description: String
+) @auth(level: USER) {
+  workOrder_insert(
+    data: {
+      code: $code
+      customerId: $customerId
+      boatId: $boatId
+      createdById_expr: "auth.uid"
+      description: $description
+    }
+  )
+}
+
+mutation LogOrderEvent($workOrderId: UUID!, $eventType: OrderEventType!, $metadata: Any) @auth(level: USER) {
+  orderTracking_insert(
+    data: {
+      workOrderId: $workOrderId
+      actorId_expr: "auth.uid"
+      eventType: $eventType
+      metadata: $metadata
+    }
+  )
+}
+
+mutation ClockIn($workOrderId: UUID!) @auth(level: USER) {
+  timeLog_insert(data: { workOrderId: $workOrderId, technicianId_expr: "auth.uid" })
+}
+
+mutation ClockOut($timeLogId: UUID!, $durationMinutes: Int!) @auth(level: USER) {
+  timeLog_update(
+    id: $timeLogId
+    data: { clockOut_expr: "request.time", durationMinutes: $durationMinutes }
+  )
+}
