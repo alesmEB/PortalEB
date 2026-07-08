@@ -130,6 +130,19 @@ export function CustomersAdmin() {
                 <p className="text-xs text-slate-500">
                   {customer.contactName} · {customer.phone}
                 </p>
+                {customer.boats.length > 0 && (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {customer.boats.map((boat) => (
+                      <li
+                        key={boat.id}
+                        className="rounded-full bg-eb-teal/10 px-2.5 py-0.5 text-xs text-eb-teal-dark"
+                      >
+                        {boat.name}
+                        {boat.registrationNumber ? ` · ${boat.registrationNumber}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </button>
             {editingId === customer.id && (

@@ -43,8 +43,11 @@ mutation UpdateCustomer(
   )
 }
 
-mutation UpdateBoat($id: UUID!, $name: String!, $registrationNumber: String) @auth(level: USER) {
-  boat_update(id: $id, data: { name: $name, registrationNumber: $registrationNumber })
+mutation UpdateBoat($id: UUID!, $ownerId: UUID!, $name: String!, $registrationNumber: String) @auth(level: USER) {
+  boat_update(
+    id: $id
+    data: { ownerId: $ownerId, name: $name, registrationNumber: $registrationNumber }
+  )
 }
 
 mutation UpdateEngine(

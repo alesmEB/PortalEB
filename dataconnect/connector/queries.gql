@@ -24,6 +24,11 @@ query ListCustomers @auth(level: USER) {
     contactName
     phone
     email
+    boats: boats_on_owner(orderBy: { name: ASC }) {
+      id
+      name
+      registrationNumber
+    }
   }
 }
 

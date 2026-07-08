@@ -173,7 +173,7 @@ function BoatForm({
     setNewEngines((prev) => prev.map((e, i) => (i === index ? { ...e, [field]: value } : e)))
   }
 
-  const canSubmit = name.trim() && (boat || ownerId)
+  const canSubmit = name.trim() && ownerId
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -181,6 +181,7 @@ function BoatForm({
       if (boat) {
         await updateBoat({
           id: boat.id,
+          ownerId,
           name: name.trim(),
           registrationNumber: registrationNumber.trim() || undefined,
         })
@@ -206,18 +207,16 @@ function BoatForm({
 
   return (
     <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 first:mt-0 first:border-t-0 first:pt-0">
-      {!boat && (
-        <label className="block text-xs font-medium text-slate-500">
-          Cliente propietario
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass}>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+      <label className="block text-xs font-medium text-slate-500">
+        Cliente propietario
+        <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputClass}>
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <input
         placeholder="Nombre"
         value={name}
