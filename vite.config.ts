@@ -13,6 +13,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered manually in main.tsx (virtual:pwa-register) so we can force
+      // a reload the moment a new version is available - see the comment
+      // there for why registerType: 'autoUpdate' alone isn't enough.
+      injectRegister: false,
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
         id: '/',
@@ -43,6 +47,11 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // registerType: 'autoUpdate' only auto-reloads (see registerServiceWorker.ts)
+        // once the new SW reaches "activated" on its own - without these, it
+        // waits for all tabs to close first, same as the default "prompt" flow.
+        skipWaiting: true,
+        clientsClaim: true,
         // @react-pdf/renderer's lazily-loaded chunk exceeds the 2 MiB default.
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
