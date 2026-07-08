@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getWorkOrderDetail, type GetWorkOrderDetailData } from '@dataconnect/generated'
+import { PdfViewer } from '../components/PdfViewer'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 
@@ -111,11 +112,9 @@ export function OrderDetailPage() {
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
         <h2 className="text-sm font-semibold text-eb-teal-dark">Informe PDF</h2>
         {order.finalReportUrl ? (
-          <iframe
-            src={order.finalReportUrl}
-            title={`Informe ${order.code}`}
-            className="mt-2 h-[70svh] w-full rounded-lg border border-slate-200"
-          />
+          <div className="mt-2">
+            <PdfViewer url={order.finalReportUrl} />
+          </div>
         ) : (
           <p className="mt-2 text-sm text-slate-500">Todavía no hay un informe generado.</p>
         )}
