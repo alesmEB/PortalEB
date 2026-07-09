@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import {
   OrderEventType,
   UserRole,
@@ -272,6 +272,8 @@ function IncidentModal({
 
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  const backTo = (location.state as { from?: string } | null)?.from ?? '/orders'
   const { profile } = useAuth()
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
@@ -348,15 +350,9 @@ export function OrderDetailPage() {
     if (!order) return
     setBusy(true)
     try {
-      for (const log of order.activeTimeLogs) {
+      const activeLogs = order.timeLogs.filter((log) => !log.clockOut)
+      for (const log of activeLogs) {
         await clockOut({ timeLogId: log.id, durationMinutes: durationMinutesSince(log.clockIn) })
-      }
-      if (order.activeTimeLogs.length > 0) {
-        await logOrderEvent({
-          workOrderId: order.id,
-          eventType: OrderEventType.WORK_STOPPED,
-          metadata: { technicianIds: order.activeTimeLogs.map((log) => log.technicianId) },
-        })
       }
       await completeWorkOrder({ id: order.id })
       await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.ORDER_COMPLETED })
@@ -367,6 +363,8 @@ export function OrderDetailPage() {
     }
   }
 
+  // Individual clock in/out isn't logged to OrderTracking - the TimeLog
+  // table (see the "Turnos" timeline below) is the authoritative record.
   async function handleStartWorking() {
     if (!order) return
     setBusy(true)
@@ -381,13 +379,8 @@ export function OrderDetailPage() {
           timeLogId: myActiveLog.id,
           durationMinutes: durationMinutesSince(myActiveLog.clockIn),
         })
-        await logOrderEvent({
-          workOrderId: myActiveLog.workOrderId,
-          eventType: OrderEventType.WORK_STOPPED,
-        })
       }
       await clockIn({ workOrderId: order.id })
-      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.WORK_STARTED })
       await loadOrder()
       await loadMyActiveLog()
     } finally {
@@ -403,7 +396,6 @@ export function OrderDetailPage() {
         timeLogId: myActiveLog.id,
         durationMinutes: durationMinutesSince(myActiveLog.clockIn),
       })
-      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.WORK_STOPPED })
       await loadOrder()
       await loadMyActiveLog()
     } finally {
@@ -414,7 +406,7 @@ export function OrderDetailPage() {
   if (order === undefined) {
     return (
       <div className="flex-1 p-4">
-        <BackButton to="/orders" />
+        <BackButton to={backTo} />
         <p className="text-sm text-slate-500">Cargando...</p>
       </div>
     )
@@ -423,7 +415,7 @@ export function OrderDetailPage() {
   if (order === null) {
     return (
       <div className="flex-1 p-4">
-        <BackButton to="/orders" />
+        <BackButton to={backTo} />
         <p className="text-sm text-slate-500">Orden no encontrada.</p>
       </div>
     )
@@ -432,11 +424,24 @@ export function OrderDetailPage() {
   const myAssignment = order.assignments.find((a) => a.technicianId === profile?.id)
   const canManageOrder = !!myAssignment && (myAssignment.isAllowed || myAssignment.isLead)
   const amWorkingHere = myActiveLog?.workOrderId === order.id
-  const workingTechnicianIds = new Set(order.activeTimeLogs.map((log) => log.technicianId))
+  const workingTechnicianIds = new Set(
+    order.timeLogs.filter((log) => !log.clockOut).map((log) => log.technicianId),
+  )
+  const shiftsByTechnician = new Map<string, { name: string; shifts: typeof order.timeLogs }>()
+  for (const log of order.timeLogs) {
+    const entry = shiftsByTechnician.get(log.technicianId)
+    if (entry) entry.shifts.push(log)
+    else shiftsByTechnician.set(log.technicianId, { name: log.technician.displayName, shifts: [log] })
+  }
+  const visibleTracking = order.tracking.filter(
+    (event) =>
+      event.eventType !== OrderEventType.WORK_STARTED &&
+      event.eventType !== OrderEventType.WORK_STOPPED,
+  )
 
   return (
     <div className="flex-1 p-4">
-      <BackButton to="/orders" />
+      <BackButton to={backTo} />
       <div className="flex items-center justify-between">
         <h1 className="font-mono text-lg font-semibold text-eb-blue-dark">{order.code}</h1>
         <span className="rounded-full bg-eb-teal/10 px-2.5 py-1 text-xs text-eb-teal-dark">
@@ -616,10 +621,35 @@ export function OrderDetailPage() {
         </section>
       )}
 
+      {shiftsByTechnician.size > 0 && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+          <h2 className="text-sm font-semibold text-eb-teal-dark">Turnos</h2>
+          <div className="mt-2 space-y-3">
+            {[...shiftsByTechnician.values()].map(({ name, shifts }) => (
+              <div key={name}>
+                <p className="text-xs font-medium text-slate-600">{name}</p>
+                <ul className="mt-1 space-y-1 border-l-2 border-eb-teal/30 pl-3">
+                  {shifts.map((shift) => (
+                    <li key={shift.id} className="text-xs text-slate-500">
+                      {new Date(shift.clockIn).toLocaleString('es-ES')}
+                      {' → '}
+                      {shift.clockOut
+                        ? new Date(shift.clockOut).toLocaleString('es-ES')
+                        : 'en curso'}
+                      {shift.durationMinutes != null ? ` · ${shift.durationMinutes} min` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
         <h2 className="text-sm font-semibold text-eb-teal-dark">Historial</h2>
         <ul className="mt-2 space-y-1">
-          {order.tracking.map((event, i) => (
+          {visibleTracking.map((event, i) => (
             <li key={i} className="text-xs text-slate-500">
               {new Date(event.occurredAt).toLocaleString('es-ES')} · {event.actor.displayName} ·{' '}
               {event.eventType}

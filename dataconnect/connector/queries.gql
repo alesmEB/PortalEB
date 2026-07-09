@@ -206,10 +206,12 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
         displayName
       }
     }
-    activeTimeLogs: timeLogs_on_workOrder(where: { clockOut: { isNull: true } }) {
+    timeLogs: timeLogs_on_workOrder(orderBy: { clockIn: DESC }) {
       id
       technicianId
       clockIn
+      clockOut
+      durationMinutes
       technician {
         displayName
       }
