@@ -29,7 +29,6 @@ import { PdfViewer } from '../components/PdfViewer'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { FRESH } from '../lib/dataConnectOptions'
-import { createBlankPdfBlob } from '../lib/pdf/blankPdf'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { sendPushNotification } from '../lib/pushNotifications'
@@ -372,6 +371,7 @@ export function OrderDetailPage() {
   }
 
   async function handleAddQuoteLab() {
+    const { createBlankPdfBlob } = await import('../lib/pdf/blankPdf')
     const blob = await createBlankPdfBlob()
     await handleAddQuote(blob)
   }
