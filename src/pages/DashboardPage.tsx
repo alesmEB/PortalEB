@@ -60,6 +60,25 @@ export function DashboardPage() {
           </button>
 
           <HasPermission
+            permission="assignments:view"
+            fallback={
+              <button
+                disabled
+                className="w-full rounded-lg bg-slate-200 py-3 text-base font-semibold text-slate-400"
+              >
+                Asignaciones (sin permiso)
+              </button>
+            }
+          >
+            <button
+              onClick={() => navigate('/assignments')}
+              className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+            >
+              Asignaciones
+            </button>
+          </HasPermission>
+
+          <HasPermission
             permission="admin:manage"
             fallback={
               <button

@@ -146,8 +146,14 @@ mutation UpdateWorkOrderStatus($id: UUID!, $status: WorkOrderStatus!, $quoteAtte
 }
 
 # Upsert so re-assigning a previously unassigned technician doesn't collide
-# with the (workOrder, technician) primary key.
-mutation AssignTechnician($workOrderId: UUID!, $technicianId: String!) @auth(level: USER) {
+# with the (workOrder, technician) primary key, and so toggling isAllowed/
+# isLead on an already-assigned technician is just another call to this.
+mutation AssignTechnician(
+  $workOrderId: UUID!
+  $technicianId: String!
+  $isAllowed: Boolean!
+  $isLead: Boolean!
+) @auth(level: USER) {
   technicianAssignment_upsert(
     data: {
       workOrderId: $workOrderId
@@ -155,6 +161,8 @@ mutation AssignTechnician($workOrderId: UUID!, $technicianId: String!) @auth(lev
       assignedById_expr: "auth.uid"
       assignedAt_expr: "request.time"
       unassignedAt: null
+      isAllowed: $isAllowed
+      isLead: $isLead
     }
   )
 }
@@ -163,6 +171,20 @@ mutation UnassignTechnician($workOrderId: UUID!, $technicianId: String!) @auth(l
   technicianAssignment_update(
     key: { workOrderId: $workOrderId, technicianId: $technicianId }
     data: { unassignedAt_expr: "request.time" }
+  )
+}
+
+mutation StartWorkOrder($id: UUID!) @auth(level: USER) {
+  workOrder_update(id: $id, data: { status: IN_PROGRESS })
+}
+
+mutation CompleteWorkOrder($id: UUID!) @auth(level: USER) {
+  workOrder_update(id: $id, data: { status: COMPLETED, completedAt_expr: "request.time" })
+}
+
+mutation CreateIncident($workOrderId: UUID!, $description: String!) @auth(level: USER) {
+  incident_insert(
+    data: { workOrderId: $workOrderId, reportedById_expr: "auth.uid", description: $description }
   )
 }
 

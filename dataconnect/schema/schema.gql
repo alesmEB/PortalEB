@@ -226,6 +226,12 @@ type TechnicianAssignment
   assignedBy: User! @ref(fields: ["assignedById"])
   assignedAt: Timestamp! @default(expr: "request.time")
   unassignedAt: Timestamp
+  # Can start/finish the order, not just work on it and log incidents (the
+  # default for a plain technician assignment).
+  isAllowed: Boolean! @default(value: false)
+  # "Jefe de la orden": same practical powers as isAllowed, kept as a
+  # separate flag purely for administrative traceability.
+  isLead: Boolean! @default(value: false)
 }
 
 # ---------------------------------------------------------------------------

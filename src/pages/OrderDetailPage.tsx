@@ -5,9 +5,12 @@ import {
   UserRole,
   WorkOrderStatus,
   assignTechnician,
+  completeWorkOrder,
+  createIncident,
   getWorkOrderDetail,
   listAssignableUsers,
   logOrderEvent,
+  startWorkOrder,
   unassignTechnician,
   updateWorkOrderStatus,
   type GetWorkOrderDetailData,
@@ -16,6 +19,7 @@ import {
 import { BackButton } from '../components/BackButton'
 import { HasPermission } from '../components/HasPermission'
 import { PdfViewer } from '../components/PdfViewer'
+import { useAuth } from '../contexts/AuthContext'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
@@ -30,6 +34,11 @@ function isAssignableUser(user: AssignableUser) {
   )
 }
 
+interface AssignmentFlags {
+  isAllowed: boolean
+  isLead: boolean
+}
+
 function TechnicianAssignModal({
   order,
   onClose,
@@ -40,11 +49,17 @@ function TechnicianAssignModal({
   onSaved: () => void
 }) {
   const [users, setUsers] = useState<AssignableUser[] | null>(null)
-  const initialIds = useMemo(
-    () => new Set(order.assignments.map((a) => a.technicianId)),
+  const initialSelection = useMemo(
+    () =>
+      new Map(
+        order.assignments.map((a) => [
+          a.technicianId,
+          { isAllowed: a.isAllowed, isLead: a.isLead },
+        ]),
+      ),
     [order],
   )
-  const [selected, setSelected] = useState<Set<string>>(initialIds)
+  const [selected, setSelected] = useState<Map<string, AssignmentFlags>>(initialSelection)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -53,9 +68,19 @@ function TechnicianAssignModal({
 
   function toggle(id: string) {
     setSelected((prev) => {
-      const next = new Set(prev)
+      const next = new Map(prev)
       if (next.has(id)) next.delete(id)
-      else next.add(id)
+      else next.set(id, { isAllowed: false, isLead: false })
+      return next
+    })
+  }
+
+  function setFlag(id: string, flag: keyof AssignmentFlags, value: boolean) {
+    setSelected((prev) => {
+      const current = prev.get(id)
+      if (!current) return prev
+      const next = new Map(prev)
+      next.set(id, { ...current, [flag]: value })
       return next
     })
   }
@@ -65,20 +90,21 @@ function TechnicianAssignModal({
   async function handleConfirm() {
     setSubmitting(true)
     try {
-      const toAssign = [...selected].filter((id) => !initialIds.has(id))
+      const initialIds = new Set(initialSelection.keys())
       const toUnassign = [...initialIds].filter((id) => !selected.has(id))
+      const newlyAssigned = [...selected.keys()].filter((id) => !initialIds.has(id))
 
-      for (const technicianId of toAssign) {
-        await assignTechnician({ workOrderId: order.id, technicianId })
+      for (const [technicianId, flags] of selected) {
+        await assignTechnician({ workOrderId: order.id, technicianId, ...flags })
       }
       for (const technicianId of toUnassign) {
         await unassignTechnician({ workOrderId: order.id, technicianId })
       }
-      if (toAssign.length > 0) {
+      if (newlyAssigned.length > 0) {
         await logOrderEvent({
           workOrderId: order.id,
           eventType: OrderEventType.TECHNICIANS_ASSIGNED,
-          metadata: { technicianIds: toAssign },
+          metadata: { technicianIds: newlyAssigned },
         })
       }
       if (toUnassign.length > 0) {
@@ -104,30 +130,54 @@ function TechnicianAssignModal({
       <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
         <h2 className="text-sm font-semibold text-eb-blue-dark">Asignar técnicos</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Técnicos y jefes de equipo disponibles para esta orden.
+          Técnicos y jefes de equipo disponibles para esta orden. "Allowed" y "Jefe de la orden"
+          pueden empezar y terminar la orden; los técnicos normales solo trabajan en ella y
+          registran incidencias.
         </p>
 
-        <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+        <div className="mt-3 max-h-72 space-y-1 overflow-y-auto">
           {users === null && <p className="text-sm text-slate-500">Cargando...</p>}
           {users?.length === 0 && (
             <p className="text-sm text-slate-500">No hay técnicos asignables.</p>
           )}
-          {users?.map((user) => (
-            <label
-              key={user.id}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(user.id)}
-                onChange={() => toggle(user.id)}
-              />
-              {user.displayName}
-              {user.role === UserRole.ADMIN && (
-                <span className="ml-auto text-xs text-slate-400">Jefe de equipo</span>
-              )}
-            </label>
-          ))}
+          {users?.map((user) => {
+            const flags = selected.get(user.id)
+            return (
+              <div key={user.id} className="rounded-lg border border-slate-200 px-3 py-2">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={!!flags}
+                    onChange={() => toggle(user.id)}
+                  />
+                  {user.displayName}
+                  {user.role === UserRole.ADMIN && (
+                    <span className="ml-auto text-xs text-slate-400">Jefe de equipo</span>
+                  )}
+                </label>
+                {flags && (
+                  <div className="mt-2 flex gap-3 pl-6 text-xs text-slate-600">
+                    <label className="flex cursor-pointer items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={flags.isAllowed}
+                        onChange={(e) => setFlag(user.id, 'isAllowed', e.target.checked)}
+                      />
+                      Allowed
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={flags.isLead}
+                        onChange={(e) => setFlag(user.id, 'isLead', e.target.checked)}
+                      />
+                      Jefe de la orden
+                    </label>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         <div className="mt-4 flex gap-2">
@@ -150,10 +200,73 @@ function TechnicianAssignModal({
   )
 }
 
+function IncidentModal({
+  workOrderId,
+  onClose,
+  onSaved,
+}: {
+  workOrderId: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [description, setDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    try {
+      await createIncident({ workOrderId, description: description.trim() })
+      await logOrderEvent({
+        workOrderId,
+        eventType: OrderEventType.INCIDENT_REPORTED,
+        metadata: { description: description.trim() },
+      })
+      onSaved()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">Añadir incidencia</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Describe algo sucedido fuera de lo presupuestado.
+        </p>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={4}
+          className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+          placeholder="Descripción de la incidencia"
+        />
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={!description.trim() || submitting}
+            onClick={handleSubmit}
+            className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {submitting ? 'Guardando...' : 'Registrar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const { profile } = useAuth()
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [assigning, setAssigning] = useState(false)
+  const [reportingIncident, setReportingIncident] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const loadOrder = useCallback(async () => {
@@ -203,6 +316,30 @@ export function OrderDetailPage() {
     }
   }
 
+  async function handleStartOrder() {
+    if (!order) return
+    setBusy(true)
+    try {
+      await startWorkOrder({ id: order.id })
+      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.WORK_STARTED })
+      await loadOrder()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleCompleteOrder() {
+    if (!order) return
+    setBusy(true)
+    try {
+      await completeWorkOrder({ id: order.id })
+      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.ORDER_COMPLETED })
+      await loadOrder()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (order === undefined) {
     return (
       <div className="flex-1 p-4">
@@ -220,6 +357,9 @@ export function OrderDetailPage() {
       </div>
     )
   }
+
+  const myAssignment = order.assignments.find((a) => a.technicianId === profile?.id)
+  const canManageOrder = !!myAssignment && (myAssignment.isAllowed || myAssignment.isLead)
 
   return (
     <div className="flex-1 p-4">
@@ -266,6 +406,34 @@ export function OrderDetailPage() {
             Asignar técnicos
           </button>
         )}
+        {order.status === WorkOrderStatus.ASSIGNED && canManageOrder && (
+          <button
+            disabled={busy}
+            onClick={handleStartOrder}
+            className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Empezar orden
+          </button>
+        )}
+        {order.status === WorkOrderStatus.IN_PROGRESS && canManageOrder && (
+          <button
+            disabled={busy}
+            onClick={handleCompleteOrder}
+            className="rounded-lg bg-eb-blue px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Terminar orden
+          </button>
+        )}
+        {!!myAssignment &&
+          (order.status === WorkOrderStatus.ASSIGNED ||
+            order.status === WorkOrderStatus.IN_PROGRESS) && (
+            <button
+              onClick={() => setReportingIncident(true)}
+              className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-600"
+            >
+              Añadir incidencia
+            </button>
+          )}
       </div>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
@@ -345,6 +513,24 @@ export function OrderDetailPage() {
         </section>
       )}
 
+      {order.incidents.length > 0 && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+          <h2 className="text-sm font-semibold text-eb-teal-dark">Incidencias</h2>
+          <ul className="mt-2 space-y-2">
+            {order.incidents.map((incident) => (
+              <li key={incident.id} className="rounded-lg bg-red-50 p-2 text-sm text-slate-700">
+                <p>{incident.description}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {new Date(incident.createdAt).toLocaleString('es-ES')} ·{' '}
+                  {incident.reportedBy.displayName}
+                  {incident.resolvedAt ? ' · Resuelta' : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
         <h2 className="text-sm font-semibold text-eb-teal-dark">Historial</h2>
         <ul className="mt-2 space-y-1">
@@ -374,6 +560,17 @@ export function OrderDetailPage() {
           onClose={() => setAssigning(false)}
           onSaved={() => {
             setAssigning(false)
+            loadOrder()
+          }}
+        />
+      )}
+
+      {reportingIncident && (
+        <IncidentModal
+          workOrderId={order.id}
+          onClose={() => setReportingIncident(false)}
+          onSaved={() => {
+            setReportingIncident(false)
             loadOrder()
           }}
         />

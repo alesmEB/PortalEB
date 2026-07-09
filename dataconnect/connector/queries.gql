@@ -134,6 +134,8 @@ query ListMyAssignedWorkOrders @auth(level: USER) {
   technicianAssignments(
     where: { technicianId: { eq_expr: "auth.uid" }, unassignedAt: { isNull: true } }
   ) {
+    isAllowed
+    isLead
     workOrder {
       id
       code
@@ -184,7 +186,18 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     }
     assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }) {
       technicianId
+      isAllowed
+      isLead
       technician {
+        displayName
+      }
+    }
+    incidents: incidents_on_workOrder(orderBy: { createdAt: DESC }) {
+      id
+      description
+      createdAt
+      resolvedAt
+      reportedBy {
         displayName
       }
     }
