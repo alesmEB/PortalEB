@@ -138,6 +138,34 @@ mutation SetWorkOrderReportUrl($workOrderId: UUID!, $finalReportUrl: String!) @a
   workOrder_update(id: $workOrderId, data: { finalReportUrl: $finalReportUrl })
 }
 
+# Placeholder for the quote workflow: no real Quote row / PDF yet, so
+# "adding" or "accepting" a budget is just a status + attempt-counter move.
+# Revisit once quote upload/decision gets its own screen.
+mutation UpdateWorkOrderStatus($id: UUID!, $status: WorkOrderStatus!, $quoteAttempts: Int!) @auth(level: USER) {
+  workOrder_update(id: $id, data: { status: $status, quoteAttempts: $quoteAttempts })
+}
+
+# Upsert so re-assigning a previously unassigned technician doesn't collide
+# with the (workOrder, technician) primary key.
+mutation AssignTechnician($workOrderId: UUID!, $technicianId: String!) @auth(level: USER) {
+  technicianAssignment_upsert(
+    data: {
+      workOrderId: $workOrderId
+      technicianId: $technicianId
+      assignedById_expr: "auth.uid"
+      assignedAt_expr: "request.time"
+      unassignedAt: null
+    }
+  )
+}
+
+mutation UnassignTechnician($workOrderId: UUID!, $technicianId: String!) @auth(level: USER) {
+  technicianAssignment_update(
+    key: { workOrderId: $workOrderId, technicianId: $technicianId }
+    data: { unassignedAt_expr: "request.time" }
+  )
+}
+
 mutation CreateWorkOrderTask($workOrderId: UUID!, $description: String!) @auth(level: USER) {
   workOrderTask_insert(data: { workOrderId: $workOrderId, description: $description })
 }

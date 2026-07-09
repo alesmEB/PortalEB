@@ -77,6 +77,22 @@ query ListPermissions @auth(level: USER) {
   }
 }
 
+# Candidates for the "assign technicians" picker: technicians by role, plus
+# any ADMIN (team lead) granted the "orders:assignable" permission. Filtered
+# client-side since role-or-permission isn't expressible in a single `where`.
+query ListAssignableUsers @auth(level: USER) {
+  users(where: { isActive: { eq: true } }, orderBy: { displayName: ASC }) {
+    id
+    displayName
+    role
+    userPermissions: userPermissions_on_user {
+      permission {
+        key
+      }
+    }
+  }
+}
+
 query GetOrderSequence($locationCode: OrderLocation!) @auth(level: USER) {
   orderSequences(where: { locationCode: { eq: $locationCode } }) {
     lastNumber
@@ -165,6 +181,12 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       amount
       decision
       rejectionReason
+    }
+    assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }) {
+      technicianId
+      technician {
+        displayName
+      }
     }
     tracking: orderTrackings_on_workOrder(orderBy: { occurredAt: DESC }) {
       eventType
