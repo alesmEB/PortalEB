@@ -31,6 +31,7 @@ import { usePermission } from '../hooks/usePermission'
 import { setChatParticipants } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
+import { orderEventTypeLabel } from '../lib/orderEvent'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { sendPushNotification } from '../lib/pushNotifications'
 import { uploadQuotePdf } from '../lib/quoteStorage'
@@ -761,7 +762,7 @@ export function OrderDetailPage() {
           {visibleTracking.map((event, i) => (
             <li key={i} className="text-xs text-slate-500">
               {new Date(event.occurredAt).toLocaleString('es-ES')} · {event.actor.displayName} ·{' '}
-              {event.eventType}
+              {orderEventTypeLabel[event.eventType]}
             </li>
           ))}
         </ul>
