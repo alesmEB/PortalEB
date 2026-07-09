@@ -19,17 +19,21 @@ const messaging = firebase.messaging()
 
 messaging.onBackgroundMessage((payload) => {
   const { title, body, icon } = payload.notification ?? {}
+  // `tag` (chat notifications only, see functions/index.js) replaces any
+  // still-unread notification from the same chat instead of stacking a new
+  // one per message.
   self.registration.showNotification(title ?? 'PortalEB', {
     body,
     icon: icon ?? '/pwa-192x192.png',
     badge: '/pwa-64x64.png',
+    tag: payload.data?.tag,
     data: payload.data,
   })
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const orderId = event.notification.data?.orderId
-  const url = orderId ? `/orders/${orderId}` : '/'
+  const { orderId, kind } = event.notification.data ?? {}
+  const url = kind ? `/chat/${kind}/${orderId}` : orderId ? `/orders/${orderId}` : '/'
   event.waitUntil(self.clients.openWindow(url))
 })
