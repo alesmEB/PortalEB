@@ -4,11 +4,13 @@ import {
   createCustomer,
   listCustomers,
   listUsers,
+  listWorkOrdersForCustomer,
   updateCustomer,
   type ListCustomersData,
   type ListUsersData,
 } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
+import { setChatParticipants } from '../../lib/chat'
 import { FRESH } from '../../lib/dataConnectOptions'
 
 type CustomerRow = ListCustomersData['customers'][number]
@@ -45,8 +47,20 @@ function CustomerForm({
           contactName: contactName.trim(),
           phone: phone.trim(),
           email: email.trim() || undefined,
-          linkedUserId: linkedUserId || undefined,
+          linkedUserId: linkedUserId || null,
         })
+        // The client chat's participant list is seeded once at order-creation
+        // time (see NewOrderPage), so it never picks up a linkedUserId set or
+        // changed afterwards - backfill it here for every existing order of
+        // this customer.
+        if (linkedUserId !== (customer.linkedUserId ?? '')) {
+          const { data } = await listWorkOrdersForCustomer({ customerId: customer.id }, FRESH)
+          await Promise.all(
+            data.workOrders.map((order) =>
+              setChatParticipants('client', order.id, linkedUserId ? [linkedUserId] : []),
+            ),
+          )
+        }
       } else {
         await createCustomer({
           name: name.trim(),

@@ -118,16 +118,31 @@ query ListWorkOrders @auth(level: USER) {
   }
 }
 
+# Same shape as ListWorkOrders, scoped to one customer - used by CLIENT-role
+# users so the orders list only shows their own orders (see
+# GetMyLinkedCustomer, which resolves the current user to a customerId).
 query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
   workOrders(where: { customerId: { eq: $customerId } }, orderBy: { createdAt: DESC }) {
     id
     code
     status
+    locationCode
+    assetLocation
+    createdAt
+    customer {
+      name
+    }
     boat {
       name
-      registrationNumber
     }
-    createdAt
+  }
+}
+
+# Resolves the signed-in user to "their" customer record, if any (set via the
+# Customer.linkedUserId field, wired up in the Clientes admin screen).
+query GetMyLinkedCustomer @auth(level: USER) {
+  customers(where: { linkedUserId: { eq_expr: "auth.uid" } }) {
+    id
   }
 }
 

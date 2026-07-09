@@ -140,6 +140,14 @@ export function subscribeToUnreadOrderIds(
         unreadByChunk.set(chunkIndex, unread)
         emit()
       },
+      // A chunk fails entirely (permission-denied) if `uid` isn't a listed
+      // participant on every chat doc it contains - e.g. an order created
+      // before the customer's portal account was linked. Degrade to "no
+      // unread" for that chunk rather than leaving a dangling error.
+      () => {
+        unreadByChunk.set(chunkIndex, new Set())
+        emit()
+      },
     ),
   )
 

@@ -10,6 +10,7 @@ import {
 import { BackButton } from '../components/BackButton'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
+import { usePermission } from '../hooks/usePermission'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { workOrderStatusLabel } from '../lib/orderStatus'
@@ -19,6 +20,7 @@ type Assignment = ListMyAssignedWorkOrdersData['technicianAssignments'][number]
 export function AssignmentsPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
+  const canChat = usePermission('chat:write')
   const [assignments, setAssignments] = useState<Assignment[] | null>(null)
   const [workingOrderId, setWorkingOrderId] = useState<string | null>(null)
   const [unreadOrderIds, setUnreadOrderIds] = useState<Set<string>>(new Set())
@@ -29,14 +31,14 @@ export function AssignmentsPage() {
   }, [])
 
   useEffect(() => {
-    if (!assignments || !profile) return
+    if (!assignments || !profile || !canChat) return
     return subscribeToUnreadOrderIds(
       'technicians',
       assignments.map((a) => a.workOrder.id),
       profile.id,
       setUnreadOrderIds,
     )
-  }, [assignments, profile])
+  }, [assignments, profile, canChat])
 
   const pendingAssignments = assignments?.filter(
     (assignment) => assignment.workOrder.status !== WorkOrderStatus.COMPLETED,

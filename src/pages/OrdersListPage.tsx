@@ -3,13 +3,17 @@ import { ChevronDown, MessageCircle, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
+  UserRole,
   WorkOrderStatus,
+  getMyLinkedCustomer,
   listWorkOrders,
+  listWorkOrdersForCustomer,
   type ListWorkOrdersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
+import { usePermission } from '../hooks/usePermission'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
@@ -21,6 +25,7 @@ type StatusFilter = WorkOrderStatus | 'ALL'
 export function OrdersListPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
+  const canChat = usePermission('chat:write')
   const [orders, setOrders] = useState<ListWorkOrdersData['workOrders'] | null>(null)
   const [unreadOrderIds, setUnreadOrderIds] = useState<Set<string>>(new Set())
 
@@ -37,18 +42,32 @@ export function OrdersListPage() {
     (searchText.trim() ? 1 : 0)
 
   useEffect(() => {
-    listWorkOrders(FRESH).then((res) => setOrders(res.data.workOrders))
-  }, [])
+    if (!profile) return
+    if (profile.role !== UserRole.CLIENT) {
+      listWorkOrders(FRESH).then((res) => setOrders(res.data.workOrders))
+      return
+    }
+    getMyLinkedCustomer(FRESH).then((res) => {
+      const customerId = res.data.customers[0]?.id
+      if (!customerId) {
+        setOrders([])
+        return
+      }
+      listWorkOrdersForCustomer({ customerId }, FRESH).then((res2) =>
+        setOrders(res2.data.workOrders),
+      )
+    })
+  }, [profile])
 
   useEffect(() => {
-    if (!orders || !profile) return
+    if (!orders || !profile || !canChat) return
     return subscribeToUnreadOrderIds(
       'client',
       orders.map((o) => o.id),
       profile.id,
       setUnreadOrderIds,
     )
-  }, [orders, profile])
+  }, [orders, profile, canChat])
 
   const filteredOrders = useMemo(() => {
     if (!orders) return null
