@@ -192,6 +192,7 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       isCompleted
     }
     quotes: quotes_on_workOrder(orderBy: { attemptNumber: ASC }) {
+      id
       attemptNumber
       fileUrl
       amount

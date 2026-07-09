@@ -138,11 +138,25 @@ mutation SetWorkOrderReportUrl($workOrderId: UUID!, $finalReportUrl: String!) @a
   workOrder_update(id: $workOrderId, data: { finalReportUrl: $finalReportUrl })
 }
 
-# Placeholder for the quote workflow: no real Quote row / PDF yet, so
-# "adding" or "accepting" a budget is just a status + attempt-counter move.
-# Revisit once quote upload/decision gets its own screen.
+# Bumps the order's status/attempt counter alongside CreateQuote (a new
+# attempt) or DecideQuote (accepting one).
 mutation UpdateWorkOrderStatus($id: UUID!, $status: WorkOrderStatus!, $quoteAttempts: Int!) @auth(level: USER) {
   workOrder_update(id: $id, data: { status: $status, quoteAttempts: $quoteAttempts })
+}
+
+mutation CreateQuote($workOrderId: UUID!, $attemptNumber: Int!, $fileUrl: String!) @auth(level: USER) {
+  quote_insert(
+    data: {
+      workOrderId: $workOrderId
+      attemptNumber: $attemptNumber
+      fileUrl: $fileUrl
+      uploadedById_expr: "auth.uid"
+    }
+  )
+}
+
+mutation DecideQuote($id: UUID!, $decision: QuoteDecision!) @auth(level: USER) {
+  quote_update(id: $id, data: { decision: $decision, decidedAt_expr: "request.time" })
 }
 
 # Upsert so re-assigning a previously unassigned technician doesn't collide

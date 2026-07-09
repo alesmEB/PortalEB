@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import {
   OrderEventType,
+  QuoteDecision,
   UserRole,
   WorkOrderStatus,
   assignTechnician,
@@ -9,6 +10,8 @@ import {
   clockOut,
   completeWorkOrder,
   createIncident,
+  createQuote,
+  decideQuote,
   getMyActiveTimeLog,
   getWorkOrderDetail,
   listAssignableUsers,
@@ -24,10 +27,13 @@ import { BackButton } from '../components/BackButton'
 import { HasPermission } from '../components/HasPermission'
 import { PdfViewer } from '../components/PdfViewer'
 import { useAuth } from '../contexts/AuthContext'
+import { usePermission } from '../hooks/usePermission'
 import { FRESH } from '../lib/dataConnectOptions'
+import { createBlankPdfBlob } from '../lib/pdf/blankPdf'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { sendPushNotification } from '../lib/pushNotifications'
+import { uploadQuotePdf } from '../lib/quoteStorage'
 
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
 type AssignableUser = ListAssignableUsersData['users'][number]
@@ -312,11 +318,13 @@ export function OrderDetailPage() {
   const location = useLocation()
   const backTo = (location.state as { from?: string } | null)?.from ?? '/orders'
   const { profile } = useAuth()
+  const canViewQuotes = usePermission('quotes:upload') || usePermission('quotes:approve')
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
   const [reportingIncident, setReportingIncident] = useState(false)
   const [busy, setBusy] = useState(false)
+  const quoteFileInputRef = useRef<HTMLInputElement>(null)
 
   const loadOrder = useCallback(async () => {
     if (!id) return
@@ -334,11 +342,13 @@ export function OrderDetailPage() {
     loadMyActiveLog()
   }, [loadOrder, loadMyActiveLog])
 
-  async function handleAddQuote() {
+  async function handleAddQuote(file: Blob) {
     if (!order) return
     setBusy(true)
     try {
       const quoteAttempts = order.quoteAttempts + 1
+      const fileUrl = await uploadQuotePdf(order.code, quoteAttempts, file)
+      await createQuote({ workOrderId: order.id, attemptNumber: quoteAttempts, fileUrl })
       await updateWorkOrderStatus({
         id: order.id,
         status: WorkOrderStatus.PENDING_QUOTE,
@@ -355,10 +365,25 @@ export function OrderDetailPage() {
     }
   }
 
+  function handleQuoteFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) handleAddQuote(file)
+  }
+
+  async function handleAddQuoteLab() {
+    const blob = await createBlankPdfBlob()
+    await handleAddQuote(blob)
+  }
+
   async function handleAcceptQuote() {
     if (!order) return
     setBusy(true)
     try {
+      const latestQuote = order.quotes[order.quotes.length - 1]
+      if (latestQuote) {
+        await decideQuote({ id: latestQuote.id, decision: QuoteDecision.ACCEPTED })
+      }
       await updateWorkOrderStatus({
         id: order.id,
         status: WorkOrderStatus.AWAITING_ASSIGNMENT,
@@ -493,12 +518,31 @@ export function OrderDetailPage() {
         {(order.status === WorkOrderStatus.PENDING_QUOTE ||
           order.status === WorkOrderStatus.QUOTE_REJECTED) && (
           <HasPermission permission="quotes:upload">
+            <input
+              ref={quoteFileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={handleQuoteFileSelected}
+            />
             <button
               disabled={busy || order.quoteAttempts >= 2}
-              onClick={handleAddQuote}
+              onClick={() => quoteFileInputRef.current?.click()}
               className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               + Añadir presupuesto
+            </button>
+          </HasPermission>
+        )}
+        {(order.status === WorkOrderStatus.PENDING_QUOTE ||
+          order.status === WorkOrderStatus.QUOTE_REJECTED) && (
+          <HasPermission permission="admin:lab">
+            <button
+              disabled={busy || order.quoteAttempts >= 2}
+              onClick={handleAddQuoteLab}
+              className="rounded-lg border-2 border-dashed border-eb-teal px-3 py-1.5 text-sm font-semibold text-eb-teal-dark disabled:opacity-50"
+            >
+              Añadir presupuesto (lab)
             </button>
           </HasPermission>
         )}
@@ -612,11 +656,18 @@ export function OrderDetailPage() {
       {order.quotes.length > 0 && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Presupuestos</h2>
-          <ul className="mt-2 space-y-1">
-            {order.quotes.map((quote, i) => (
-              <li key={i} className="text-sm text-slate-700">
-                Intento {quote.attemptNumber}: {quote.decision}
-                {quote.amount != null ? ` · ${quote.amount} €` : ''}
+          <ul className="mt-2 space-y-3">
+            {order.quotes.map((quote) => (
+              <li key={quote.id}>
+                <p className="text-sm text-slate-700">
+                  Intento {quote.attemptNumber}: {quote.decision}
+                  {quote.amount != null ? ` · ${quote.amount} €` : ''}
+                </p>
+                {canViewQuotes && (
+                  <div className="mt-2">
+                    <PdfViewer url={quote.fileUrl} />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
