@@ -130,6 +130,20 @@ query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
   }
 }
 
+# Enforces "one active shift at a time": lets the UI know whether the
+# current technician is already clocked in somewhere (this order or another)
+# before letting them start a new one.
+query GetMyActiveTimeLog @auth(level: USER) {
+  timeLogs(where: { technicianId: { eq_expr: "auth.uid" }, clockOut: { isNull: true } }) {
+    id
+    workOrderId
+    clockIn
+    workOrder {
+      code
+    }
+  }
+}
+
 query ListMyAssignedWorkOrders @auth(level: USER) {
   technicianAssignments(
     where: { technicianId: { eq_expr: "auth.uid" }, unassignedAt: { isNull: true } }
@@ -188,6 +202,14 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       technicianId
       isAllowed
       isLead
+      technician {
+        displayName
+      }
+    }
+    activeTimeLogs: timeLogs_on_workOrder(where: { clockOut: { isNull: true } }) {
+      id
+      technicianId
+      clockIn
       technician {
         displayName
       }

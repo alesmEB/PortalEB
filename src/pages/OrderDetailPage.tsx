@@ -5,14 +5,18 @@ import {
   UserRole,
   WorkOrderStatus,
   assignTechnician,
+  clockIn,
+  clockOut,
   completeWorkOrder,
   createIncident,
+  getMyActiveTimeLog,
   getWorkOrderDetail,
   listAssignableUsers,
   logOrderEvent,
   startWorkOrder,
   unassignTechnician,
   updateWorkOrderStatus,
+  type GetMyActiveTimeLogData,
   type GetWorkOrderDetailData,
   type ListAssignableUsersData,
 } from '@dataconnect/generated'
@@ -26,6 +30,11 @@ import { workOrderStatusLabel } from '../lib/orderStatus'
 
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
 type AssignableUser = ListAssignableUsersData['users'][number]
+type ActiveTimeLog = GetMyActiveTimeLogData['timeLogs'][number]
+
+function durationMinutesSince(clockInAt: string) {
+  return Math.round((Date.now() - new Date(clockInAt).getTime()) / 60000)
+}
 
 function isAssignableUser(user: AssignableUser) {
   return (
@@ -265,6 +274,7 @@ export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { profile } = useAuth()
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
+  const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
   const [reportingIncident, setReportingIncident] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -275,9 +285,15 @@ export function OrderDetailPage() {
     setOrder(res.data.workOrder)
   }, [id])
 
+  const loadMyActiveLog = useCallback(async () => {
+    const res = await getMyActiveTimeLog(FRESH)
+    setMyActiveLog(res.data.timeLogs[0] ?? null)
+  }, [])
+
   useEffect(() => {
     loadOrder()
-  }, [loadOrder])
+    loadMyActiveLog()
+  }, [loadOrder, loadMyActiveLog])
 
   async function handleAddQuote() {
     if (!order) return
@@ -332,9 +348,64 @@ export function OrderDetailPage() {
     if (!order) return
     setBusy(true)
     try {
+      for (const log of order.activeTimeLogs) {
+        await clockOut({ timeLogId: log.id, durationMinutes: durationMinutesSince(log.clockIn) })
+      }
+      if (order.activeTimeLogs.length > 0) {
+        await logOrderEvent({
+          workOrderId: order.id,
+          eventType: OrderEventType.WORK_STOPPED,
+          metadata: { technicianIds: order.activeTimeLogs.map((log) => log.technicianId) },
+        })
+      }
       await completeWorkOrder({ id: order.id })
       await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.ORDER_COMPLETED })
       await loadOrder()
+      await loadMyActiveLog()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleStartWorking() {
+    if (!order) return
+    setBusy(true)
+    try {
+      if (myActiveLog && myActiveLog.workOrderId !== order.id) {
+        const proceed = confirm(
+          `Estás trabajando en la orden ${myActiveLog.workOrder.code}. Se cerrará ese turno y ` +
+            `empezarás a trabajar en ${order.code}. ¿Continuar?`,
+        )
+        if (!proceed) return
+        await clockOut({
+          timeLogId: myActiveLog.id,
+          durationMinutes: durationMinutesSince(myActiveLog.clockIn),
+        })
+        await logOrderEvent({
+          workOrderId: myActiveLog.workOrderId,
+          eventType: OrderEventType.WORK_STOPPED,
+        })
+      }
+      await clockIn({ workOrderId: order.id })
+      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.WORK_STARTED })
+      await loadOrder()
+      await loadMyActiveLog()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleStopWorking() {
+    if (!order || !myActiveLog) return
+    setBusy(true)
+    try {
+      await clockOut({
+        timeLogId: myActiveLog.id,
+        durationMinutes: durationMinutesSince(myActiveLog.clockIn),
+      })
+      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.WORK_STOPPED })
+      await loadOrder()
+      await loadMyActiveLog()
     } finally {
       setBusy(false)
     }
@@ -360,6 +431,8 @@ export function OrderDetailPage() {
 
   const myAssignment = order.assignments.find((a) => a.technicianId === profile?.id)
   const canManageOrder = !!myAssignment && (myAssignment.isAllowed || myAssignment.isLead)
+  const amWorkingHere = myActiveLog?.workOrderId === order.id
+  const workingTechnicianIds = new Set(order.activeTimeLogs.map((log) => log.technicianId))
 
   return (
     <div className="flex-1 p-4">
@@ -434,6 +507,17 @@ export function OrderDetailPage() {
               Añadir incidencia
             </button>
           )}
+        {!!myAssignment && order.status === WorkOrderStatus.IN_PROGRESS && (
+          <button
+            disabled={busy}
+            onClick={amWorkingHere ? handleStopWorking : handleStartWorking}
+            className={`rounded-lg px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50 ${
+              amWorkingHere ? 'bg-slate-500' : 'bg-eb-teal'
+            }`}
+          >
+            {amWorkingHere ? 'Dejar de trabajar' : 'Trabajar en esta orden'}
+          </button>
+        )}
       </div>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
@@ -507,6 +591,7 @@ export function OrderDetailPage() {
                 className="rounded-full bg-eb-teal/10 px-2.5 py-0.5 text-xs text-eb-teal-dark"
               >
                 {assignment.technician.displayName}
+                {workingTechnicianIds.has(assignment.technicianId) ? ' · trabajando' : ''}
               </li>
             ))}
           </ul>
