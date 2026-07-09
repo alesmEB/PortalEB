@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, MessageCircle, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -8,6 +8,9 @@ import {
   type ListWorkOrdersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { HasPermission } from '../components/HasPermission'
+import { useAuth } from '../contexts/AuthContext'
+import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
@@ -17,7 +20,9 @@ type StatusFilter = WorkOrderStatus | 'ALL'
 
 export function OrdersListPage() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [orders, setOrders] = useState<ListWorkOrdersData['workOrders'] | null>(null)
+  const [unreadOrderIds, setUnreadOrderIds] = useState<Set<string>>(new Set())
 
   const [locationFilter, setLocationFilter] = useState<LocationFilter>('ALL')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
@@ -34,6 +39,16 @@ export function OrdersListPage() {
   useEffect(() => {
     listWorkOrders(FRESH).then((res) => setOrders(res.data.workOrders))
   }, [])
+
+  useEffect(() => {
+    if (!orders || !profile) return
+    return subscribeToUnreadOrderIds(
+      'client',
+      orders.map((o) => o.id),
+      profile.id,
+      setUnreadOrderIds,
+    )
+  }, [orders, profile])
 
   const filteredOrders = useMemo(() => {
     if (!orders) return null
@@ -159,24 +174,44 @@ export function OrdersListPage() {
 
       <div className="mt-4 space-y-2">
         {filteredOrders?.map((order) => (
-          <button
+          <div
             key={order.id}
-            onClick={() => navigate(`/orders/${order.id}`)}
-            className="block w-full rounded-xl border border-slate-200 bg-white/90 p-4 text-left backdrop-blur-sm transition-colors hover:border-eb-blue"
+            className="rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm transition-colors hover:border-eb-blue"
           >
-            <div className="flex items-center justify-between">
-              <p className="font-mono text-sm font-semibold text-eb-blue-dark">{order.code}</p>
-              <span className="rounded-full bg-eb-teal/10 px-2.5 py-1 text-xs text-eb-teal-dark">
-                {workOrderStatusLabel[order.status]}
-              </span>
+            <div className="flex items-start justify-between gap-2">
+              <button
+                onClick={() => navigate(`/orders/${order.id}`)}
+                className="flex-1 text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="font-mono text-sm font-semibold text-eb-blue-dark">{order.code}</p>
+                  <span className="rounded-full bg-eb-teal/10 px-2.5 py-1 text-xs text-eb-teal-dark">
+                    {workOrderStatusLabel[order.status]}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-slate-700">
+                  {order.customer.name} · {order.boat.name}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {orderLocationLabel[order.locationCode]} · {order.assetLocation}
+                </p>
+              </button>
+              <HasPermission permission="chat:write">
+                <button
+                  onClick={() =>
+                    navigate(`/chat/client/${order.id}`, { state: { from: '/orders' } })
+                  }
+                  className="relative rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue"
+                  title="Chat con el cliente"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  {unreadOrderIds.has(order.id) && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                  )}
+                </button>
+              </HasPermission>
             </div>
-            <p className="mt-1 text-sm text-slate-700">
-              {order.customer.name} · {order.boat.name}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              {orderLocationLabel[order.locationCode]} · {order.assetLocation}
-            </p>
-          </button>
+          </div>
         ))}
       </div>
     </div>

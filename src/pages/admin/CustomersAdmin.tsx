@@ -1,23 +1,36 @@
 import { useEffect, useState } from 'react'
 import {
+  UserRole,
   createCustomer,
   listCustomers,
+  listUsers,
   updateCustomer,
   type ListCustomersData,
+  type ListUsersData,
 } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
 import { FRESH } from '../../lib/dataConnectOptions'
 
 type CustomerRow = ListCustomersData['customers'][number]
+type ClientUsers = ListUsersData['users']
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
 
-function CustomerForm({ customer, onSaved }: { customer?: CustomerRow; onSaved: () => void }) {
+function CustomerForm({
+  customer,
+  clientUsers,
+  onSaved,
+}: {
+  customer?: CustomerRow
+  clientUsers: ClientUsers
+  onSaved: () => void
+}) {
   const [name, setName] = useState(customer?.name ?? '')
   const [contactName, setContactName] = useState(customer?.contactName ?? '')
   const [phone, setPhone] = useState(customer?.phone ?? '')
   const [email, setEmail] = useState(customer?.email ?? '')
+  const [linkedUserId, setLinkedUserId] = useState(customer?.linkedUserId ?? '')
   const [submitting, setSubmitting] = useState(false)
 
   const canSubmit = name.trim() && contactName.trim() && phone.trim()
@@ -32,6 +45,7 @@ function CustomerForm({ customer, onSaved }: { customer?: CustomerRow; onSaved: 
           contactName: contactName.trim(),
           phone: phone.trim(),
           email: email.trim() || undefined,
+          linkedUserId: linkedUserId || undefined,
         })
       } else {
         await createCustomer({
@@ -73,6 +87,23 @@ function CustomerForm({ customer, onSaved }: { customer?: CustomerRow; onSaved: 
         onChange={(e) => setEmail(e.target.value)}
         className={inputClass}
       />
+      {customer && (
+        <label className="block text-xs font-medium text-slate-500">
+          Usuario del portal (para el chat con el cliente)
+          <select
+            value={linkedUserId}
+            onChange={(e) => setLinkedUserId(e.target.value)}
+            className={`mt-1 ${inputClass}`}
+          >
+            <option value="">Sin vincular</option>
+            {clientUsers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.displayName} ({u.email})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <button
         disabled={!canSubmit || submitting}
         onClick={handleSubmit}
@@ -86,13 +117,15 @@ function CustomerForm({ customer, onSaved }: { customer?: CustomerRow; onSaved: 
 
 export function CustomersAdmin() {
   const [customers, setCustomers] = useState<ListCustomersData['customers'] | null>(null)
+  const [clientUsers, setClientUsers] = useState<ClientUsers>([])
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   async function refresh() {
-    const res = await listCustomers(FRESH)
-    setCustomers(res.data.customers)
+    const [customersRes, usersRes] = await Promise.all([listCustomers(FRESH), listUsers(FRESH)])
+    setCustomers(customersRes.data.customers)
+    setClientUsers(usersRes.data.users.filter((u) => u.role === UserRole.CLIENT))
   }
 
   useEffect(() => {
@@ -131,6 +164,7 @@ export function CustomersAdmin() {
 
       {creating && (
         <CustomerForm
+          clientUsers={clientUsers}
           onSaved={() => {
             setCreating(false)
             refresh()
@@ -168,6 +202,7 @@ export function CustomersAdmin() {
             {editingId === customer.id && (
               <CustomerForm
                 customer={customer}
+                clientUsers={clientUsers}
                 onSaved={() => {
                   setEditingId(null)
                   refresh()

@@ -4,6 +4,7 @@ import { Footer } from './components/Footer'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AdminPage } from './pages/AdminPage'
 import { AssignmentsPage } from './pages/AssignmentsPage'
+import { ChatPage } from './pages/ChatPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
@@ -56,6 +57,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AssignmentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chat/:kind/:orderId"
+            element={
+              <ProtectedRoute>
+                <ChatPage />
               </ProtectedRoute>
             }
           />

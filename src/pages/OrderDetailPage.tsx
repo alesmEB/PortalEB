@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   OrderEventType,
   QuoteDecision,
@@ -28,6 +28,7 @@ import { HasPermission } from '../components/HasPermission'
 import { PdfViewer } from '../components/PdfViewer'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
+import { setChatParticipants } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
@@ -144,6 +145,7 @@ function TechnicianAssignModal({
         status: WorkOrderStatus.ASSIGNED,
         quoteAttempts: order.quoteAttempts,
       })
+      await setChatParticipants('technicians', order.id, [...selected.keys()])
       setSubmitted({ assigned: newlyAssigned.length, unassigned: toUnassign.length })
     } finally {
       setSubmitting(false)
@@ -315,6 +317,7 @@ function IncidentModal({
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
+  const navigate = useNavigate()
   const backTo = (location.state as { from?: string } | null)?.from ?? '/orders'
   const { profile } = useAuth()
   const canViewQuotes = usePermission('quotes:upload') || usePermission('quotes:approve')
@@ -604,6 +607,24 @@ export function OrderDetailPage() {
             {amWorkingHere ? 'Dejar de trabajar' : 'Trabajar en esta orden'}
           </button>
         )}
+        <HasPermission permission="chat:write">
+          <button
+            onClick={() => navigate(`/chat/client/${order.id}`, { state: { from: `/orders/${order.id}` } })}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+          >
+            Chat con cliente
+          </button>
+        </HasPermission>
+        <HasPermission permission="chat:write">
+          <button
+            onClick={() =>
+              navigate(`/chat/technicians/${order.id}`, { state: { from: `/orders/${order.id}` } })
+            }
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+          >
+            Chat con técnicos
+          </button>
+        </HasPermission>
       </div>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">

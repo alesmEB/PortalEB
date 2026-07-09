@@ -18,6 +18,7 @@ import {
   type ListCustomersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { ensureChatDoc } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel, formatOrderCode } from '../lib/orderCode'
 
@@ -205,6 +206,10 @@ export function NewOrderPage() {
       }
 
       await logOrderEvent({ workOrderId, eventType: OrderEventType.ORDER_CREATED })
+
+      const linkedUserId = customers.find((c) => c.id === customerId)?.linkedUserId
+      await ensureChatDoc('client', workOrderId, linkedUserId ? [linkedUserId] : [])
+      await ensureChatDoc('technicians', workOrderId, [])
 
       const { uploadWorkOrderPdf } = await import('../lib/pdf/WorkOrderPdf')
       const reportUrl = await uploadWorkOrderPdf({

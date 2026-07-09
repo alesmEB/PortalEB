@@ -40,10 +40,17 @@ mutation UpdateCustomer(
   $contactName: String!
   $phone: String!
   $email: String
+  $linkedUserId: String
 ) @auth(level: USER) {
   customer_update(
     id: $id
-    data: { name: $name, contactName: $contactName, phone: $phone, email: $email }
+    data: {
+      name: $name
+      contactName: $contactName
+      phone: $phone
+      email: $email
+      linkedUserId: $linkedUserId
+    }
   )
 }
 

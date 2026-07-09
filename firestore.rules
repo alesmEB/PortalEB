@@ -1,34 +1,34 @@
 rules_version = '2';
 
-// Firestore is used for the real-time chat attached to each work order, plus
-// FCM device tokens for push notifications. All other entities (users,
-// boats, work orders, time logs, audit trail) live in Firebase Data Connect /
-// PostgreSQL — see dataconnect/schema. Device tokens live here instead of
-// Data Connect purely so the sendPushNotification Cloud Function can read
-// them with the Admin SDK without a Cloud SQL connection.
+// Firestore holds: (1) two real-time chats per work order - clientChats
+// (admins <-> the customer's linked portal user) and technicianChats
+// (admins <-> the technicians currently assigned to that order) - and
+// (2) FCM device tokens for push notifications. Everything else (users,
+// boats, work orders, time logs, audit trail, quotes) lives in Firebase
+// Data Connect / PostgreSQL - see dataconnect/schema.
 //
-// Role and permissions are synced onto the Auth custom claims (by a Cloud
-// Function reacting to Data Connect UserPermissions changes) as:
-//   token.role: 'admin' | 'client' | 'technician'
-//   token.permissions: string[] e.g. ['chat:write', 'orders:create']
-//   token.assignedOrderIds: string[] work order ids the technician is on
+// Chat participants are stored as a uid array directly on each chat
+// document (kept in sync by the client whenever technician assignments or
+// a customer's linked account change) so rules don't need to look up
+// relational Data Connect data at request time.
 //
-// Each work order chat document keeps its own `participants` (uids) array so
-// rules don't need to look up relational data at request time.
+// There's no Cloud Function yet syncing Data Connect role/permissions onto
+// Auth custom claims, so request.auth.token has neither - hasPermission()
+// checks below can't be enforced server-side yet and are effectively
+// client-side only for now (same limitation as every Data Connect
+// @auth(level: USER) mutation - see mutations.gql header). "Admin" status is
+// mirrored into the adminUsers collection instead (kept in sync by
+// AuthContext on every login) specifically so these rules have something to
+// check without custom claims.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function role() {
-      return request.auth.token.role;
-    }
-
-    function hasPermission(permission) {
+    function isAdmin() {
       return isSignedIn() &&
-        request.auth.token.permissions is list &&
-        permission in request.auth.token.permissions;
+        exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
     }
 
     function isParticipant(chatData) {
@@ -37,25 +37,56 @@ service cloud.firestore {
         request.auth.uid in chatData.participants;
     }
 
-    match /workOrderChats/{orderId} {
-      allow get: if isParticipant(resource.data) || role() == 'admin';
+    function canAccessChat(chatData) {
+      return isParticipant(chatData) || isAdmin();
+    }
 
-      // Participants are maintained by backend logic when technicians are
-      // assigned/unassigned; clients never write this document directly.
-      allow create, update, delete: if false;
+    // A non-admin participant may only ever touch their own lastRead entry
+    // (never anyone else's) plus lastMessageAt (bumped when they send a
+    // message) - never any other field on the chat doc.
+    function participantSelfUpdate(chatData) {
+      return canAccessChat(chatData) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastRead', 'lastMessageAt']) &&
+        request.resource.data.lastRead.diff(resource.data.lastRead).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    match /clientChats/{orderId} {
+      allow read: if canAccessChat(resource.data);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (isAdmin() || participantSelfUpdate(resource.data));
+      allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isParticipant(get(/databases/$(database)/documents/workOrderChats/$(orderId)).data) ||
-          role() == 'admin';
-
-        allow create: if hasPermission('chat:write') &&
-          (isParticipant(get(/databases/$(database)/documents/workOrderChats/$(orderId)).data) || role() == 'admin') &&
+        allow read: if canAccessChat(get(/databases/$(database)/documents/clientChats/$(orderId)).data);
+        allow create: if canAccessChat(get(/databases/$(database)/documents/clientChats/$(orderId)).data) &&
           request.resource.data.senderId == request.auth.uid &&
           request.resource.data.createdAt == request.time;
-
-        // Messages are immutable once sent.
         allow update, delete: if false;
       }
+    }
+
+    match /technicianChats/{orderId} {
+      allow read: if canAccessChat(resource.data);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (isAdmin() || participantSelfUpdate(resource.data));
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if canAccessChat(get(/databases/$(database)/documents/technicianChats/$(orderId)).data);
+        allow create: if canAccessChat(get(/databases/$(database)/documents/technicianChats/$(orderId)).data) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // Existence-only mirror of "this uid currently has role ADMIN" in Data
+    // Connect - see isAdmin() above. Kept in sync by AuthContext on login;
+    // a user may only ever write their own doc, so a non-admin can't just
+    // grant themselves admin chat access.
+    match /adminUsers/{uid} {
+      allow read: if false;
+      allow write: if isSignedIn() && request.auth.uid == uid;
     }
 
     // One document per FCM registration token, keyed by the token itself so
