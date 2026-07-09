@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   UserRole,
+  createPermission,
   createUserProfile,
   grantPermission,
   listPermissions,
@@ -57,6 +58,55 @@ function PermissionPicker({
           </label>
         ))}
       </div>
+    </div>
+  )
+}
+
+function CreatePermissionForm({ onCreated }: { onCreated: () => void }) {
+  const [key, setKey] = useState('')
+  const [description, setDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const canSubmit = /^[a-z]+:[a-z]+$/.test(key.trim()) && description.trim()
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await createPermission({ key: key.trim(), description: description.trim() })
+      setKey('')
+      setDescription('')
+      onCreated()
+    } catch {
+      setError('No se pudo crear el permiso. Comprueba que la clave no exista ya.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3 rounded-lg border border-slate-200 p-3">
+      <input
+        placeholder="Clave (ej. orders:assignable)"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        className={inputClass}
+      />
+      <input
+        placeholder="Descripción"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        className={inputClass}
+      />
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <button
+        disabled={!canSubmit || submitting}
+        onClick={handleSubmit}
+        className="w-full rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {submitting ? 'Creando...' : 'Crear permiso'}
+      </button>
     </div>
   )
 }
@@ -220,6 +270,7 @@ export function UsersAdmin() {
   const [users, setUsers] = useState<ListUsersData['users'] | null>(null)
   const [permissions, setPermissions] = useState<Permissions | null>(null)
   const [creating, setCreating] = useState(false)
+  const [creatingPermission, setCreatingPermission] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   async function refresh() {
@@ -253,6 +304,39 @@ export function UsersAdmin() {
           }}
         />
       )}
+
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-eb-blue-dark">
+            Permisos ({permissions?.length ?? 0})
+          </p>
+          <button
+            onClick={() => setCreatingPermission((v) => !v)}
+            className="rounded-lg border border-eb-blue px-3 py-1.5 text-sm font-semibold text-eb-blue"
+          >
+            {creatingPermission ? 'Cancelar' : '+ Nuevo permiso'}
+          </button>
+        </div>
+        <ul className="mt-2 flex flex-wrap gap-2">
+          {permissions?.map((permission) => (
+            <li
+              key={permission.id}
+              title={permission.description}
+              className="rounded-full bg-eb-blue/10 px-2.5 py-1 text-xs text-eb-blue-dark"
+            >
+              {permission.key}
+            </li>
+          ))}
+        </ul>
+        {creatingPermission && (
+          <CreatePermissionForm
+            onCreated={() => {
+              setCreatingPermission(false)
+              refresh()
+            }}
+          />
+        )}
+      </div>
 
       <div className="mt-4 space-y-2">
         {users?.map((user) => (

@@ -20,6 +20,10 @@ mutation UpdateUserProfile(
   user_update(id: $id, data: { displayName: $displayName, role: $role, isActive: $isActive })
 }
 
+mutation CreatePermission($key: String!, $description: String!) @auth(level: USER) {
+  permission_insert(data: { key: $key, description: $description })
+}
+
 mutation GrantPermission($userId: String!, $permissionId: UUID!) @auth(level: USER) {
   userPermission_insert(
     data: { userId: $userId, permissionId: $permissionId, grantedById_expr: "auth.uid" }
