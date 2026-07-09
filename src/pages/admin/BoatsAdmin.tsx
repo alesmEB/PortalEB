@@ -10,6 +10,7 @@ import {
   type ListBoatsData,
   type ListCustomersData,
 } from '@dataconnect/generated'
+import { SearchInput } from '../../components/SearchInput'
 import { FRESH } from '../../lib/dataConnectOptions'
 
 type BoatRow = ListBoatsData['boats'][number]
@@ -296,6 +297,7 @@ export function BoatsAdmin() {
   const [customers, setCustomers] = useState<Customers | null>(null)
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   async function refresh() {
     const [boatsRes, customersRes] = await Promise.all([listBoats(FRESH), listCustomers(FRESH)])
@@ -307,6 +309,15 @@ export function BoatsAdmin() {
     refresh()
   }, [])
 
+  const query = search.trim().toLowerCase()
+  const filteredBoats = boats?.filter(
+    (boat) =>
+      !query ||
+      boat.name.toLowerCase().includes(query) ||
+      boat.registrationNumber?.toLowerCase().includes(query) ||
+      boat.owner.name.toLowerCase().includes(query),
+  )
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -317,6 +328,14 @@ export function BoatsAdmin() {
         >
           {creating ? 'Cancelar' : '+ Nueva'}
         </button>
+      </div>
+
+      <div className="mt-3">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nombre, matrícula o cliente..."
+        />
       </div>
 
       {creating && customers && (
@@ -331,7 +350,7 @@ export function BoatsAdmin() {
       )}
 
       <div className="mt-4 space-y-2">
-        {boats?.map((boat) => (
+        {filteredBoats?.map((boat) => (
           <div key={boat.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
             <button
               onClick={() => setEditingId(editingId === boat.id ? null : boat.id)}

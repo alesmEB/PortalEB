@@ -5,6 +5,7 @@ import {
   updateCustomer,
   type ListCustomersData,
 } from '@dataconnect/generated'
+import { SearchInput } from '../../components/SearchInput'
 import { FRESH } from '../../lib/dataConnectOptions'
 
 type CustomerRow = ListCustomersData['customers'][number]
@@ -87,6 +88,7 @@ export function CustomersAdmin() {
   const [customers, setCustomers] = useState<ListCustomersData['customers'] | null>(null)
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   async function refresh() {
     const res = await listCustomers(FRESH)
@@ -96,6 +98,16 @@ export function CustomersAdmin() {
   useEffect(() => {
     refresh()
   }, [])
+
+  const query = search.trim().toLowerCase()
+  const filteredCustomers = customers?.filter(
+    (customer) =>
+      !query ||
+      customer.name.toLowerCase().includes(query) ||
+      customer.contactName.toLowerCase().includes(query) ||
+      customer.phone.toLowerCase().includes(query) ||
+      customer.email?.toLowerCase().includes(query),
+  )
 
   return (
     <div>
@@ -109,6 +121,14 @@ export function CustomersAdmin() {
         </button>
       </div>
 
+      <div className="mt-3">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por nombre, contacto, teléfono o email..."
+        />
+      </div>
+
       {creating && (
         <CustomerForm
           onSaved={() => {
@@ -119,7 +139,7 @@ export function CustomersAdmin() {
       )}
 
       <div className="mt-4 space-y-2">
-        {customers?.map((customer) => (
+        {filteredCustomers?.map((customer) => (
           <div key={customer.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
             <button
               onClick={() => setEditingId(editingId === customer.id ? null : customer.id)}

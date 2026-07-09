@@ -58,7 +58,7 @@ export function AssignmentsPage() {
               <div className="flex items-center gap-2">
                 {(assignment.isAllowed || assignment.isLead) && (
                   <span className="rounded-full bg-eb-blue/10 px-2.5 py-0.5 text-xs text-eb-blue-dark">
-                    {assignment.isLead ? 'Jefe de la orden' : 'Allowed'}
+                    {assignment.isLead ? 'Jefe de la orden' : 'Autorizado'}
                   </span>
                 )}
                 <span className="rounded-full bg-eb-teal/10 px-2.5 py-0.5 text-xs text-eb-teal-dark">

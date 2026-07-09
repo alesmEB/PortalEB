@@ -71,6 +71,7 @@ function TechnicianAssignModal({
   )
   const [selected, setSelected] = useState<Map<string, AssignmentFlags>>(initialSelection)
   const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState<{ assigned: number; unassigned: number } | null>(null)
 
   useEffect(() => {
     listAssignableUsers(FRESH).then((res) => setUsers(res.data.users.filter(isAssignableUser)))
@@ -85,12 +86,15 @@ function TechnicianAssignModal({
     })
   }
 
+  // Being the order's lead implies being authorized to start/finish it, so
+  // isAllowed can't be unchecked while isLead is on.
   function setFlag(id: string, flag: keyof AssignmentFlags, value: boolean) {
     setSelected((prev) => {
       const current = prev.get(id)
       if (!current) return prev
+      if (flag === 'isAllowed' && !value && current.isLead) return prev
       const next = new Map(prev)
-      next.set(id, { ...current, [flag]: value })
+      next.set(id, flag === 'isLead' && value ? { isAllowed: true, isLead: true } : { ...current, [flag]: value })
       return next
     })
   }
@@ -135,10 +139,33 @@ function TechnicianAssignModal({
         status: WorkOrderStatus.ASSIGNED,
         quoteAttempts: order.quoteAttempts,
       })
-      onSaved()
+      setSubmitted({ assigned: newlyAssigned.length, unassigned: toUnassign.length })
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (submitted) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+        <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+          <h2 className="text-sm font-semibold text-eb-teal-dark">✓ Técnicos asignados</h2>
+          <p className="mt-2 text-sm text-slate-700">
+            {submitted.assigned > 0 &&
+              `${submitted.assigned} técnico${submitted.assigned === 1 ? '' : 's'} asignado${submitted.assigned === 1 ? '' : 's'} correctamente.`}
+            {submitted.assigned > 0 && submitted.unassigned > 0 && ' '}
+            {submitted.unassigned > 0 &&
+              `${submitted.unassigned} técnico${submitted.unassigned === 1 ? '' : 's'} desasignado${submitted.unassigned === 1 ? '' : 's'}.`}
+          </p>
+          <button
+            onClick={onSaved}
+            className="mt-4 w-full rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -146,8 +173,8 @@ function TechnicianAssignModal({
       <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
         <h2 className="text-sm font-semibold text-eb-blue-dark">Asignar técnicos</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Técnicos y jefes de equipo disponibles para esta orden. "Allowed" y "Jefe de la orden"
-          pueden empezar y terminar la orden; los técnicos normales solo trabajan en ella y
+          Técnicos y jefes de equipo disponibles para esta orden. "Autorizado" y "Jefe de la
+          orden" pueden empezar y terminar la orden; los técnicos normales solo trabajan en ella y
           registran incidencias.
         </p>
 
@@ -173,13 +200,16 @@ function TechnicianAssignModal({
                 </label>
                 {flags && (
                   <div className="mt-2 flex gap-3 pl-6 text-xs text-slate-600">
-                    <label className="flex cursor-pointer items-center gap-1">
+                    <label
+                      className={`flex items-center gap-1 ${flags.isLead ? 'opacity-50' : 'cursor-pointer'}`}
+                    >
                       <input
                         type="checkbox"
                         checked={flags.isAllowed}
+                        disabled={flags.isLead}
                         onChange={(e) => setFlag(user.id, 'isAllowed', e.target.checked)}
                       />
-                      Allowed
+                      Autorizado
                     </label>
                     <label className="flex cursor-pointer items-center gap-1">
                       <input

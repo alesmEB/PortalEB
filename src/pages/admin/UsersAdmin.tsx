@@ -11,6 +11,7 @@ import {
   type ListPermissionsData,
   type ListUsersData,
 } from '@dataconnect/generated'
+import { SearchInput } from '../../components/SearchInput'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { createAuthUser } from '../../lib/secondaryAuth'
 
@@ -272,6 +273,7 @@ export function UsersAdmin() {
   const [creating, setCreating] = useState(false)
   const [creatingPermission, setCreatingPermission] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   async function refresh() {
     const [usersRes, permissionsRes] = await Promise.all([listUsers(FRESH), listPermissions(FRESH)])
@@ -283,6 +285,14 @@ export function UsersAdmin() {
     refresh()
   }, [])
 
+  const query = search.trim().toLowerCase()
+  const filteredUsers = users?.filter(
+    (user) =>
+      !query ||
+      user.displayName.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query),
+  )
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -293,6 +303,10 @@ export function UsersAdmin() {
         >
           {creating ? 'Cancelar' : '+ Nuevo usuario'}
         </button>
+      </div>
+
+      <div className="mt-3">
+        <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nombre o email..." />
       </div>
 
       {creating && permissions && (
@@ -339,7 +353,7 @@ export function UsersAdmin() {
       </div>
 
       <div className="mt-4 space-y-2">
-        {users?.map((user) => (
+        {filteredUsers?.map((user) => (
           <div key={user.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
             <button
               onClick={() => setEditingId(editingId === user.id ? null : user.id)}
