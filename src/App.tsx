@@ -9,6 +9,7 @@ import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
 import { OrdersListPage } from './pages/OrdersListPage'
 import { OrderDetailPage } from './pages/OrderDetailPage'
+import { SendNotificationPage } from './pages/SendNotificationPage'
 
 function App() {
   return (
@@ -55,6 +56,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AssignmentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notifications/send"
+            element={
+              <ProtectedRoute>
+                <SendNotificationPage />
               </ProtectedRoute>
             }
           />

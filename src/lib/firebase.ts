@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getFunctions } from 'firebase/functions'
 import { getStorage } from 'firebase/storage'
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 import type { Messaging } from 'firebase/messaging'
@@ -19,6 +20,7 @@ export const firebaseApp = initializeApp(firebaseConfig)
 export const auth = getAuth(firebaseApp)
 export const firestore = getFirestore(firebaseApp)
 export const storage = getStorage(firebaseApp)
+export const functions = getFunctions(firebaseApp)
 
 let messagingInstance: Messaging | null = null
 

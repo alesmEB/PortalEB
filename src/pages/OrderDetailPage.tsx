@@ -27,6 +27,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusLabel } from '../lib/orderStatus'
+import { sendPushNotification } from '../lib/pushNotifications'
 
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
 type AssignableUser = ListAssignableUsersData['users'][number]
@@ -115,6 +116,12 @@ function TechnicianAssignModal({
           eventType: OrderEventType.TECHNICIANS_ASSIGNED,
           metadata: { technicianIds: newlyAssigned },
         })
+        sendPushNotification({
+          userIds: newlyAssigned,
+          title: 'Nueva asignación',
+          body: `Has sido asignado a la orden ${order.code}`,
+          orderId: order.id,
+        }).catch(() => {})
       }
       if (toUnassign.length > 0) {
         await logOrderEvent({

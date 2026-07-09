@@ -14,6 +14,7 @@ import {
 import { getCurrentUser, UserRole } from '@dataconnect/generated'
 import { auth } from '../lib/firebase'
 import { FRESH } from '../lib/dataConnectOptions'
+import { registerDeviceToken } from '../lib/pushNotifications'
 
 export type { UserRole }
 
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { profile, permissions } = await loadProfile()
         setProfile(profile)
         setPermissions(permissions)
+        if (profile) registerDeviceToken(profile.id)
       } finally {
         setLoading(false)
       }

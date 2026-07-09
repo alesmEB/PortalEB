@@ -1,8 +1,11 @@
 rules_version = '2';
 
-// Firestore is used exclusively for the real-time chat attached to each work
-// order. All other entities (users, boats, work orders, time logs, audit
-// trail) live in Firebase Data Connect / PostgreSQL — see dataconnect/schema.
+// Firestore is used for the real-time chat attached to each work order, plus
+// FCM device tokens for push notifications. All other entities (users,
+// boats, work orders, time logs, audit trail) live in Firebase Data Connect /
+// PostgreSQL — see dataconnect/schema. Device tokens live here instead of
+// Data Connect purely so the sendPushNotification Cloud Function can read
+// them with the Admin SDK without a Cloud SQL connection.
 //
 // Role and permissions are synced onto the Auth custom claims (by a Cloud
 // Function reacting to Data Connect UserPermissions changes) as:
@@ -53,6 +56,16 @@ service cloud.firestore {
         // Messages are immutable once sent.
         allow update, delete: if false;
       }
+    }
+
+    // One document per FCM registration token, keyed by the token itself so
+    // re-registering the same token is just an overwrite. Only the owning
+    // user can write their own token; reads are server-only (Admin SDK,
+    // which bypasses rules) since sending is done from a Cloud Function.
+    match /deviceTokens/{token} {
+      allow read: if false;
+      allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /{document=**} {
