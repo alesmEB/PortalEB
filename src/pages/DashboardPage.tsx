@@ -33,17 +33,7 @@ export function DashboardPage() {
 
       <main className="flex-1 p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <HasPermission
-            permission="orders:create"
-            fallback={
-              <button
-                disabled
-                className="w-full rounded-lg bg-slate-200 py-3 text-base font-semibold text-slate-400"
-              >
-                Nueva orden de trabajo (sin permiso)
-              </button>
-            }
-          >
+          <HasPermission permission="orders:create">
             <button
               onClick={() => navigate('/orders/new')}
               className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
@@ -59,17 +49,7 @@ export function DashboardPage() {
             Lista de órdenes
           </button>
 
-          <HasPermission
-            permission="assignments:view"
-            fallback={
-              <button
-                disabled
-                className="w-full rounded-lg bg-slate-200 py-3 text-base font-semibold text-slate-400"
-              >
-                Asignaciones (sin permiso)
-              </button>
-            }
-          >
+          <HasPermission permission="assignments:view">
             <button
               onClick={() => navigate('/assignments')}
               className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
@@ -78,17 +58,7 @@ export function DashboardPage() {
             </button>
           </HasPermission>
 
-          <HasPermission
-            permission="admin:manage"
-            fallback={
-              <button
-                disabled
-                className="w-full rounded-lg bg-slate-200 py-3 text-base font-semibold text-slate-400"
-              >
-                Administración (sin permiso)
-              </button>
-            }
-          >
+          <HasPermission permission="admin:manage">
             <button
               onClick={() => navigate('/admin')}
               className="w-full rounded-lg bg-eb-blue-dark py-3 text-base font-semibold text-white transition-colors hover:opacity-90"
