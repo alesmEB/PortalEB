@@ -25,6 +25,7 @@ import { orderEventTypeLabel } from '../lib/orderEvent'
 import {
   acceptQuote,
   addQuote,
+  adminUpdateTimeLog,
   assignTechnicians,
   completeOrder,
   reportIncident,
@@ -40,6 +41,7 @@ import { uploadQuotePdf } from '../lib/quoteStorage'
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
 type AssignableUser = ListAssignableUsersData['users'][number]
 type ActiveTimeLog = GetMyActiveTimeLogData['timeLogs'][number]
+type TimeLogRow = WorkOrder['timeLogs'][number]
 
 function isAssignableUser(user: AssignableUser) {
   return (
@@ -362,6 +364,93 @@ function IncidentModal({
   )
 }
 
+function toDatetimeLocalValue(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function EditTimeLogModal({
+  timeLog,
+  onClose,
+  onSaved,
+}: {
+  // clockOut is only ever passed in for already-finished shifts (see the
+  // guard around the "Editar" button below), but the field itself is
+  // nullable on the type (active shifts have none) - fall back to clockIn
+  // just to keep this a valid datetime-local value; never actually hit.
+  timeLog: { id: string; clockIn: string; clockOut?: string | null; technician: { displayName: string } }
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [clockIn, setClockIn] = useState(toDatetimeLocalValue(timeLog.clockIn))
+  const [clockOut, setClockOut] = useState(toDatetimeLocalValue(timeLog.clockOut ?? timeLog.clockIn))
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const canSubmit = !!clockIn && !!clockOut && new Date(clockOut) > new Date(clockIn)
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await adminUpdateTimeLog({
+        timeLogId: timeLog.id,
+        clockIn: new Date(clockIn).toISOString(),
+        clockOut: new Date(clockOut).toISOString(),
+      })
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">Corregir turno</h2>
+        <p className="mt-1 text-xs text-slate-500">{timeLog.technician.displayName}</p>
+        <label className="mt-3 block text-xs font-medium text-slate-500">
+          Entrada
+          <input
+            type="datetime-local"
+            value={clockIn}
+            onChange={(e) => setClockIn(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+          />
+        </label>
+        <label className="mt-3 block text-xs font-medium text-slate-500">
+          Salida
+          <input
+            type="datetime-local"
+            value={clockOut}
+            onChange={(e) => setClockOut(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+          />
+        </label>
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={!canSubmit || submitting}
+            onClick={handleSubmit}
+            className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {submitting ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const photoStageLabel: Record<PhotoStage, string> = {
   [PhotoStage.START]: 'Inicio',
   [PhotoStage.INCIDENT]: 'Incidencia',
@@ -444,6 +533,7 @@ export function OrderDetailPage() {
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
   const [reportingIncident, setReportingIncident] = useState(false)
+  const [editingTimeLog, setEditingTimeLog] = useState<TimeLogRow | null>(null)
   const [startingOrder, setStartingOrder] = useState(false)
   const [completingOrder, setCompletingOrder] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -903,13 +993,29 @@ export function OrderDetailPage() {
                   </p>
                   <ul className="mt-1 space-y-1 border-l-2 border-eb-teal/30 pl-3">
                     {shifts.map((shift) => (
-                      <li key={shift.id} className="text-xs text-slate-500">
-                        {new Date(shift.clockIn).toLocaleString('es-ES')}
-                        {' → '}
-                        {shift.clockOut
-                          ? new Date(shift.clockOut).toLocaleString('es-ES')
-                          : 'en curso'}
-                        {shift.durationMinutes != null ? ` · ${shift.durationMinutes} min` : ''}
+                      <li
+                        key={shift.id}
+                        className="flex items-center justify-between gap-2 text-xs text-slate-500"
+                      >
+                        <span>
+                          {new Date(shift.clockIn).toLocaleString('es-ES')}
+                          {' → '}
+                          {shift.clockOut
+                            ? new Date(shift.clockOut).toLocaleString('es-ES')
+                            : 'en curso'}
+                          {shift.durationMinutes != null ? ` · ${shift.durationMinutes} min` : ''}
+                        </span>
+                        {shift.clockOut && (
+                          <HasPermission permission="admin:manage">
+                            <button
+                              onClick={() => setEditingTimeLog(shift)}
+                              className="text-slate-400 hover:text-eb-blue"
+                              title="Corregir turno"
+                            >
+                              Editar
+                            </button>
+                          </HasPermission>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -989,6 +1095,17 @@ export function OrderDetailPage() {
           onClose={() => setReportingIncident(false)}
           onSaved={() => {
             setReportingIncident(false)
+            loadOrder()
+          }}
+        />
+      )}
+
+      {editingTimeLog && (
+        <EditTimeLogModal
+          timeLog={editingTimeLog}
+          onClose={() => setEditingTimeLog(null)}
+          onSaved={() => {
+            setEditingTimeLog(null)
             loadOrder()
           }}
         />

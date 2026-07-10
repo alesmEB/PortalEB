@@ -1246,6 +1246,85 @@ exports.stopWorking = onCall(async (request) => {
   return { success: true }
 })
 
+const GET_TIME_LOG_FOR_EDIT_QUERY = `
+  query GetTimeLogForEditAdmin($timeLogId: UUID!) {
+    timeLog(id: $timeLogId) {
+      workOrderId
+      technicianId
+      clockOut
+    }
+  }
+`
+const UPDATE_TIME_LOG_MUTATION = `
+  mutation UpdateTimeLogAdmin($id: UUID!, $clockIn: Timestamp!, $clockOut: Timestamp!, $durationMinutes: Int!) {
+    timeLog_update(
+      id: $id
+      data: { clockIn: $clockIn, clockOut: $clockOut, durationMinutes: $durationMinutes }
+    )
+  }
+`
+
+// Lets an admin correct a technician's already-finished shift (they forgot
+// to clock out, left it running overnight, etc.) - deliberately scoped to
+// completed shifts only (clockOut already set); an active/ongoing shift
+// should go through the real clock-out flow, not this correction path.
+// Logged to OrderTracking (unlike the routine clock in/out itself) since
+// this is a correction of what's meant to be the authoritative hours
+// record, not routine noise.
+exports.adminUpdateTimeLog = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { timeLogId, clockIn, clockOut } = request.data ?? {}
+  if (typeof timeLogId !== 'string' || typeof clockIn !== 'string' || typeof clockOut !== 'string') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  const clockInDate = new Date(clockIn)
+  const clockOutDate = new Date(clockOut)
+  if (Number.isNaN(clockInDate.getTime()) || Number.isNaN(clockOutDate.getTime())) {
+    throw new HttpsError('invalid-argument', 'Fechas inválidas.')
+  }
+  if (clockOutDate.getTime() <= clockInDate.getTime()) {
+    throw new HttpsError('invalid-argument', 'La hora de salida debe ser posterior a la de entrada.')
+  }
+
+  const timeLogRes = await dataConnect.executeGraphqlRead(GET_TIME_LOG_FOR_EDIT_QUERY, {
+    variables: { timeLogId },
+  })
+  const timeLog = timeLogRes.data.timeLog
+  if (!timeLog) {
+    throw new HttpsError('not-found', 'El turno no existe.')
+  }
+  if (!timeLog.clockOut) {
+    throw new HttpsError('failed-precondition', 'Solo se pueden editar turnos ya finalizados.')
+  }
+
+  const durationMinutes = Math.round((clockOutDate.getTime() - clockInDate.getTime()) / 60000)
+  await dataConnect.executeGraphql(UPDATE_TIME_LOG_MUTATION, {
+    variables: {
+      id: timeLogId,
+      clockIn: clockInDate.toISOString(),
+      clockOut: clockOutDate.toISOString(),
+      durationMinutes,
+    },
+  })
+
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: {
+      workOrderId: timeLog.workOrderId,
+      actorId: request.auth.uid,
+      eventType: 'TIME_LOG_EDITED',
+      metadata: {
+        technicianId: timeLog.technicianId,
+        clockIn: clockInDate.toISOString(),
+        clockOut: clockOutDate.toISOString(),
+        durationMinutes,
+      },
+    },
+  })
+
+  return { durationMinutes }
+})
+
 const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
 
 // Adds/removes one day a work order is placed on in the weekly calendar - a

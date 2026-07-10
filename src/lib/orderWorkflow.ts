@@ -108,3 +108,21 @@ export async function stopWorking() {
   const res = await callStopWorking()
   return res.data
 }
+
+interface AdminUpdateTimeLogInput {
+  timeLogId: string
+  /** ISO datetime strings. */
+  clockIn: string
+  clockOut: string
+}
+
+const callAdminUpdateTimeLog = httpsCallable<AdminUpdateTimeLogInput, { durationMinutes: number }>(
+  functions,
+  'adminUpdateTimeLog',
+)
+
+/** Corrects an already-finished shift's times - requires admin:manage. */
+export async function adminUpdateTimeLog(input: AdminUpdateTimeLogInput) {
+  const res = await callAdminUpdateTimeLog(input)
+  return res.data
+}

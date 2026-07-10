@@ -76,6 +76,7 @@ enum OrderEventType {
   PHOTO_UPLOADED
   ORDER_COMPLETED
   REPORT_GENERATED
+  TIME_LOG_EDITED
 }
 
 # ---------------------------------------------------------------------------
