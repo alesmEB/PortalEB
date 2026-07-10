@@ -8,11 +8,16 @@ rules_version = '2';
 // Authorization is currently "signed in" only, same as the Data Connect
 // connector (every operation there is @auth(level: USER), not permission-
 // scoped either) - role/permission enforcement is a client-side UI concern
-// for now (see usePermission/HasPermission). There's no Cloud Function yet
-// syncing Data Connect role/permissions onto Auth custom claims, so rules
-// here can't check them. Once that sync exists, tighten these back to
-// role()/hasPermission() checks (kept below, commented out, as the target
-// shape) and add per-order participant checks.
+// for now (see usePermission/HasPermission).
+//
+// TODO: request.auth.token.role/.permissions are now populated for real
+// (see functions/index.js syncUserClaims and firestore.rules), so
+// role()/hasPermission() below could be activated - deliberately left
+// commented out for now. Doing it properly needs a path-by-path decision,
+// not a blind wire-up: e.g. photos/{start,final} are uploaded by whichever
+// technician is managing the order (gated client-side by canManageOrder,
+// not by the photos:upload permission), so requiring hasPermission
+// ('photos:upload') there would actually break that flow. Revisit deliberately.
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() {
