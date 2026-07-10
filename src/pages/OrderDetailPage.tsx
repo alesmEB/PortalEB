@@ -4,24 +4,11 @@ import {
   MediaType,
   OrderEventType,
   PhotoStage,
-  QuoteDecision,
   UserRole,
   WorkOrderStatus,
-  assignTechnician,
-  clockIn,
-  clockOut,
-  completeWorkOrder,
-  createIncident,
-  createQuote,
-  createWorkOrderPhoto,
-  decideQuote,
   getMyActiveTimeLog,
   getWorkOrderDetail,
   listAssignableUsers,
-  logOrderEvent,
-  startWorkOrder,
-  unassignTechnician,
-  updateWorkOrderStatus,
   type GetMyActiveTimeLogData,
   type GetWorkOrderDetailData,
   type ListAssignableUsersData,
@@ -31,23 +18,27 @@ import { HasPermission } from '../components/HasPermission'
 import { PdfViewer } from '../components/PdfViewer'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
-import { setChatParticipants } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { mediaTypeOf, validateMediaFile } from '../lib/media'
 import { orderLocationLabel } from '../lib/orderCode'
 import { orderEventTypeLabel } from '../lib/orderEvent'
+import {
+  acceptQuote,
+  addQuote,
+  assignTechnicians,
+  completeOrder,
+  reportIncident,
+  startOrder,
+  startWorking,
+  stopWorking,
+} from '../lib/orderWorkflow'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
-import { sendPushNotification } from '../lib/pushNotifications'
 import { uploadQuotePdf } from '../lib/quoteStorage'
 
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
 type AssignableUser = ListAssignableUsersData['users'][number]
 type ActiveTimeLog = GetMyActiveTimeLogData['timeLogs'][number]
-
-function durationMinutesSince(clockInAt: string) {
-  return Math.round((Date.now() - new Date(clockInAt).getTime()) / 60000)
-}
 
 function isAssignableUser(user: AssignableUser) {
   return (
@@ -116,43 +107,9 @@ function TechnicianAssignModal({
   async function handleConfirm() {
     setSubmitting(true)
     try {
-      const initialIds = new Set(initialSelection.keys())
-      const toUnassign = [...initialIds].filter((id) => !selected.has(id))
-      const newlyAssigned = [...selected.keys()].filter((id) => !initialIds.has(id))
-
-      for (const [technicianId, flags] of selected) {
-        await assignTechnician({ workOrderId: order.id, technicianId, ...flags })
-      }
-      for (const technicianId of toUnassign) {
-        await unassignTechnician({ workOrderId: order.id, technicianId })
-      }
-      if (newlyAssigned.length > 0) {
-        await logOrderEvent({
-          workOrderId: order.id,
-          eventType: OrderEventType.TECHNICIANS_ASSIGNED,
-          metadata: { technicianIds: newlyAssigned },
-        })
-        sendPushNotification({
-          userIds: newlyAssigned,
-          title: 'Nueva asignación',
-          body: `Has sido asignado a la orden ${order.code}`,
-          orderId: order.id,
-        }).catch(() => {})
-      }
-      if (toUnassign.length > 0) {
-        await logOrderEvent({
-          workOrderId: order.id,
-          eventType: OrderEventType.TECHNICIAN_UNASSIGNED,
-          metadata: { technicianIds: toUnassign },
-        })
-      }
-      await updateWorkOrderStatus({
-        id: order.id,
-        status: WorkOrderStatus.ASSIGNED,
-        quoteAttempts: order.quoteAttempts,
-      })
-      await setChatParticipants('technicians', order.id, [...selected.keys()])
-      setSubmitted({ assigned: newlyAssigned.length, unassigned: toUnassign.length })
+      const assignments = [...selected].map(([technicianId, flags]) => ({ technicianId, ...flags }))
+      const result = await assignTechnicians({ workOrderId: order.id, code: order.code, assignments })
+      setSubmitted(result)
     } finally {
       setSubmitting(false)
     }
@@ -344,30 +301,12 @@ function IncidentModal({
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      const incidentRes = await createIncident({ workOrderId, description: description.trim() })
-      const incidentId = incidentRes.data.incident_insert.id
+      const photos = []
       for (const file of files) {
-        const storageUrl = await uploadWorkOrderPhoto(code, 'incident', file)
-        await createWorkOrderPhoto({
-          workOrderId,
-          stage: PhotoStage.INCIDENT,
-          storageUrl,
-          mediaType: mediaTypeOf(file),
-          incidentId,
-        })
+        const url = await uploadWorkOrderPhoto(code, 'incident', file)
+        photos.push({ url, mediaType: mediaTypeOf(file) })
       }
-      await logOrderEvent({
-        workOrderId,
-        eventType: OrderEventType.INCIDENT_REPORTED,
-        metadata: { description: description.trim() },
-      })
-      if (files.length > 0) {
-        await logOrderEvent({
-          workOrderId,
-          eventType: OrderEventType.PHOTO_UPLOADED,
-          metadata: { stage: PhotoStage.INCIDENT, count: files.length },
-        })
-      }
+      await reportIncident({ workOrderId, description: description.trim(), photos })
       onSaved()
     } finally {
       setSubmitting(false)
@@ -532,19 +471,8 @@ export function OrderDetailPage() {
     if (!order) return
     setBusy(true)
     try {
-      const quoteAttempts = order.quoteAttempts + 1
-      const fileUrl = await uploadQuotePdf(order.code, quoteAttempts, file)
-      await createQuote({ workOrderId: order.id, attemptNumber: quoteAttempts, fileUrl })
-      await updateWorkOrderStatus({
-        id: order.id,
-        status: WorkOrderStatus.PENDING_QUOTE,
-        quoteAttempts,
-      })
-      await logOrderEvent({
-        workOrderId: order.id,
-        eventType: OrderEventType.QUOTE_UPLOADED,
-        metadata: { attemptNumber: quoteAttempts },
-      })
+      const fileUrl = await uploadQuotePdf(order.code, order.quoteAttempts + 1, file)
+      await addQuote(order.id, fileUrl)
       await loadOrder()
     } finally {
       setBusy(false)
@@ -567,51 +495,28 @@ export function OrderDetailPage() {
     if (!order) return
     setBusy(true)
     try {
-      const latestQuote = order.quotes[order.quotes.length - 1]
-      if (latestQuote) {
-        await decideQuote({ id: latestQuote.id, decision: QuoteDecision.ACCEPTED })
-      }
-      await updateWorkOrderStatus({
-        id: order.id,
-        status: WorkOrderStatus.AWAITING_ASSIGNMENT,
-        quoteAttempts: order.quoteAttempts,
-      })
-      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.QUOTE_ACCEPTED })
+      await acceptQuote(order.id)
       await loadOrder()
     } finally {
       setBusy(false)
     }
   }
 
-async function uploadOrderPhotos(
-    order: WorkOrder,
-    stage: typeof PhotoStage.START | typeof PhotoStage.FINAL,
-    files: File[],
-  ) {
-    const storageStage = stage === PhotoStage.START ? 'start' : 'final'
+  async function uploadOrderPhotos(order: WorkOrder, storageStage: 'start' | 'final', files: File[]) {
+    const photos = []
     for (const file of files) {
-      const storageUrl = await uploadWorkOrderPhoto(order.code, storageStage, file)
-      await createWorkOrderPhoto({
-        workOrderId: order.id,
-        stage,
-        storageUrl,
-        mediaType: mediaTypeOf(file),
-      })
+      const url = await uploadWorkOrderPhoto(order.code, storageStage, file)
+      photos.push({ url, mediaType: mediaTypeOf(file) })
     }
-    await logOrderEvent({
-      workOrderId: order.id,
-      eventType: OrderEventType.PHOTO_UPLOADED,
-      metadata: { stage, count: files.length },
-    })
+    return photos
   }
 
   async function handleStartOrder(files: File[]) {
     if (!order) return
     setBusy(true)
     try {
-      await uploadOrderPhotos(order, PhotoStage.START, files)
-      await startWorkOrder({ id: order.id })
-      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.WORK_STARTED })
+      const photos = await uploadOrderPhotos(order, 'start', files)
+      await startOrder(order.id, photos)
       setStartingOrder(false)
       await loadOrder()
     } finally {
@@ -623,13 +528,8 @@ async function uploadOrderPhotos(
     if (!order) return
     setBusy(true)
     try {
-      await uploadOrderPhotos(order, PhotoStage.FINAL, files)
-      const activeLogs = order.timeLogs.filter((log) => !log.clockOut)
-      for (const log of activeLogs) {
-        await clockOut({ timeLogId: log.id, durationMinutes: durationMinutesSince(log.clockIn) })
-      }
-      await completeWorkOrder({ id: order.id })
-      await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.ORDER_COMPLETED })
+      const photos = await uploadOrderPhotos(order, 'final', files)
+      await completeOrder(order.id, photos)
       setCompletingOrder(false)
       await loadOrder()
       await loadMyActiveLog()
@@ -650,12 +550,8 @@ async function uploadOrderPhotos(
             `empezarás a trabajar en ${order.code}. ¿Continuar?`,
         )
         if (!proceed) return
-        await clockOut({
-          timeLogId: myActiveLog.id,
-          durationMinutes: durationMinutesSince(myActiveLog.clockIn),
-        })
       }
-      await clockIn({ workOrderId: order.id })
+      await startWorking(order.id)
       await loadOrder()
       await loadMyActiveLog()
     } finally {
@@ -667,10 +563,7 @@ async function uploadOrderPhotos(
     if (!order || !myActiveLog) return
     setBusy(true)
     try {
-      await clockOut({
-        timeLogId: myActiveLog.id,
-        durationMinutes: durationMinutesSince(myActiveLog.clockIn),
-      })
+      await stopWorking()
       await loadOrder()
       await loadMyActiveLog()
     } finally {
