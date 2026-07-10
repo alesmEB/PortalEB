@@ -111,12 +111,6 @@ query ListAssignableUsers @auth(level: USER) {
   }
 }
 
-query GetOrderSequence($locationCode: OrderLocation!) @auth(level: USER) {
-  orderSequences(where: { locationCode: { eq: $locationCode } }) {
-    lastNumber
-  }
-}
-
 # Summary rows for the main orders list screen.
 query ListWorkOrders @auth(level: USER) {
   workOrders(orderBy: { createdAt: DESC }) {

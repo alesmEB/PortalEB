@@ -8,8 +8,9 @@
 #
 # Conventions:
 # - Every table has a `UUID! @default(expr: "uuidV4()")` surrogate key,
-#   except `User` (Firebase Auth uid, `String!`) and `OrderSequence`
-#   (keyed by `locationCode` directly).
+#   except `User` (Firebase Auth uid, `String!`) and join/relation tables
+#   with an explicit composite `key: [...]` (e.g. `UserPermission`,
+#   `TechnicianAssignment`, `WorkOrderScheduledDate`).
 # - Every foreign key is declared as its own scalar field (e.g.
 #   `workOrderId: UUID!`) right next to the `@ref` relation field that
 #   points at it, so the foreign keys are explicit and readable instead of
@@ -164,16 +165,6 @@ type Engine @table(name: "engines") {
 # ---------------------------------------------------------------------------
 # Work orders, tasks, quotes & technician assignment
 # ---------------------------------------------------------------------------
-
-# One row per OrderLocation, tracking the last issued sequence number so
-# order codes ("A-000001", "V-000001", "S-000001") increment independently
-# per location. Incremented read-then-write from the client - fine for a
-# single small admin team; revisit with a transactional Cloud Function if
-# concurrent order creation ever becomes a real race.
-type OrderSequence @table(name: "order_sequences", key: ["locationCode"]) {
-  locationCode: OrderLocation!
-  lastNumber: Int! @default(value: 0)
-}
 
 type WorkOrder @table(name: "work_orders") {
   id: UUID! @default(expr: "uuidV4()")
