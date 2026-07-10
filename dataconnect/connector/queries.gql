@@ -1,6 +1,23 @@
 # Starter queries. Expand this file as each screen is built; there's no
 # need to pre-build a full CRUD surface before the UI that consumes it.
 
+# Data Connect's SDK codegen only exports an enum's TypeScript type when
+# it's selected from a root-level query - MediaType/PhotoStage/OrderEventType
+# are otherwise only ever selected through a nested relation field (see
+# GetWorkOrderDetail below), which isn't enough to keep the codegen emitting
+# them. This query exists purely so those enums (used as real values
+# throughout OrderDetailPage.tsx, media.ts, orderEvent.ts) stay exported -
+# it's never actually called from the app.
+query KeepMediaAndEventEnumsExported @auth(level: USER) {
+  workOrderPhotos(limit: 1) {
+    mediaType
+    stage
+  }
+  orderTrackings(limit: 1) {
+    eventType
+  }
+}
+
 query GetCurrentUser @auth(level: USER) {
   user(id_expr: "auth.uid") {
     id
