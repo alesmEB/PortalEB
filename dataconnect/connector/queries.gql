@@ -250,5 +250,14 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       }
       metadata
     }
+    photos: workOrderPhotos_on_workOrder(orderBy: { createdAt: DESC }) {
+      id
+      stage
+      storageUrl
+      createdAt
+      uploadedBy {
+        displayName
+      }
+    }
   }
 }

@@ -213,6 +213,23 @@ mutation CreateWorkOrderTask($workOrderId: UUID!, $description: String!) @auth(l
   workOrderTask_insert(data: { workOrderId: $workOrderId, description: $description })
 }
 
+mutation CreateWorkOrderPhoto(
+  $workOrderId: UUID!
+  $stage: PhotoStage!
+  $storageUrl: String!
+  $incidentId: UUID
+) @auth(level: USER) {
+  workOrderPhoto_insert(
+    data: {
+      workOrderId: $workOrderId
+      stage: $stage
+      storageUrl: $storageUrl
+      incidentId: $incidentId
+      uploadedById_expr: "auth.uid"
+    }
+  )
+}
+
 mutation LogOrderEvent($workOrderId: UUID!, $eventType: OrderEventType!, $metadata: Any) @auth(level: USER) {
   orderTracking_insert(
     data: {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   OrderEventType,
+  PhotoStage,
   QuoteDecision,
   UserRole,
   WorkOrderStatus,
@@ -11,6 +12,7 @@ import {
   completeWorkOrder,
   createIncident,
   createQuote,
+  createWorkOrderPhoto,
   decideQuote,
   getMyActiveTimeLog,
   getWorkOrderDetail,
@@ -33,6 +35,7 @@ import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
 import { orderEventTypeLabel } from '../lib/orderEvent'
 import { workOrderStatusLabel } from '../lib/orderStatus'
+import { uploadWorkOrderPhoto } from '../lib/photoStorage'
 import { sendPushNotification } from '../lib/pushNotifications'
 import { uploadQuotePdf } from '../lib/quoteStorage'
 
@@ -315,17 +318,117 @@ function IncidentModal({
   )
 }
 
+const photoStageLabel: Record<PhotoStage, string> = {
+  [PhotoStage.START]: 'Inicio',
+  [PhotoStage.INCIDENT]: 'Incidencia',
+  [PhotoStage.FINAL]: 'Final',
+}
+
+const photoModalCopy = {
+  [PhotoStage.START]: {
+    title: 'Fotos antes de empezar',
+    subtitle: 'Sube al menos 1 foto del estado actual antes de iniciar la orden.',
+    confirmLabel: 'Empezar orden',
+  },
+  [PhotoStage.FINAL]: {
+    title: 'Fotos finales',
+    subtitle: 'Sube al menos 1 foto del resultado antes de terminar la orden.',
+    confirmLabel: 'Terminar orden',
+  },
+} as const
+
+function PhotoUploadModal({
+  stage,
+  onClose,
+  onConfirm,
+}: {
+  stage: typeof PhotoStage.START | typeof PhotoStage.FINAL
+  onClose: () => void
+  onConfirm: (files: File[]) => Promise<void>
+}) {
+  const [files, setFiles] = useState<File[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const copy = photoModalCopy[stage]
+
+  function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
+    setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])])
+    e.target.value = ''
+  }
+
+  async function handleConfirm() {
+    setSubmitting(true)
+    try {
+      await onConfirm(files)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">{copy.title}</h2>
+        <p className="mt-1 text-xs text-slate-500">{copy.subtitle}</p>
+
+        <label className="mt-3 block cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
+          + Elegir fotos de la galería
+          <input type="file" accept="image/*" multiple className="hidden" onChange={handleFilesSelected} />
+        </label>
+
+        {files.length > 0 && (
+          <ul className="mt-3 space-y-1">
+            {files.map((file, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
+              >
+                <span className="truncate">{file.name}</span>
+                <button
+                  onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="ml-2 text-slate-400"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+          >
+            Cancelar
+          </button>
+          <button
+            disabled={files.length === 0 || submitting}
+            onClick={handleConfirm}
+            className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {submitting ? 'Subiendo...' : copy.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const navigate = useNavigate()
-  const backTo = (location.state as { from?: string } | null)?.from ?? '/orders'
+  const routerState = location.state as { from?: string; autoAssign?: boolean } | null
+  const backTo = routerState?.from ?? '/orders'
+  const autoAssignTriggered = useRef(false)
   const { profile } = useAuth()
   const canViewQuotes = usePermission('quotes:upload') || usePermission('quotes:approve')
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
   const [reportingIncident, setReportingIncident] = useState(false)
+  const [startingOrder, setStartingOrder] = useState(false)
+  const [completingOrder, setCompletingOrder] = useState(false)
   const [busy, setBusy] = useState(false)
   const quoteFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -344,6 +447,19 @@ export function OrderDetailPage() {
     loadOrder()
     loadMyActiveLog()
   }, [loadOrder, loadMyActiveLog])
+
+  // Lab "quick test order" shortcut on the dashboard drops straight into
+  // this modal instead of making QA click "Asignar técnicos" separately.
+  useEffect(() => {
+    if (
+      routerState?.autoAssign &&
+      !autoAssignTriggered.current &&
+      order?.status === WorkOrderStatus.AWAITING_ASSIGNMENT
+    ) {
+      autoAssignTriggered.current = true
+      setAssigning(true)
+    }
+  }, [order, routerState?.autoAssign])
 
   async function handleAddQuote(file: Blob) {
     if (!order) return
@@ -400,28 +516,49 @@ export function OrderDetailPage() {
     }
   }
 
-  async function handleStartOrder() {
+async function uploadOrderPhotos(
+    order: WorkOrder,
+    stage: typeof PhotoStage.START | typeof PhotoStage.FINAL,
+    files: File[],
+  ) {
+    const storageStage = stage === PhotoStage.START ? 'start' : 'final'
+    for (const file of files) {
+      const storageUrl = await uploadWorkOrderPhoto(order.code, storageStage, file)
+      await createWorkOrderPhoto({ workOrderId: order.id, stage, storageUrl })
+    }
+    await logOrderEvent({
+      workOrderId: order.id,
+      eventType: OrderEventType.PHOTO_UPLOADED,
+      metadata: { stage, count: files.length },
+    })
+  }
+
+  async function handleStartOrder(files: File[]) {
     if (!order) return
     setBusy(true)
     try {
+      await uploadOrderPhotos(order, PhotoStage.START, files)
       await startWorkOrder({ id: order.id })
       await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.WORK_STARTED })
+      setStartingOrder(false)
       await loadOrder()
     } finally {
       setBusy(false)
     }
   }
 
-  async function handleCompleteOrder() {
+  async function handleCompleteOrder(files: File[]) {
     if (!order) return
     setBusy(true)
     try {
+      await uploadOrderPhotos(order, PhotoStage.FINAL, files)
       const activeLogs = order.timeLogs.filter((log) => !log.clockOut)
       for (const log of activeLogs) {
         await clockOut({ timeLogId: log.id, durationMinutes: durationMinutesSince(log.clockIn) })
       }
       await completeWorkOrder({ id: order.id })
       await logOrderEvent({ workOrderId: order.id, eventType: OrderEventType.ORDER_COMPLETED })
+      setCompletingOrder(false)
       await loadOrder()
       await loadMyActiveLog()
     } finally {
@@ -572,7 +709,7 @@ export function OrderDetailPage() {
         {order.status === WorkOrderStatus.ASSIGNED && canManageOrder && (
           <button
             disabled={busy}
-            onClick={handleStartOrder}
+            onClick={() => setStartingOrder(true)}
             className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             Empezar orden
@@ -581,7 +718,7 @@ export function OrderDetailPage() {
         {order.status === WorkOrderStatus.IN_PROGRESS && canManageOrder && (
           <button
             disabled={busy}
-            onClick={handleCompleteOrder}
+            onClick={() => setCompletingOrder(true)}
             className="rounded-lg bg-eb-blue px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             Terminar orden
@@ -756,6 +893,24 @@ export function OrderDetailPage() {
         </section>
       )}
 
+      {order.photos.length > 0 && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+          <h2 className="text-sm font-semibold text-eb-teal-dark">Fotos</h2>
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {order.photos.map((photo) => (
+              <a key={photo.id} href={photo.storageUrl} target="_blank" rel="noreferrer">
+                <img
+                  src={photo.storageUrl}
+                  alt={photoStageLabel[photo.stage]}
+                  title={`${photoStageLabel[photo.stage]} · ${photo.uploadedBy.displayName}`}
+                  className="aspect-square w-full rounded-lg object-cover"
+                />
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
         <h2 className="text-sm font-semibold text-eb-teal-dark">Historial</h2>
         <ul className="mt-2 space-y-1">
@@ -798,6 +953,22 @@ export function OrderDetailPage() {
             setReportingIncident(false)
             loadOrder()
           }}
+        />
+      )}
+
+      {startingOrder && (
+        <PhotoUploadModal
+          stage={PhotoStage.START}
+          onClose={() => setStartingOrder(false)}
+          onConfirm={handleStartOrder}
+        />
+      )}
+
+      {completingOrder && (
+        <PhotoUploadModal
+          stage={PhotoStage.FINAL}
+          onClose={() => setCompletingOrder(false)}
+          onConfirm={handleCompleteOrder}
         />
       )}
     </div>
