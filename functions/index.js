@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto')
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
 const { onDocumentCreated } = require('firebase-functions/v2/firestore')
+const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { getDataConnect } = require('firebase-admin/data-connect')
 const admin = require('firebase-admin')
 const { renderWorkOrderPdfBuffer } = require('./workOrderPdf')
@@ -298,6 +299,22 @@ const CLOCK_IN_MUTATION = `
 function durationMinutesSince(isoTime) {
   return Math.round((Date.now() - new Date(isoTime).getTime()) / 60000)
 }
+
+// Stable per-technician tag so a re-sent "active shift" notification (clock
+// in, or the notifyActiveShifts reminder) replaces the previous one instead
+// of stacking - same tag-based dedup already used for chat notifications
+// (see firebase-messaging-sw.js).
+function activeShiftTag(technicianId) {
+  return `active-shift-${technicianId}`
+}
+
+const GET_WORK_ORDER_CODE_QUERY = `
+  query GetWorkOrderCodeAdmin($id: UUID!) {
+    workOrder(id: $id) {
+      code
+    }
+  }
+`
 
 async function getMyAssignment(workOrderId, technicianId) {
   const res = await dataConnect.executeGraphqlRead(GET_MY_ASSIGNMENT_QUERY, {
@@ -1112,6 +1129,22 @@ exports.startWorking = onCall(async (request) => {
   }
   await dataConnect.executeGraphql(CLOCK_IN_MUTATION, { variables: { workOrderId, technicianId: callerUid } })
 
+  // Best-effort "turno activo" push so a technician who isn't watching the
+  // app still gets reminded which order they're clocked into (in-app, this
+  // is covered instead by ActiveShiftBanner). Re-sent on every switch with
+  // the same per-technician tag, so it replaces rather than stacks; also
+  // re-sent unchanged by the notifyActiveShifts scheduled job below.
+  const orderRes = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_CODE_QUERY, {
+    variables: { id: workOrderId },
+  })
+  const code = orderRes.data.workOrder?.code
+  if (code) {
+    await sendToUsers([callerUid], {
+      notification: { title: 'Turno activo', body: `Estás trabajando en la orden ${code}` },
+      data: { orderId: workOrderId, tag: activeShiftTag(callerUid) },
+    }).catch(() => {})
+  }
+
   return { switchedFrom: active?.workOrderId ?? null }
 })
 
@@ -1136,6 +1169,13 @@ exports.stopWorking = onCall(async (request) => {
       durationMinutes: durationMinutesSince(active.clockIn),
     },
   })
+
+  // Data-only message (no `notification` field) - the service worker
+  // recognizes action: 'close' and closes the matching-tag notification
+  // instead of showing a new one (see firebase-messaging-sw.js).
+  await sendToUsers([callerUid], {
+    data: { tag: activeShiftTag(callerUid), action: 'close' },
+  }).catch(() => {})
 
   return { success: true }
 })
@@ -1194,3 +1234,59 @@ exports.setWorkOrderScheduledDate = onCall(async (request) => {
 
   return { success: true }
 })
+
+const GET_ALL_ACTIVE_TIME_LOGS_QUERY = `
+  query GetAllActiveTimeLogsAdmin {
+    timeLogs(where: { clockOut: { isNull: true } }) {
+      technicianId
+      workOrder {
+        id
+        code
+      }
+    }
+  }
+`
+
+// Reads the wall-clock hour/minute in a given IANA timezone - deliberately
+// not new Date().getHours() (that's the Cloud Functions container's local
+// time, i.e. UTC), and Intl handles the CET/CEST switch automatically so
+// this needs no manual DST bookkeeping.
+function timeInZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hour12: false })
+    .formatToParts(date)
+  return {
+    hour: Number(parts.find((p) => p.type === 'hour').value),
+    minute: Number(parts.find((p) => p.type === 'minute').value),
+  }
+}
+
+// Re-sends the "turno activo" push (see startWorking) every 30 minutes to
+// every technician still clocked in, so it comes back even if they swiped
+// the previous one away - the closest a web push can get to a native app's
+// non-dismissible "ongoing" notification. Same per-technician tag as
+// startWorking/stopWorking, so this replaces rather than stacks.
+//
+// Cron's minute/hour fields can't express "every 30 min, but only :00 on the
+// last hour" in one expression, so this fires for 8:00-16:30 Madrid time and
+// skips the spurious 16:30 tick in code to land the last real reminder at
+// 16:00 as requested.
+exports.notifyActiveShifts = onSchedule(
+  { schedule: '0,30 8-16 * * *', timeZone: 'Europe/Madrid' },
+  async () => {
+    const { hour, minute } = timeInZone(new Date(), 'Europe/Madrid')
+    if (hour === 16 && minute !== 0) return
+
+    const res = await dataConnect.executeGraphqlRead(GET_ALL_ACTIVE_TIME_LOGS_QUERY, {})
+    await Promise.all(
+      res.data.timeLogs.map((log) =>
+        sendToUsers([log.technicianId], {
+          notification: {
+            title: 'Turno activo',
+            body: `Sigues trabajando en la orden ${log.workOrder.code}`,
+          },
+          data: { orderId: log.workOrder.id, tag: activeShiftTag(log.technicianId) },
+        }).catch(() => {}),
+      ),
+    )
+  },
+)

@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router-dom'
+import { ActiveShiftBanner } from './components/ActiveShiftBanner'
 import { AppBackground } from './components/AppBackground'
 import { Footer } from './components/Footer'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -96,6 +97,7 @@ function App() {
         </Routes>
       </div>
 
+      <ActiveShiftBanner />
       <Footer />
     </div>
   )
