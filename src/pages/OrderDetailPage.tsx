@@ -846,23 +846,29 @@ export function OrderDetailPage() {
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Turnos</h2>
           <div className="mt-2 space-y-3">
-            {[...shiftsByTechnician.values()].map(({ name, shifts }) => (
-              <div key={name}>
-                <p className="text-xs font-medium text-slate-600">{name}</p>
-                <ul className="mt-1 space-y-1 border-l-2 border-eb-teal/30 pl-3">
-                  {shifts.map((shift) => (
-                    <li key={shift.id} className="text-xs text-slate-500">
-                      {new Date(shift.clockIn).toLocaleString('es-ES')}
-                      {' → '}
-                      {shift.clockOut
-                        ? new Date(shift.clockOut).toLocaleString('es-ES')
-                        : 'en curso'}
-                      {shift.durationMinutes != null ? ` · ${shift.durationMinutes} min` : ''}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            {[...shiftsByTechnician.values()].map(({ name, shifts }) => {
+              const totalMinutes = shifts.reduce((sum, shift) => sum + (shift.durationMinutes ?? 0), 0)
+              return (
+                <div key={name}>
+                  <p className="flex items-center justify-between text-xs font-medium text-slate-600">
+                    <span>{name}</span>
+                    <span className="text-slate-500">{totalMinutes} min</span>
+                  </p>
+                  <ul className="mt-1 space-y-1 border-l-2 border-eb-teal/30 pl-3">
+                    {shifts.map((shift) => (
+                      <li key={shift.id} className="text-xs text-slate-500">
+                        {new Date(shift.clockIn).toLocaleString('es-ES')}
+                        {' → '}
+                        {shift.clockOut
+                          ? new Date(shift.clockOut).toLocaleString('es-ES')
+                          : 'en curso'}
+                        {shift.durationMinutes != null ? ` · ${shift.durationMinutes} min` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
