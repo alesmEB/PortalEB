@@ -98,6 +98,15 @@ export function DashboardPage() {
 
           <HasPermission permission="admin:lab">
             <button
+              onClick={() => navigate('/calendar')}
+              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
+            >
+              Calendario semanal (lab)
+            </button>
+          </HasPermission>
+
+          <HasPermission permission="admin:lab">
+            <button
               onClick={() => navigate('/notifications/send')}
               className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
             >

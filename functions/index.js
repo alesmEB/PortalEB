@@ -114,6 +114,18 @@ const UPDATE_WORK_ORDER_STATUS_MUTATION = `
     workOrder_update(id: $id, data: { status: $status })
   }
 `
+const GET_WORK_ORDER_STATUS_QUERY = `
+  query GetWorkOrderStatusAdmin($id: UUID!) {
+    workOrder(id: $id) {
+      status
+    }
+  }
+`
+const SET_WORK_ORDER_SCHEDULED_DATE_MUTATION = `
+  mutation SetWorkOrderScheduledDateAdmin($id: UUID!, $scheduledDate: Date) {
+    workOrder_update(id: $id, data: { scheduledDate: $scheduledDate })
+  }
+`
 
 // --- Order-lifecycle mutations/queries (quote/assign/start/complete/
 // incident/clock-in-out) - see the onCall functions near the bottom of this
@@ -1099,6 +1111,53 @@ exports.stopWorking = onCall(async (request) => {
       clockOut: new Date().toISOString(),
       durationMinutes: durationMinutesSince(active.clockIn),
     },
+  })
+
+  return { success: true }
+})
+
+const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
+
+// Sets/clears which day a work order is placed on in the weekly calendar.
+// Requires calendar:manage. Re-checks the order's current status server-side
+// (rather than trusting the client's possibly-stale copy) since scheduling
+// only makes sense once technicians are assigned and stops being editable
+// once the order is COMPLETED - see schema.gql's scheduledDate comment.
+exports.scheduleWorkOrder = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+  const permissions = Array.isArray(request.auth.token?.permissions)
+    ? request.auth.token.permissions
+    : []
+  if (!permissions.includes('calendar:manage')) {
+    throw new HttpsError('permission-denied', 'No tienes permiso para editar el calendario.')
+  }
+
+  const { workOrderId, scheduledDate } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  }
+  if (scheduledDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate ?? '')) {
+    throw new HttpsError('invalid-argument', 'Fecha inválida.')
+  }
+
+  const res = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_STATUS_QUERY, {
+    variables: { id: workOrderId },
+  })
+  const order = res.data.workOrder
+  if (!order) {
+    throw new HttpsError('not-found', 'La orden no existe.')
+  }
+  if (!SCHEDULABLE_STATUSES.includes(order.status)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Solo se pueden programar órdenes con técnicos asignados y no completadas.',
+    )
+  }
+
+  await dataConnect.executeGraphql(SET_WORK_ORDER_SCHEDULED_DATE_MUTATION, {
+    variables: { id: workOrderId, scheduledDate },
   })
 
   return { success: true }

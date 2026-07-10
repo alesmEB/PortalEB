@@ -177,6 +177,40 @@ query ListMyAssignedWorkOrders @auth(level: USER) {
   }
 }
 
+# Powers the weekly calendar page: every order that either already has
+# technicians assigned and isn't completed yet (the "unscheduled pool" the
+# admin can still drag onto a day), or is completed but was scheduled at
+# some point (kept visible on the calendar as a read-only past entry).
+query ListSchedulableWorkOrders @auth(level: USER) {
+  workOrders(
+    where: {
+      _or: [
+        { status: { in: [ASSIGNED, IN_PROGRESS] } }
+        { status: { eq: COMPLETED }, scheduledDate: { isNull: false } }
+      ]
+    }
+    orderBy: { scheduledDate: ASC }
+  ) {
+    id
+    code
+    status
+    scheduledDate
+    locationCode
+    assetLocation
+    customer {
+      name
+    }
+    boat {
+      name
+    }
+    assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }) {
+      technician {
+        displayName
+      }
+    }
+  }
+}
+
 query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
   workOrder(id: $id) {
     id

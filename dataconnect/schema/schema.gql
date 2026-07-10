@@ -186,6 +186,11 @@ type WorkOrder @table(name: "work_orders") {
   # Enforced at the application layer: never exceeds 2 (see Quote below).
   quoteAttempts: Int! @default(value: 0)
   finalReportUrl: String
+  # Day the admin has scheduled this order's work for, shown on the weekly
+  # calendar. Only meaningful once technicians are assigned (ASSIGNED/
+  # IN_PROGRESS); freely reassignable/clearable until COMPLETED, enforced in
+  # the scheduleWorkOrder Cloud Function rather than here.
+  scheduledDate: Date
   createdAt: Timestamp! @default(expr: "request.time")
   updatedAt: Timestamp @default(expr: "request.time")
   completedAt: Timestamp
