@@ -671,6 +671,15 @@ export function OrderDetailPage() {
             Asignar técnicos
           </button>
         )}
+        {(order.status === WorkOrderStatus.ASSIGNED ||
+          order.status === WorkOrderStatus.IN_PROGRESS) && (
+          <button
+            onClick={() => setAssigning(true)}
+            className="rounded-lg bg-eb-blue-dark px-3 py-1.5 text-sm font-semibold text-white"
+          >
+            Añadir técnicos
+          </button>
+        )}
         {order.status === WorkOrderStatus.ASSIGNED && canManageOrder && (
           <button
             disabled={busy}

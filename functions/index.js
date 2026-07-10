@@ -212,6 +212,9 @@ const UNASSIGN_TECHNICIAN_MUTATION = `
 `
 const GET_ORDER_ASSIGNMENTS_QUERY = `
   query GetOrderAssignmentsAdmin($workOrderId: UUID!) {
+    workOrder(id: $workOrderId) {
+      status
+    }
     technicianAssignments(where: { workOrderId: { eq: $workOrderId }, unassignedAt: { isNull: true } }) {
       technicianId
     }
@@ -801,12 +804,19 @@ exports.acceptQuote = onCall(async (request) => {
 })
 
 // Not permission-gated beyond being signed in - matches today's client,
-// where the "Asignar técnicos" button has no HasPermission wrapper either.
-// `assignments` is the full desired end state (every technician that should
-// end up assigned, with their flags); who's newly-assigned vs. unassigned is
-// computed here from the order's current assignments rather than trusted
-// from the client, so a stale client view can't mis-fire notifications or
-// audit events.
+// where the "Asignar técnicos"/"Añadir técnicos" buttons have no
+// HasPermission wrapper either. `assignments` is the full desired end state
+// (every technician that should end up assigned, with their flags); who's
+// newly-assigned vs. unassigned is computed here from the order's current
+// assignments rather than trusted from the client, so a stale client view
+// can't mis-fire notifications or audit events.
+//
+// Callable again after the first assignment (ASSIGNED/IN_PROGRESS) to add or
+// remove technicians mid-job - blocked once the order is COMPLETED/CANCELLED
+// or hasn't reached assignment yet. Only bumps status to ASSIGNED on the
+// very first call (from AWAITING_ASSIGNMENT); a later call while IN_PROGRESS
+// must leave that status alone instead of regressing it.
+const ASSIGNABLE_STATUSES = ['AWAITING_ASSIGNMENT', 'ASSIGNED', 'IN_PROGRESS']
 exports.assignTechnicians = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
@@ -823,6 +833,13 @@ exports.assignTechnicians = onCall(async (request) => {
   const currentRes = await dataConnect.executeGraphqlRead(GET_ORDER_ASSIGNMENTS_QUERY, {
     variables: { workOrderId },
   })
+  const currentStatus = currentRes.data.workOrder?.status
+  if (!ASSIGNABLE_STATUSES.includes(currentStatus)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'No se pueden asignar técnicos en el estado actual de la orden.',
+    )
+  }
   const currentIds = new Set(currentRes.data.technicianAssignments.map((a) => a.technicianId))
   const desiredIds = new Set(assignments.map((a) => a.technicianId))
   const newlyAssigned = assignments.filter((a) => !currentIds.has(a.technicianId))
@@ -867,9 +884,11 @@ exports.assignTechnicians = onCall(async (request) => {
     })
   }
 
-  await dataConnect.executeGraphql(UPDATE_WORK_ORDER_STATUS_MUTATION, {
-    variables: { id: workOrderId, status: 'ASSIGNED' },
-  })
+  if (currentStatus === 'AWAITING_ASSIGNMENT') {
+    await dataConnect.executeGraphql(UPDATE_WORK_ORDER_STATUS_MUTATION, {
+      variables: { id: workOrderId, status: 'ASSIGNED' },
+    })
+  }
 
   await admin
     .firestore()
