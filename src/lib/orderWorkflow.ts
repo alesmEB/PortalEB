@@ -31,6 +31,8 @@ interface AssignTechniciansInput {
   workOrderId: string
   code: string
   assignments: { technicianId: string; isAllowed: boolean; isLead: boolean }[]
+  /** Technician ids the modal was opened with - lets the server detect a concurrent edit. */
+  expectedTechnicianIds: string[]
 }
 
 const callAssignTechnicians = httpsCallable<

@@ -75,6 +75,7 @@ function TechnicianAssignModal({
   const [selected, setSelected] = useState<Map<string, AssignmentFlags>>(initialSelection)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState<{ assigned: number; unassigned: number } | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     listAssignableUsers(FRESH).then((res) => setUsers(res.data.users.filter(isAssignableUser)))
@@ -106,10 +107,18 @@ function TechnicianAssignModal({
 
   async function handleConfirm() {
     setSubmitting(true)
+    setError(null)
     try {
       const assignments = [...selected].map(([technicianId, flags]) => ({ technicianId, ...flags }))
-      const result = await assignTechnicians({ workOrderId: order.id, code: order.code, assignments })
+      const result = await assignTechnicians({
+        workOrderId: order.id,
+        code: order.code,
+        assignments,
+        expectedTechnicianIds: [...initialSelection.keys()],
+      })
       setSubmitted(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar.')
     } finally {
       setSubmitting(false)
     }
@@ -196,6 +205,7 @@ function TechnicianAssignModal({
           })}
         </div>
 
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         <div className="mt-4 flex gap-2">
           <button
             onClick={onClose}

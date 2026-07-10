@@ -35,6 +35,8 @@ interface AdminUpdateUserInput {
   role: UserRole
   isActive: boolean
   permissionIds: string[]
+  /** Permission ids the form was loaded with - lets the server detect a concurrent edit. */
+  expectedPermissionIds: string[]
 }
 
 const callAdminUpdateUser = httpsCallable<AdminUpdateUserInput, { success: boolean }>(

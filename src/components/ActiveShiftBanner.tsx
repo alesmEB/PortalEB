@@ -38,11 +38,19 @@ export function ActiveShiftBanner() {
     }
     load()
     const interval = setInterval(load, 30_000)
+    // `focus` alone can be unreliable on some installed-PWA/mobile setups
+    // when switching back into the app - visibilitychange is the more
+    // dependable signal there, so both are wired to the same refetch.
+    function onVisible() {
+      if (document.visibilityState === 'visible') load()
+    }
     window.addEventListener('focus', load)
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
       clearInterval(interval)
       window.removeEventListener('focus', load)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [firebaseUser])
 

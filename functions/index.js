@@ -845,7 +845,7 @@ exports.assignTechnicians = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
   }
 
-  const { workOrderId, code, assignments } = request.data ?? {}
+  const { workOrderId, code, assignments, expectedTechnicianIds } = request.data ?? {}
   if (typeof workOrderId !== 'string' || !Array.isArray(assignments)) {
     throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
@@ -864,6 +864,7 @@ exports.assignTechnicians = onCall(async (request) => {
     )
   }
   const currentIds = new Set(currentRes.data.technicianAssignments.map((a) => a.technicianId))
+  requireUnchangedSince(expectedTechnicianIds, currentIds)
   const desiredIds = new Set(assignments.map((a) => a.technicianId))
   const newlyAssigned = assignments.filter((a) => !currentIds.has(a.technicianId))
   const toUnassign = [...currentIds].filter((id) => !desiredIds.has(id))
@@ -1320,6 +1321,27 @@ function requirePermission(request, permission) {
   }
 }
 
+function setsEqual(a, b) {
+  if (a.size !== b.size) return false
+  for (const item of a) if (!b.has(item)) return false
+  return true
+}
+
+// Optimistic-concurrency guard for the "client sends the full desired state,
+// server diffs against current" endpoints (assignTechnicians, adminUpdateUser
+// permissions): if what the client started editing from no longer matches
+// what's actually there, its diff would silently clobber whatever changed in
+// between - reject instead of guessing.
+function requireUnchangedSince(expectedIds, currentIds) {
+  if (!Array.isArray(expectedIds)) return
+  if (!setsEqual(new Set(expectedIds), currentIds)) {
+    throw new HttpsError(
+      'aborted',
+      'Esto ha cambiado mientras lo editabas. Recarga la página e inténtalo de nuevo.',
+    )
+  }
+}
+
 const CREATE_USER_PROFILE_MUTATION = `
   mutation CreateUserProfileAdmin($id: String!, $email: String!, $displayName: String!, $role: UserRole!) {
     user_insert(data: { id: $id, email: $email, displayName: $displayName, role: $role })
@@ -1349,6 +1371,19 @@ const GET_USER_PERMISSIONS_QUERY = `
   query GetUserPermissionsAdmin($userId: String!) {
     userPermissions(where: { userId: { eq: $userId } }) {
       permissionId
+    }
+  }
+`
+const GET_PERMISSION_HOLDERS_QUERY = `
+  query GetPermissionHoldersAdmin($key: String!) {
+    permissions(where: { key: { eq: $key } }) {
+      id
+      holders: userPermissions_on_permission {
+        userId
+        user {
+          isActive
+        }
+      }
     }
   }
 `
@@ -1416,8 +1451,17 @@ exports.adminCreateUser = onCall(async (request) => {
   let userRecord
   try {
     userRecord = await admin.auth().createUser({ email: email.trim(), password, displayName: displayName.trim() })
-  } catch {
-    throw new HttpsError('already-exists', 'Ese email ya está en uso.')
+  } catch (err) {
+    if (err.code === 'auth/email-already-exists') {
+      throw new HttpsError('already-exists', 'Ese email ya está en uso.')
+    }
+    if (err.code === 'auth/invalid-email') {
+      throw new HttpsError('invalid-argument', 'El email no es válido.')
+    }
+    if (err.code === 'auth/invalid-password') {
+      throw new HttpsError('invalid-argument', 'La contraseña no es válida.')
+    }
+    throw new HttpsError('internal', 'No se pudo crear el usuario.', err.message)
   }
 
   try {
@@ -1442,11 +1486,13 @@ exports.adminCreateUser = onCall(async (request) => {
 // Replaces updateUserProfile + a grant/revoke diff loop + a trailing
 // syncUserClaims call. `permissionIds` is the full desired set (same
 // "client sends the end state, server diffs against current" shape as
-// assignTechnicians).
+// assignTechnicians) - `expectedPermissionIds` is what the client started
+// editing from, checked against the live state so a stale edit can't
+// silently clobber a grant/revoke someone else made in the meantime.
 exports.adminUpdateUser = onCall(async (request) => {
   requirePermission(request, 'admin:manage')
 
-  const { userId, displayName, role, isActive, permissionIds } = request.data ?? {}
+  const { userId, displayName, role, isActive, permissionIds, expectedPermissionIds } = request.data ?? {}
   if (
     typeof userId !== 'string' ||
     typeof displayName !== 'string' ||
@@ -1457,15 +1503,37 @@ exports.adminUpdateUser = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
 
-  await dataConnect.executeGraphql(UPDATE_USER_PROFILE_MUTATION, {
-    variables: { id: userId, displayName: displayName.trim(), role, isActive },
-  })
-
   const currentRes = await dataConnect.executeGraphqlRead(GET_USER_PERMISSIONS_QUERY, {
     variables: { userId },
   })
   const currentIds = new Set(currentRes.data.userPermissions.map((p) => p.permissionId))
+  requireUnchangedSince(expectedPermissionIds, currentIds)
   const desiredIds = new Set(permissionIds)
+
+  // Safety net: never leave the system with zero active users holding
+  // admin:manage, whether that's this update revoking the permission,
+  // deactivating the account, or both - there'd be no way back into the
+  // Admin section for anyone.
+  const adminManageRes = await dataConnect.executeGraphqlRead(GET_PERMISSION_HOLDERS_QUERY, {
+    variables: { key: 'admin:manage' },
+  })
+  const adminManage = adminManageRes.data.permissions[0]
+  if (adminManage) {
+    const otherActiveHolders = adminManage.holders.filter(
+      (h) => h.userId !== userId && h.user.isActive,
+    ).length
+    const targetWillHoldIt = isActive && desiredIds.has(adminManage.id)
+    if (otherActiveHolders === 0 && !targetWillHoldIt) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Esto dejaría el sistema sin ningún administrador con acceso al panel. Concede admin:manage a otro usuario antes de continuar.',
+      )
+    }
+  }
+
+  await dataConnect.executeGraphql(UPDATE_USER_PROFILE_MUTATION, {
+    variables: { id: userId, displayName: displayName.trim(), role, isActive },
+  })
 
   for (const permissionId of permissionIds) {
     if (!currentIds.has(permissionId)) {

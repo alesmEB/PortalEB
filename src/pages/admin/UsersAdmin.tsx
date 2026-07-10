@@ -281,6 +281,7 @@ function EditUserForm({
   )
   const [selected, setSelected] = useState<Set<string>>(initialPermissionIds)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -293,6 +294,7 @@ function EditUserForm({
 
   async function handleSave() {
     setSubmitting(true)
+    setError(null)
     try {
       await adminUpdateUser({
         userId: user.id,
@@ -300,8 +302,11 @@ function EditUserForm({
         role,
         isActive,
         permissionIds: [...selected],
+        expectedPermissionIds: [...initialPermissionIds],
       })
       onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar.')
     } finally {
       setSubmitting(false)
     }
@@ -322,6 +327,7 @@ function EditUserForm({
         Activo
       </label>
       <PermissionPicker permissions={permissions} selected={selected} onToggle={toggle} />
+      {error && <p className="text-sm text-red-600">{error}</p>}
       <button
         disabled={submitting}
         onClick={handleSave}
