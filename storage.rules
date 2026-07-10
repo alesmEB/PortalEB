@@ -35,12 +35,16 @@ service firebase.storage {
       allow write: if isSignedIn() && request.resource.contentType == 'application/pdf';
     }
 
+    // Videos are capped at 20s client-side (see src/lib/media.ts) - Storage
+    // rules can only see file size/type, not duration.
     match /work-orders/{code}/photos/{stage}/{fileName} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() &&
         stage in ['start', 'incident', 'final'] &&
-        request.resource.size < 15 * 1024 * 1024 &&
-        request.resource.contentType.matches('image/.*');
+        ((request.resource.contentType.matches('image/.*') &&
+          request.resource.size < 15 * 1024 * 1024) ||
+         (request.resource.contentType.matches('video/.*') &&
+          request.resource.size < 20 * 1024 * 1024));
     }
 
     match /work-orders/{code}/quotes/{fileName} {

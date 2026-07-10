@@ -217,6 +217,7 @@ mutation CreateWorkOrderPhoto(
   $workOrderId: UUID!
   $stage: PhotoStage!
   $storageUrl: String!
+  $mediaType: MediaType
   $incidentId: UUID
 ) @auth(level: USER) {
   workOrderPhoto_insert(
@@ -224,6 +225,7 @@ mutation CreateWorkOrderPhoto(
       workOrderId: $workOrderId
       stage: $stage
       storageUrl: $storageUrl
+      mediaType: $mediaType
       incidentId: $incidentId
       uploadedById_expr: "auth.uid"
     }

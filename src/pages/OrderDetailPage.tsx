@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
+  MediaType,
   OrderEventType,
   PhotoStage,
   QuoteDecision,
@@ -32,6 +33,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { setChatParticipants } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
+import { mediaTypeOf, validateMediaFile } from '../lib/media'
 import { orderLocationLabel } from '../lib/orderCode'
 import { orderEventTypeLabel } from '../lib/orderEvent'
 import { workOrderStatusLabel } from '../lib/orderStatus'
@@ -257,27 +259,115 @@ function TechnicianAssignModal({
   )
 }
 
+/** Shared photo/video picker with size/duration validation (see lib/media.ts). */
+function MediaPicker({
+  files,
+  onFilesChange,
+}: {
+  files: File[]
+  onFilesChange: (files: File[]) => void
+}) {
+  const [validating, setValidating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    setValidating(true)
+    setError(null)
+    try {
+      const errors: string[] = []
+      const valid: File[] = []
+      for (const file of picked) {
+        const err = await validateMediaFile(file)
+        if (err) errors.push(err)
+        else valid.push(file)
+      }
+      setError(errors.length > 0 ? errors.join(' · ') : null)
+      if (valid.length > 0) onFilesChange([...files, ...valid])
+    } finally {
+      setValidating(false)
+    }
+  }
+
+  return (
+    <div>
+      <label className="mt-3 block cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
+        {validating ? 'Comprobando archivo...' : '+ Elegir fotos o vídeos de la galería'}
+        <input
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          disabled={validating}
+          className="hidden"
+          onChange={handleFilesSelected}
+        />
+      </label>
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {files.length > 0 && (
+        <ul className="mt-3 space-y-1">
+          {files.map((file, i) => (
+            <li
+              key={i}
+              className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
+            >
+              <span className="truncate">{file.name}</span>
+              <button
+                onClick={() => onFilesChange(files.filter((_, idx) => idx !== i))}
+                className="ml-2 text-slate-400"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function IncidentModal({
   workOrderId,
+  code,
   onClose,
   onSaved,
 }: {
   workOrderId: string
+  code: string
   onClose: () => void
   onSaved: () => void
 }) {
   const [description, setDescription] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      await createIncident({ workOrderId, description: description.trim() })
+      const incidentRes = await createIncident({ workOrderId, description: description.trim() })
+      const incidentId = incidentRes.data.incident_insert.id
+      for (const file of files) {
+        const storageUrl = await uploadWorkOrderPhoto(code, 'incident', file)
+        await createWorkOrderPhoto({
+          workOrderId,
+          stage: PhotoStage.INCIDENT,
+          storageUrl,
+          mediaType: mediaTypeOf(file),
+          incidentId,
+        })
+      }
       await logOrderEvent({
         workOrderId,
         eventType: OrderEventType.INCIDENT_REPORTED,
         metadata: { description: description.trim() },
       })
+      if (files.length > 0) {
+        await logOrderEvent({
+          workOrderId,
+          eventType: OrderEventType.PHOTO_UPLOADED,
+          metadata: { stage: PhotoStage.INCIDENT, count: files.length },
+        })
+      }
       onSaved()
     } finally {
       setSubmitting(false)
@@ -298,6 +388,10 @@ function IncidentModal({
           className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
           placeholder="Descripción de la incidencia"
         />
+
+        <p className="mt-3 text-xs font-medium text-slate-500">Fotos o vídeos (opcional)</p>
+        <MediaPicker files={files} onFilesChange={setFiles} />
+
         <div className="mt-4 flex gap-2">
           <button
             onClick={onClose}
@@ -327,12 +421,12 @@ const photoStageLabel: Record<PhotoStage, string> = {
 const photoModalCopy = {
   [PhotoStage.START]: {
     title: 'Fotos antes de empezar',
-    subtitle: 'Sube al menos 1 foto del estado actual antes de iniciar la orden.',
+    subtitle: 'Sube al menos 1 foto o vídeo del estado actual antes de iniciar la orden.',
     confirmLabel: 'Empezar orden',
   },
   [PhotoStage.FINAL]: {
     title: 'Fotos finales',
-    subtitle: 'Sube al menos 1 foto del resultado antes de terminar la orden.',
+    subtitle: 'Sube al menos 1 foto o vídeo del resultado antes de terminar la orden.',
     confirmLabel: 'Terminar orden',
   },
 } as const
@@ -350,11 +444,6 @@ function PhotoUploadModal({
   const [submitting, setSubmitting] = useState(false)
   const copy = photoModalCopy[stage]
 
-  function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
-    setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])])
-    e.target.value = ''
-  }
-
   async function handleConfirm() {
     setSubmitting(true)
     try {
@@ -370,29 +459,7 @@ function PhotoUploadModal({
         <h2 className="text-sm font-semibold text-eb-blue-dark">{copy.title}</h2>
         <p className="mt-1 text-xs text-slate-500">{copy.subtitle}</p>
 
-        <label className="mt-3 block cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
-          + Elegir fotos de la galería
-          <input type="file" accept="image/*" multiple className="hidden" onChange={handleFilesSelected} />
-        </label>
-
-        {files.length > 0 && (
-          <ul className="mt-3 space-y-1">
-            {files.map((file, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
-              >
-                <span className="truncate">{file.name}</span>
-                <button
-                  onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                  className="ml-2 text-slate-400"
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <MediaPicker files={files} onFilesChange={setFiles} />
 
         <div className="mt-4 flex gap-2">
           <button
@@ -524,7 +591,12 @@ async function uploadOrderPhotos(
     const storageStage = stage === PhotoStage.START ? 'start' : 'final'
     for (const file of files) {
       const storageUrl = await uploadWorkOrderPhoto(order.code, storageStage, file)
-      await createWorkOrderPhoto({ workOrderId: order.id, stage, storageUrl })
+      await createWorkOrderPhoto({
+        workOrderId: order.id,
+        stage,
+        storageUrl,
+        mediaType: mediaTypeOf(file),
+      })
     }
     await logOrderEvent({
       workOrderId: order.id,
@@ -897,16 +969,26 @@ async function uploadOrderPhotos(
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Fotos</h2>
           <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {order.photos.map((photo) => (
-              <a key={photo.id} href={photo.storageUrl} target="_blank" rel="noreferrer">
-                <img
+            {order.photos.map((photo) =>
+              photo.mediaType === MediaType.VIDEO ? (
+                <video
+                  key={photo.id}
                   src={photo.storageUrl}
-                  alt={photoStageLabel[photo.stage]}
+                  controls
                   title={`${photoStageLabel[photo.stage]} · ${photo.uploadedBy.displayName}`}
                   className="aspect-square w-full rounded-lg object-cover"
                 />
-              </a>
-            ))}
+              ) : (
+                <a key={photo.id} href={photo.storageUrl} target="_blank" rel="noreferrer">
+                  <img
+                    src={photo.storageUrl}
+                    alt={photoStageLabel[photo.stage]}
+                    title={`${photoStageLabel[photo.stage]} · ${photo.uploadedBy.displayName}`}
+                    className="aspect-square w-full rounded-lg object-cover"
+                  />
+                </a>
+              ),
+            )}
           </div>
         </section>
       )}
@@ -948,6 +1030,7 @@ async function uploadOrderPhotos(
       {reportingIncident && (
         <IncidentModal
           workOrderId={order.id}
+          code={order.code}
           onClose={() => setReportingIncident(false)}
           onSaved={() => {
             setReportingIncident(false)

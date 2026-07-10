@@ -254,6 +254,8 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       id
       stage
       storageUrl
+      mediaType
+      incidentId
       createdAt
       uploadedBy {
         displayName

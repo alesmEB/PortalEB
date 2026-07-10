@@ -55,6 +55,11 @@ enum PhotoStage {
   FINAL
 }
 
+enum MediaType {
+  PHOTO
+  VIDEO
+}
+
 enum OrderEventType {
   ORDER_CREATED
   QUOTE_UPLOADED
@@ -270,6 +275,7 @@ type WorkOrderPhoto @table(name: "work_order_photos") {
   incidentId: UUID
   incident: Incident @ref(fields: ["incidentId"])
   storageUrl: String!
+  mediaType: MediaType! @default(value: PHOTO)
   uploadedById: String!
   uploadedBy: User! @ref(fields: ["uploadedById"])
   createdAt: Timestamp! @default(expr: "request.time")
