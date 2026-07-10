@@ -18,6 +18,12 @@ import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateKey } from
 type AssignedOrder = ListAssignedWorkOrdersData['workOrders'][number]
 type ScheduledEntry = ListWorkOrderScheduledDatesData['workOrderScheduledDates'][number]
 
+function taskProgressLabel(tasks: { isCompleted: boolean }[]) {
+  if (tasks.length === 0) return null
+  const done = tasks.filter((t) => t.isCompleted).length
+  return `${done}/${tasks.length} tareas`
+}
+
 export function CalendarPage() {
   const navigate = useNavigate()
   const canManage = usePermission('calendar:manage')
@@ -168,6 +174,11 @@ export function CalendarPage() {
                               {order.assignments.map((a) => a.technician.displayName).join(', ')}
                             </p>
                           )}
+                          {taskProgressLabel(order.tasks) && (
+                            <p className="mt-1 text-[11px] text-slate-400">
+                              {taskProgressLabel(order.tasks)}
+                            </p>
+                          )}
                         </div>
                       )
                     })}
@@ -201,6 +212,7 @@ export function CalendarPage() {
                         </p>
                         <p className="text-xs text-slate-500">
                           {order.customer.name} · {order.boat.name}
+                          {taskProgressLabel(order.tasks) && ` · ${taskProgressLabel(order.tasks)}`}
                         </p>
                       </button>
                     </div>

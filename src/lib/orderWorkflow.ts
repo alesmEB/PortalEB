@@ -81,6 +81,17 @@ export async function reportIncident(input: ReportIncidentInput) {
   return res.data
 }
 
+const callToggleWorkOrderTask = httpsCallable<
+  { taskId: string; isCompleted: boolean },
+  { success: boolean }
+>(functions, 'toggleWorkOrderTask')
+
+/** Requires being assigned to the order and the order being IN_PROGRESS. */
+export async function toggleWorkOrderTask(taskId: string, isCompleted: boolean) {
+  const res = await callToggleWorkOrderTask({ taskId, isCompleted })
+  return res.data
+}
+
 const callStartWorking = httpsCallable<{ workOrderId: string }, { switchedFrom: string | null }>(
   functions,
   'startWorking',

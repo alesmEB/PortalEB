@@ -31,6 +31,7 @@ import {
   startOrder,
   startWorking,
   stopWorking,
+  toggleWorkOrderTask,
 } from '../lib/orderWorkflow'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
@@ -581,6 +582,16 @@ export function OrderDetailPage() {
     }
   }
 
+  async function handleToggleTask(taskId: string, isCompleted: boolean) {
+    setBusy(true)
+    try {
+      await toggleWorkOrderTask(taskId, isCompleted)
+      await loadOrder()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (order === undefined) {
     return (
       <div className="flex-1 p-4">
@@ -601,6 +612,7 @@ export function OrderDetailPage() {
 
   const myAssignment = order.assignments.find((a) => a.technicianId === profile?.id)
   const canManageOrder = !!myAssignment && (myAssignment.isAllowed || myAssignment.isLead)
+  const canToggleTasks = !!myAssignment && order.status === WorkOrderStatus.IN_PROGRESS
   const amWorkingHere = myActiveLog?.workOrderId === order.id
   const workingTechnicianIds = new Set(
     order.timeLogs.filter((log) => !log.clockOut).map((log) => log.technicianId),
@@ -774,18 +786,43 @@ export function OrderDetailPage() {
       </section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos a realizar</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos a realizar</h2>
+          {order.tasks.length > 0 && (
+            <span className="text-xs text-slate-500">
+              {order.tasks.filter((t) => t.isCompleted).length}/{order.tasks.length}
+            </span>
+          )}
+        </div>
         <ul className="mt-2 space-y-1">
-          {order.tasks.map((task) => (
-            <li key={task.id} className="flex items-center gap-2 text-sm text-slate-700">
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${
-                  task.isCompleted ? 'bg-eb-teal' : 'bg-slate-300'
-                }`}
-              />
-              {task.description}
-            </li>
-          ))}
+          {order.tasks.map((task) =>
+            canToggleTasks ? (
+              <li key={task.id}>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={task.isCompleted}
+                    disabled={busy}
+                    onChange={(e) => handleToggleTask(task.id, e.target.checked)}
+                  />
+                  <span className={task.isCompleted ? 'text-slate-400 line-through' : ''}>
+                    {task.description}
+                  </span>
+                </label>
+              </li>
+            ) : (
+              <li key={task.id} className="flex items-center gap-2 text-sm text-slate-700">
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    task.isCompleted ? 'bg-eb-teal' : 'bg-slate-300'
+                  }`}
+                />
+                <span className={task.isCompleted ? 'text-slate-400 line-through' : ''}>
+                  {task.description}
+                </span>
+              </li>
+            ),
+          )}
         </ul>
       </section>
 

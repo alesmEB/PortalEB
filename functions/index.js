@@ -1104,6 +1104,65 @@ exports.reportIncident = onCall(async (request) => {
   return { incidentId }
 })
 
+const GET_TASK_FOR_TOGGLE_QUERY = `
+  query GetTaskForToggleAdmin($taskId: UUID!) {
+    workOrderTask(id: $taskId) {
+      workOrderId
+      workOrder {
+        status
+      }
+    }
+  }
+`
+const UPDATE_WORK_ORDER_TASK_MUTATION = `
+  mutation UpdateWorkOrderTaskAdmin($id: UUID!, $isCompleted: Boolean!) {
+    workOrderTask_update(id: $id, data: { isCompleted: $isCompleted })
+  }
+`
+
+// Any technician actually assigned to the order can check off a task (not
+// just isAllowed/isLead, unlike starting/completing the order) - this is
+// just progress tracking, not a lifecycle transition. Only while the order
+// is IN_PROGRESS: checking things off before work has started or after the
+// order is already COMPLETED wouldn't mean anything. Not logged to
+// OrderTracking, same reasoning as clock in/out - would get noisy fast with
+// several tasks toggled back and forth, and workOrderTask.isCompleted is
+// itself the authoritative record.
+exports.toggleWorkOrderTask = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+
+  const { taskId, isCompleted } = request.data ?? {}
+  if (typeof taskId !== 'string' || typeof isCompleted !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const taskRes = await dataConnect.executeGraphqlRead(GET_TASK_FOR_TOGGLE_QUERY, {
+    variables: { taskId },
+  })
+  const task = taskRes.data.workOrderTask
+  if (!task) {
+    throw new HttpsError('not-found', 'La tarea no existe.')
+  }
+  if (task.workOrder.status !== 'IN_PROGRESS') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Solo se pueden marcar tareas mientras la orden está en progreso.',
+    )
+  }
+
+  const assignment = await getMyAssignment(task.workOrderId, request.auth.uid)
+  if (!assignment) {
+    throw new HttpsError('permission-denied', 'No estás asignado a esta orden.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_WORK_ORDER_TASK_MUTATION, {
+    variables: { id: taskId, isCompleted },
+  })
+  return { success: true }
+})
+
 // Individual clock in/out isn't logged to OrderTracking (see
 // OrderDetailPage's comment on the client side) - the TimeLog table is the
 // authoritative record. The "already working elsewhere, switch shifts?"

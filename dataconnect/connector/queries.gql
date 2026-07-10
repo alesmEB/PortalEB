@@ -239,6 +239,9 @@ query ListAssignedWorkOrders @auth(level: USER) {
     scheduledDates: workOrderScheduledDates_on_workOrder(orderBy: { date: ASC }) {
       date
     }
+    tasks: workOrderTasks_on_workOrder {
+      isCompleted
+    }
   }
 }
 
@@ -264,6 +267,9 @@ query ListWorkOrderScheduledDates @auth(level: USER) {
         technician {
           displayName
         }
+      }
+      tasks: workOrderTasks_on_workOrder {
+        isCompleted
       }
     }
   }
