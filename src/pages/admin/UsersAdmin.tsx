@@ -14,6 +14,7 @@ import {
 import { SearchInput } from '../../components/SearchInput'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { createAuthUser } from '../../lib/secondaryAuth'
+import { syncUserClaims } from '../../lib/userClaims'
 
 const roleLabel: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
@@ -147,6 +148,7 @@ function CreateUserForm({
       for (const permissionId of selected) {
         await grantPermission({ userId: uid, permissionId })
       }
+      await syncUserClaims(uid).catch(() => {})
       onCreated()
     } catch {
       setError(
@@ -235,6 +237,7 @@ function EditUserForm({
       const toRevoke = [...initialPermissionIds].filter((id) => !selected.has(id))
       for (const permissionId of toGrant) await grantPermission({ userId: user.id, permissionId })
       for (const permissionId of toRevoke) await revokePermission({ userId: user.id, permissionId })
+      await syncUserClaims(user.id).catch(() => {})
       onSaved()
     } finally {
       setSubmitting(false)

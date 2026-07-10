@@ -12,23 +12,29 @@ rules_version = '2';
 // a customer's linked account change) so rules don't need to look up
 // relational Data Connect data at request time.
 //
-// There's no Cloud Function yet syncing Data Connect role/permissions onto
-// Auth custom claims, so request.auth.token has neither - hasPermission()
-// checks below can't be enforced server-side yet and are effectively
-// client-side only for now (same limitation as every Data Connect
-// @auth(level: USER) mutation - see mutations.gql header). "Admin" status is
-// mirrored into the adminUsers collection instead (kept in sync by
-// AuthContext on every login) specifically so these rules have something to
-// check without custom claims.
+// The syncUserClaims Cloud Function mirrors Data Connect's User.role and
+// granted permissions onto this uid's Auth custom claims (see
+// functions/index.js) - called on every login and right after an admin
+// edits someone's role/permissions. isAdmin() below also falls back to the
+// older adminUsers existence-mirror for any session whose token predates
+// this (e.g. one that hasn't refreshed since rollout); that mirror can be
+// retired once we're confident every active session has synced claims.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
       return request.auth != null;
     }
 
+    function hasPermission(permission) {
+      return isSignedIn() &&
+        request.auth.token.permissions is list &&
+        permission in request.auth.token.permissions;
+    }
+
     function isAdmin() {
       return isSignedIn() &&
-        exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
+        (request.auth.token.role == 'ADMIN' ||
+         exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid)));
     }
 
     function isParticipant(chatData) {
@@ -59,6 +65,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if canAccessChat(get(/databases/$(database)/documents/clientChats/$(orderId)).data);
         allow create: if canAccessChat(get(/databases/$(database)/documents/clientChats/$(orderId)).data) &&
+          hasPermission('chat:write') &&
           request.resource.data.senderId == request.auth.uid &&
           request.resource.data.createdAt == request.time;
         allow update, delete: if false;
@@ -74,6 +81,7 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if canAccessChat(get(/databases/$(database)/documents/technicianChats/$(orderId)).data);
         allow create: if canAccessChat(get(/databases/$(database)/documents/technicianChats/$(orderId)).data) &&
+          hasPermission('chat:write') &&
           request.resource.data.senderId == request.auth.uid &&
           request.resource.data.createdAt == request.time;
         allow update, delete: if false;

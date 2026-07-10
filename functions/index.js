@@ -1,8 +1,25 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
 const { onDocumentCreated } = require('firebase-functions/v2/firestore')
+const { getDataConnect } = require('firebase-admin/data-connect')
 const admin = require('firebase-admin')
 
 admin.initializeApp()
+
+// Matches dataconnect/dataconnect.yaml - the Admin SDK talks to this
+// service directly, bypassing every @auth(level: ...) directive (same
+// trust model as the Firestore Admin SDK bypassing security rules).
+const DATA_CONNECT_CONFIG = { location: 'europe-southwest1', serviceId: 'portaleb-service' }
+
+const GET_USER_FOR_CLAIMS_QUERY = `
+  query GetUserForClaims($id: String!) {
+    user(id: $id) {
+      role
+      userPermissions: userPermissions_on_user {
+        permission { key }
+      }
+    }
+  }
+`
 
 function chunk(items, size) {
   const chunks = []
@@ -111,3 +128,35 @@ exports.onTechnicianChatMessageCreated = onDocumentCreated(
   'technicianChats/{orderId}/messages/{messageId}',
   (event) => notifyNewChatMessage(event, 'technicians'),
 )
+
+// Recomputes `uid`'s custom claims (role + permissions) straight from Data
+// Connect - the single source of truth - and overwrites whatever the token
+// currently has. Safe to let any signed-in user trigger for any uid: the
+// claims are never taken from the caller's input, only re-derived from the
+// DB, so calling this can never grant more than what's already true there.
+// Called from AuthContext on every login (self-healing, catches anyone
+// whose token predates a role/permission change) and from UsersAdmin right
+// after an admin edits someone's role/permissions (so it takes effect
+// immediately instead of waiting for their token's natural refresh).
+exports.syncUserClaims = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+
+  const uid = typeof request.data?.uid === 'string' && request.data.uid ? request.data.uid : request.auth.uid
+
+  const dataConnect = getDataConnect(DATA_CONNECT_CONFIG)
+  const { data } = await dataConnect.executeGraphqlRead(GET_USER_FOR_CLAIMS_QUERY, {
+    variables: { id: uid },
+  })
+
+  if (!data.user) {
+    throw new HttpsError('not-found', 'Usuario no encontrado.')
+  }
+
+  const role = data.user.role
+  const permissions = data.user.userPermissions.map((up) => up.permission.key)
+  await admin.auth().setCustomUserClaims(uid, { role, permissions })
+
+  return { role, permissions }
+})
