@@ -13,7 +13,19 @@ import { usePermission } from '../hooks/usePermission'
 import { setWorkOrderScheduledDate } from '../lib/calendar'
 import { FRESH } from '../lib/dataConnectOptions'
 import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
-import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateKey } from '../lib/week'
+import {
+  addDays,
+  addMonths,
+  formatDayLabel,
+  formatMonthLabel,
+  formatWeekRange,
+  monthGridDays,
+  startOfMonth,
+  startOfWeek,
+  toDateKey,
+} from '../lib/week'
+
+const weekdayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 type AssignedOrder = ListAssignedWorkOrdersData['workOrders'][number]
 type ScheduledEntry = ListWorkOrderScheduledDatesData['workOrderScheduledDates'][number]
@@ -30,9 +42,12 @@ export function CalendarPage() {
   const [assignedOrders, setAssignedOrders] = useState<AssignedOrder[] | null>(null)
   const [scheduledEntries, setScheduledEntries] = useState<ScheduledEntry[] | null>(null)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
+  const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()))
+  const [view, setView] = useState<'week' | 'month'>('week')
   const [savingKey, setSavingKey] = useState<string | null>(null)
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
+  const monthDays = useMemo(() => monthGridDays(monthCursor), [monthCursor])
   const todayKey = toDateKey(new Date())
 
   function load() {
@@ -81,28 +96,75 @@ export function CalendarPage() {
       <BackButton to="/" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-lg font-semibold text-eb-blue-dark">Calendario semanal</h1>
-          <p className="text-sm text-slate-500">{formatWeekRange(weekStart)}</p>
+          <h1 className="text-lg font-semibold text-eb-blue-dark">
+            {view === 'week' ? 'Calendario semanal' : 'Calendario mensual'}
+          </h1>
+          <p className="text-sm capitalize text-slate-500">
+            {view === 'week' ? formatWeekRange(weekStart) : formatMonthLabel(monthCursor)}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setWeekStart((d) => addDays(d, -7))}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
-          >
-            ← Anterior
-          </button>
-          <button
-            onClick={() => setWeekStart(startOfWeek(new Date()))}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
-          >
-            Hoy
-          </button>
-          <button
-            onClick={() => setWeekStart((d) => addDays(d, 7))}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
-          >
-            Siguiente →
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-slate-300 p-0.5">
+            <button
+              onClick={() => setView('week')}
+              className={`rounded-md px-2.5 py-1 text-sm ${
+                view === 'week' ? 'bg-eb-blue text-white' : 'text-slate-600'
+              }`}
+            >
+              Semana
+            </button>
+            <button
+              onClick={() => setView('month')}
+              className={`rounded-md px-2.5 py-1 text-sm ${
+                view === 'month' ? 'bg-eb-blue text-white' : 'text-slate-600'
+              }`}
+            >
+              Mes
+            </button>
+          </div>
+          {view === 'week' ? (
+            <>
+              <button
+                onClick={() => setWeekStart((d) => addDays(d, -7))}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
+              >
+                ← Anterior
+              </button>
+              <button
+                onClick={() => setWeekStart(startOfWeek(new Date()))}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
+              >
+                Hoy
+              </button>
+              <button
+                onClick={() => setWeekStart((d) => addDays(d, 7))}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
+              >
+                Siguiente →
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setMonthCursor((d) => addMonths(d, -1))}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
+              >
+                ← Anterior
+              </button>
+              <button
+                onClick={() => setMonthCursor(startOfMonth(new Date()))}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
+              >
+                Hoy
+              </button>
+              <button
+                onClick={() => setMonthCursor((d) => addMonths(d, 1))}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue"
+              >
+                Siguiente →
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -110,7 +172,55 @@ export function CalendarPage() {
         <p className="mt-4 text-sm text-slate-500">Cargando...</p>
       )}
 
-      {assignedOrders !== null && scheduledEntries !== null && (
+      {assignedOrders !== null && scheduledEntries !== null && view === 'month' && (
+        <div className="mt-4">
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-t-xl border border-slate-200 bg-slate-200 text-center text-[11px] font-semibold text-slate-500">
+            {weekdayLabels.map((label) => (
+              <div key={label} className="bg-white/90 py-1">
+                {label}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-xl border border-t-0 border-slate-200 bg-slate-200">
+            {monthDays.map((day) => {
+              const key = toDateKey(day)
+              const isToday = key === todayKey
+              const inMonth = day.getMonth() === monthCursor.getMonth()
+              const dayEntries = entriesByDate.get(key) ?? []
+              return (
+                <div
+                  key={key}
+                  className={`min-h-[80px] bg-white/90 p-1 ${!inMonth ? 'opacity-40' : ''} ${
+                    isToday ? 'ring-2 ring-inset ring-eb-blue' : ''
+                  }`}
+                >
+                  <p
+                    className={`text-[11px] font-semibold ${
+                      isToday ? 'text-eb-blue-dark' : 'text-slate-500'
+                    }`}
+                  >
+                    {day.getDate()}
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-0.5">
+                    {dayEntries.map((entry) => (
+                      <button
+                        key={entry.workOrder.id}
+                        onClick={() => navigate(`/orders/${entry.workOrder.id}`)}
+                        title={`${entry.workOrder.code} · ${entry.workOrder.customer.name}`}
+                        className={`rounded px-1 py-0.5 font-mono text-[9px] ${workOrderStatusColor[entry.workOrder.status]}`}
+                      >
+                        {entry.workOrder.code}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {assignedOrders !== null && scheduledEntries !== null && view === 'week' && (
         <>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
             {days.map((day) => {
