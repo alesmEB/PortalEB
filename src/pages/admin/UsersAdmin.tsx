@@ -1,21 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  UserRole,
-  createPermission,
-  createUserProfile,
-  grantPermission,
-  listPermissions,
-  listUsers,
-  revokePermission,
-  updateUserProfile,
-  type ListPermissionsData,
-  type ListUsersData,
-} from '@dataconnect/generated'
+import { UserRole, listPermissions, listUsers, type ListPermissionsData, type ListUsersData } from '@dataconnect/generated'
 import { HasPermission } from '../../components/HasPermission'
 import { SearchInput } from '../../components/SearchInput'
+import { adminCreatePermission, adminCreateUser, adminUpdateUser } from '../../lib/adminActions'
 import { FRESH } from '../../lib/dataConnectOptions'
-import { createAuthUser } from '../../lib/secondaryAuth'
-import { changeUserPassword, syncUserClaims } from '../../lib/userClaims'
+import { changeUserPassword } from '../../lib/userClaims'
 
 const roleLabel: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
@@ -77,7 +66,7 @@ function CreatePermissionForm({ onCreated }: { onCreated: () => void }) {
     setSubmitting(true)
     setError(null)
     try {
-      await createPermission({ key: key.trim(), description: description.trim() })
+      await adminCreatePermission(key.trim(), description.trim())
       setKey('')
       setDescription('')
       onCreated()
@@ -144,12 +133,13 @@ function CreateUserForm({
     setSubmitting(true)
     setError(null)
     try {
-      const uid = await createAuthUser(email.trim(), password)
-      await createUserProfile({ id: uid, email: email.trim(), displayName: displayName.trim(), role })
-      for (const permissionId of selected) {
-        await grantPermission({ userId: uid, permissionId })
-      }
-      await syncUserClaims(uid).catch(() => {})
+      await adminCreateUser({
+        email: email.trim(),
+        password,
+        displayName: displayName.trim(),
+        role,
+        permissionIds: [...selected],
+      })
       onCreated()
     } catch {
       setError(
@@ -304,12 +294,13 @@ function EditUserForm({
   async function handleSave() {
     setSubmitting(true)
     try {
-      await updateUserProfile({ id: user.id, displayName: displayName.trim(), role, isActive })
-      const toGrant = [...selected].filter((id) => !initialPermissionIds.has(id))
-      const toRevoke = [...initialPermissionIds].filter((id) => !selected.has(id))
-      for (const permissionId of toGrant) await grantPermission({ userId: user.id, permissionId })
-      for (const permissionId of toRevoke) await revokePermission({ userId: user.id, permissionId })
-      await syncUserClaims(user.id).catch(() => {})
+      await adminUpdateUser({
+        userId: user.id,
+        displayName: displayName.trim(),
+        role,
+        isActive,
+        permissionIds: [...selected],
+      })
       onSaved()
     } finally {
       setSubmitting(false)

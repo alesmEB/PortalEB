@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react'
-import {
-  createBoat,
-  createEngine,
-  deleteEngine,
-  listBoats,
-  listCustomers,
-  updateBoat,
-  updateEngine,
-  type ListBoatsData,
-  type ListCustomersData,
-} from '@dataconnect/generated'
+import { listBoats, listCustomers, type ListBoatsData, type ListCustomersData } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
+import {
+  adminCreateBoat,
+  adminCreateEngine,
+  adminDeleteEngine,
+  adminUpdateBoat,
+  adminUpdateEngine,
+} from '../../lib/adminActions'
 import { FRESH } from '../../lib/dataConnectOptions'
 
 type BoatRow = ListBoatsData['boats'][number]
@@ -31,8 +28,8 @@ function EngineRow({ engine, onChanged }: { engine: EngineRowData; onChanged: ()
   async function handleSave() {
     setSubmitting(true)
     try {
-      await updateEngine({
-        id: engine.id,
+      await adminUpdateEngine({
+        engineId: engine.id,
         engineType: engineType.trim(),
         chassisNumber: chassisNumber.trim(),
         propellerSerialNumber: propellerSerialNumber.trim(),
@@ -47,7 +44,7 @@ function EngineRow({ engine, onChanged }: { engine: EngineRowData; onChanged: ()
     if (!confirm('¿Eliminar este motor?')) return
     setSubmitting(true)
     try {
-      await deleteEngine({ id: engine.id })
+      await adminDeleteEngine(engine.id)
       onChanged()
     } finally {
       setSubmitting(false)
@@ -105,7 +102,7 @@ function AddEngineToBoat({ boatId, onAdded }: { boatId: string; onAdded: () => v
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      await createEngine({
+      await adminCreateEngine({
         boatId,
         engineType: engineType.trim(),
         chassisNumber: chassisNumber.trim(),
@@ -180,25 +177,22 @@ function BoatForm({
     setSubmitting(true)
     try {
       if (boat) {
-        await updateBoat({
-          id: boat.id,
+        await adminUpdateBoat({
+          boatId: boat.id,
           ownerId,
           name: name.trim(),
           registrationNumber: registrationNumber.trim() || undefined,
         })
       } else {
-        const res = await createBoat({
-          ownerId,
-          name: name.trim(),
-          registrationNumber: registrationNumber.trim() || undefined,
-        })
-        const boatId = res.data.boat_insert.id
         const filled = newEngines.filter(
           (e) => e.engineType.trim() && e.chassisNumber.trim() && e.propellerSerialNumber.trim(),
         )
-        for (const engine of filled) {
-          await createEngine({ boatId, ...engine })
-        }
+        await adminCreateBoat({
+          ownerId,
+          name: name.trim(),
+          registrationNumber: registrationNumber.trim() || undefined,
+          engines: filled,
+        })
       }
       onSaved()
     } finally {

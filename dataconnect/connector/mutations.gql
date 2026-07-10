@@ -2,115 +2,15 @@
 # OrderTracking row from the client/Cloud Function right after it succeeds,
 # so the audit trail stays authoritative for who/what/when.
 
-# Admin section: users, boats and customers management. Gated client-side by
-# the "admin:manage" permission (see usePermission/HasPermission) - same
-# @auth(level: USER)-only enforcement as the rest of the connector, not yet
-# tightened to role/permission checks server-side (no custom claims sync).
-
-mutation CreateUserProfile($id: String!, $email: String!, $displayName: String!, $role: UserRole!) @auth(level: USER) {
-  user_insert(data: { id: $id, email: $email, displayName: $displayName, role: $role })
-}
-
-mutation UpdateUserProfile(
-  $id: String!
-  $displayName: String!
-  $role: UserRole!
-  $isActive: Boolean!
-) @auth(level: USER) {
-  user_update(id: $id, data: { displayName: $displayName, role: $role, isActive: $isActive })
-}
-
-mutation CreatePermission($key: String!, $description: String!) @auth(level: USER) {
-  permission_insert(data: { key: $key, description: $description })
-}
-
-mutation GrantPermission($userId: String!, $permissionId: UUID!) @auth(level: USER) {
-  userPermission_insert(
-    data: { userId: $userId, permissionId: $permissionId, grantedById_expr: "auth.uid" }
-  )
-}
-
-mutation RevokePermission($userId: String!, $permissionId: UUID!) @auth(level: USER) {
-  userPermission_delete(key: { userId: $userId, permissionId: $permissionId })
-}
-
-mutation UpdateCustomer(
-  $id: UUID!
-  $name: String!
-  $contactName: String!
-  $phone: String!
-  $email: String
-  $linkedUserId: String
-) @auth(level: USER) {
-  customer_update(
-    id: $id
-    data: {
-      name: $name
-      contactName: $contactName
-      phone: $phone
-      email: $email
-      linkedUserId: $linkedUserId
-    }
-  )
-}
-
-mutation UpdateBoat($id: UUID!, $ownerId: UUID!, $name: String!, $registrationNumber: String) @auth(level: USER) {
-  boat_update(
-    id: $id
-    data: { ownerId: $ownerId, name: $name, registrationNumber: $registrationNumber }
-  )
-}
-
-mutation UpdateEngine(
-  $id: UUID!
-  $engineType: String!
-  $chassisNumber: String!
-  $propellerSerialNumber: String!
-) @auth(level: USER) {
-  engine_update(
-    id: $id
-    data: {
-      engineType: $engineType
-      chassisNumber: $chassisNumber
-      propellerSerialNumber: $propellerSerialNumber
-    }
-  )
-}
-
-mutation DeleteEngine($id: UUID!) @auth(level: USER) {
-  engine_delete(id: $id)
-}
-
-mutation CreateCustomer(
-  $name: String!
-  $contactName: String!
-  $phone: String!
-  $email: String
-) @auth(level: USER) {
-  customer_insert(
-    data: { name: $name, contactName: $contactName, phone: $phone, email: $email }
-  )
-}
-
-mutation CreateBoat($ownerId: UUID!, $name: String!, $registrationNumber: String) @auth(level: USER) {
-  boat_insert(data: { ownerId: $ownerId, name: $name, registrationNumber: $registrationNumber })
-}
-
-mutation CreateEngine(
-  $boatId: UUID!
-  $engineType: String!
-  $chassisNumber: String!
-  $propellerSerialNumber: String!
-) @auth(level: USER) {
-  engine_insert(
-    data: {
-      boatId: $boatId
-      engineType: $engineType
-      chassisNumber: $chassisNumber
-      propellerSerialNumber: $propellerSerialNumber
-    }
-  )
-}
+# Admin section (users, permissions, customers, boats, engines) moved to
+# adminCreateUser/adminUpdateUser/adminCreatePermission/adminCreateCustomer/
+# adminUpdateCustomer/adminCreateBoat/adminUpdateBoat/adminCreateEngine/
+# adminUpdateEngine/adminDeleteEngine Cloud Functions (see functions/index.js)
+# - the named mutations that used to live here only enforced
+# @auth(level: USER), so any signed-in account (not just admins) could call
+# them directly against the Data Connect endpoint, e.g. grantPermission on
+# themselves to self-escalate to admin:manage. Removed once the client no
+# longer called them (see git history if any of these are ever needed again).
 
 # Read-then-write: fine for a single small admin team, see OrderSequence
 # comment in schema.gql for the tradeoff.

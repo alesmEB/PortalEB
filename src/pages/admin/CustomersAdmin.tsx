@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
 import {
   UserRole,
-  createCustomer,
   listCustomers,
   listUsers,
   listWorkOrdersForCustomer,
-  updateCustomer,
   type ListCustomersData,
   type ListUsersData,
 } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
+import { adminCreateCustomer, adminUpdateCustomer } from '../../lib/adminActions'
 import { setChatParticipants } from '../../lib/chat'
 import { FRESH } from '../../lib/dataConnectOptions'
 
@@ -41,8 +40,8 @@ function CustomerForm({
     setSubmitting(true)
     try {
       if (customer) {
-        await updateCustomer({
-          id: customer.id,
+        await adminUpdateCustomer({
+          customerId: customer.id,
           name: name.trim(),
           contactName: contactName.trim(),
           phone: phone.trim(),
@@ -62,7 +61,7 @@ function CustomerForm({
           )
         }
       } else {
-        await createCustomer({
+        await adminCreateCustomer({
           name: name.trim(),
           contactName: contactName.trim(),
           phone: phone.trim(),

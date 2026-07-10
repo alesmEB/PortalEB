@@ -82,7 +82,13 @@ enum OrderEventType {
 # ---------------------------------------------------------------------------
 
 type User @table(name: "users") {
-  id: String! @default(expr: "auth.uid")
+  # No @default(expr: "auth.uid") - every insert (client self-signup never
+  # existed; accounts are always admin-created) already passes the target
+  # user's uid explicitly. Keeping that default made Data Connect try to
+  # resolve auth.uid on every insert regardless of the explicit override,
+  # which fails hard ("Failed to compute String_Expr") under the Admin SDK's
+  # unauthenticated request context - see adminCreateUser in functions/index.js.
+  id: String!
   email: String! @unique
   displayName: String!
   phone: String

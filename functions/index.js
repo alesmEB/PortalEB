@@ -32,8 +32,8 @@ const GET_USER_FOR_CLAIMS_QUERY = `
 // resolve that expression against, so the caller's uid is passed explicitly
 // as a plain variable instead).
 const CREATE_CUSTOMER_MUTATION = `
-  mutation CreateCustomerAdmin($name: String!, $contactName: String!, $phone: String!) {
-    customer_insert(data: { name: $name, contactName: $contactName, phone: $phone })
+  mutation CreateCustomerAdmin($name: String!, $contactName: String!, $phone: String!, $email: String) {
+    customer_insert(data: { name: $name, contactName: $contactName, phone: $phone, email: $email })
   }
 `
 const CREATE_BOAT_MUTATION = `
@@ -507,26 +507,32 @@ exports.onTechnicianChatMessageCreated = onDocumentCreated(
 // whose token predates a role/permission change) and from UsersAdmin right
 // after an admin edits someone's role/permissions (so it takes effect
 // immediately instead of waiting for their token's natural refresh).
+// Shared by syncUserClaims below and by the adminCreateUser/adminUpdateUser
+// functions further down, which need the same recompute after they touch a
+// user's role/permissions - saves those callers a redundant client round
+// trip to syncUserClaims right after.
+async function computeAndSetClaims(uid) {
+  const { data } = await dataConnect.executeGraphqlRead(GET_USER_FOR_CLAIMS_QUERY, {
+    variables: { id: uid },
+  })
+  if (!data.user) return null
+  const role = data.user.role
+  const permissions = data.user.userPermissions.map((up) => up.permission.key)
+  await admin.auth().setCustomUserClaims(uid, { role, permissions })
+  return { role, permissions }
+}
+
 exports.syncUserClaims = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
   }
 
   const uid = typeof request.data?.uid === 'string' && request.data.uid ? request.data.uid : request.auth.uid
-
-  const { data } = await dataConnect.executeGraphqlRead(GET_USER_FOR_CLAIMS_QUERY, {
-    variables: { id: uid },
-  })
-
-  if (!data.user) {
+  const result = await computeAndSetClaims(uid)
+  if (!result) {
     throw new HttpsError('not-found', 'Usuario no encontrado.')
   }
-
-  const role = data.user.role
-  const permissions = data.user.userPermissions.map((up) => up.permission.key)
-  await admin.auth().setCustomUserClaims(uid, { role, permissions })
-
-  return { role, permissions }
+  return result
 })
 
 // Lets an admin set a user's password directly, bypassing the reset-email
@@ -1290,3 +1296,354 @@ exports.notifyActiveShifts = onSchedule(
     )
   },
 )
+
+// ---------------------------------------------------------------------------
+// Admin CRUD (users, permissions, customers, boats, engines) - previously
+// called directly from the client via the named mutations in
+// dataconnect/connector/mutations.gql, all of which only enforce
+// @auth(level: USER) (any signed-in user, not just admins). The "Administración"
+// section was only ever hidden client-side by HasPermission, so any signed-in
+// account (even a CLIENT with zero grants) could call e.g. grantPermission on
+// themselves directly against the Data Connect endpoint and self-escalate to
+// admin:manage - these functions close that gap with a real server-side check.
+// The old named mutations are removed from the connector once every client
+// call site below has switched over (see mutations.gql).
+// ---------------------------------------------------------------------------
+
+function requirePermission(request, permission) {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+  const permissions = Array.isArray(request.auth.token?.permissions) ? request.auth.token.permissions : []
+  if (!permissions.includes(permission)) {
+    throw new HttpsError('permission-denied', 'No tienes permiso para realizar esta acción.')
+  }
+}
+
+const CREATE_USER_PROFILE_MUTATION = `
+  mutation CreateUserProfileAdmin($id: String!, $email: String!, $displayName: String!, $role: UserRole!) {
+    user_insert(data: { id: $id, email: $email, displayName: $displayName, role: $role })
+  }
+`
+const UPDATE_USER_PROFILE_MUTATION = `
+  mutation UpdateUserProfileAdmin($id: String!, $displayName: String!, $role: UserRole!, $isActive: Boolean!) {
+    user_update(id: $id, data: { displayName: $displayName, role: $role, isActive: $isActive })
+  }
+`
+const CREATE_PERMISSION_MUTATION = `
+  mutation CreatePermissionAdmin($key: String!, $description: String!) {
+    permission_insert(data: { key: $key, description: $description })
+  }
+`
+const GRANT_PERMISSION_MUTATION = `
+  mutation GrantPermissionAdmin($userId: String!, $permissionId: UUID!, $grantedById: String!) {
+    userPermission_insert(data: { userId: $userId, permissionId: $permissionId, grantedById: $grantedById })
+  }
+`
+const REVOKE_PERMISSION_MUTATION = `
+  mutation RevokePermissionAdmin($userId: String!, $permissionId: UUID!) {
+    userPermission_delete(key: { userId: $userId, permissionId: $permissionId })
+  }
+`
+const GET_USER_PERMISSIONS_QUERY = `
+  query GetUserPermissionsAdmin($userId: String!) {
+    userPermissions(where: { userId: { eq: $userId } }) {
+      permissionId
+    }
+  }
+`
+const UPDATE_CUSTOMER_MUTATION = `
+  mutation UpdateCustomerAdmin(
+    $id: UUID!
+    $name: String!
+    $contactName: String!
+    $phone: String!
+    $email: String
+    $linkedUserId: String
+  ) {
+    customer_update(
+      id: $id
+      data: { name: $name, contactName: $contactName, phone: $phone, email: $email, linkedUserId: $linkedUserId }
+    )
+  }
+`
+const UPDATE_BOAT_MUTATION = `
+  mutation UpdateBoatAdmin($id: UUID!, $ownerId: UUID!, $name: String!, $registrationNumber: String) {
+    boat_update(id: $id, data: { ownerId: $ownerId, name: $name, registrationNumber: $registrationNumber })
+  }
+`
+const UPDATE_ENGINE_MUTATION = `
+  mutation UpdateEngineAdmin(
+    $id: UUID!
+    $engineType: String!
+    $chassisNumber: String!
+    $propellerSerialNumber: String!
+  ) {
+    engine_update(
+      id: $id
+      data: { engineType: $engineType, chassisNumber: $chassisNumber, propellerSerialNumber: $propellerSerialNumber }
+    )
+  }
+`
+const DELETE_ENGINE_MUTATION = `
+  mutation DeleteEngineAdmin($id: UUID!) {
+    engine_delete(id: $id)
+  }
+`
+
+// Replaces createAuthUser (client-side secondary-Firebase-app workaround) +
+// createUserProfile + a grantPermission loop + a trailing syncUserClaims
+// call - one round trip instead of up to 2+N, and no window where the Auth
+// account exists without its Data Connect profile (rolled back on failure).
+exports.adminCreateUser = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { email, password, displayName, role, permissionIds } = request.data ?? {}
+  if (
+    typeof email !== 'string' ||
+    typeof password !== 'string' ||
+    typeof displayName !== 'string' ||
+    typeof role !== 'string' ||
+    !email.trim() ||
+    !displayName.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  if (password.length < 6) {
+    throw new HttpsError('invalid-argument', 'La contraseña debe tener al menos 6 caracteres.')
+  }
+
+  let userRecord
+  try {
+    userRecord = await admin.auth().createUser({ email: email.trim(), password, displayName: displayName.trim() })
+  } catch {
+    throw new HttpsError('already-exists', 'Ese email ya está en uso.')
+  }
+
+  try {
+    await dataConnect.executeGraphql(CREATE_USER_PROFILE_MUTATION, {
+      variables: { id: userRecord.uid, email: email.trim(), displayName: displayName.trim(), role },
+    })
+    for (const permissionId of Array.isArray(permissionIds) ? permissionIds : []) {
+      await dataConnect.executeGraphql(GRANT_PERMISSION_MUTATION, {
+        variables: { userId: userRecord.uid, permissionId, grantedById: request.auth.uid },
+      })
+    }
+    await computeAndSetClaims(userRecord.uid)
+  } catch (err) {
+    console.error('[adminCreateUser]', JSON.stringify(err, Object.getOwnPropertyNames(err)))
+    await admin.auth().deleteUser(userRecord.uid).catch(() => {})
+    throw new HttpsError('internal', 'No se pudo crear el usuario.', err.message)
+  }
+
+  return { uid: userRecord.uid }
+})
+
+// Replaces updateUserProfile + a grant/revoke diff loop + a trailing
+// syncUserClaims call. `permissionIds` is the full desired set (same
+// "client sends the end state, server diffs against current" shape as
+// assignTechnicians).
+exports.adminUpdateUser = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { userId, displayName, role, isActive, permissionIds } = request.data ?? {}
+  if (
+    typeof userId !== 'string' ||
+    typeof displayName !== 'string' ||
+    typeof role !== 'string' ||
+    typeof isActive !== 'boolean' ||
+    !Array.isArray(permissionIds)
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_USER_PROFILE_MUTATION, {
+    variables: { id: userId, displayName: displayName.trim(), role, isActive },
+  })
+
+  const currentRes = await dataConnect.executeGraphqlRead(GET_USER_PERMISSIONS_QUERY, {
+    variables: { userId },
+  })
+  const currentIds = new Set(currentRes.data.userPermissions.map((p) => p.permissionId))
+  const desiredIds = new Set(permissionIds)
+
+  for (const permissionId of permissionIds) {
+    if (!currentIds.has(permissionId)) {
+      await dataConnect.executeGraphql(GRANT_PERMISSION_MUTATION, {
+        variables: { userId, permissionId, grantedById: request.auth.uid },
+      })
+    }
+  }
+  for (const permissionId of currentIds) {
+    if (!desiredIds.has(permissionId)) {
+      await dataConnect.executeGraphql(REVOKE_PERMISSION_MUTATION, { variables: { userId, permissionId } })
+    }
+  }
+
+  await computeAndSetClaims(userId)
+  return { success: true }
+})
+
+exports.adminCreatePermission = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { key, description } = request.data ?? {}
+  if (typeof key !== 'string' || typeof description !== 'string' || !description.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  if (!/^[a-z]+:[a-z]+$/.test(key.trim())) {
+    throw new HttpsError('invalid-argument', 'La clave debe tener el formato "área:acción", en minúsculas.')
+  }
+
+  await dataConnect.executeGraphql(CREATE_PERMISSION_MUTATION, {
+    variables: { key: key.trim(), description: description.trim() },
+  })
+  return { success: true }
+})
+
+exports.adminCreateCustomer = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { name, contactName, phone, email } = request.data ?? {}
+  if (
+    typeof name !== 'string' ||
+    typeof contactName !== 'string' ||
+    typeof phone !== 'string' ||
+    !name.trim() ||
+    !contactName.trim() ||
+    !phone.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(CREATE_CUSTOMER_MUTATION, {
+    variables: { name: name.trim(), contactName: contactName.trim(), phone: phone.trim(), email: email || null },
+  })
+  return { success: true }
+})
+
+exports.adminUpdateCustomer = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { customerId, name, contactName, phone, email, linkedUserId } = request.data ?? {}
+  if (
+    typeof customerId !== 'string' ||
+    typeof name !== 'string' ||
+    typeof contactName !== 'string' ||
+    typeof phone !== 'string' ||
+    !name.trim() ||
+    !contactName.trim() ||
+    !phone.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_CUSTOMER_MUTATION, {
+    variables: {
+      id: customerId,
+      name: name.trim(),
+      contactName: contactName.trim(),
+      phone: phone.trim(),
+      email: email || null,
+      linkedUserId: linkedUserId || null,
+    },
+  })
+  return { success: true }
+})
+
+// Optionally seeds the boat's initial engines in the same call (mirrors
+// createWorkOrder's new-boat path) instead of a separate createEngine per
+// row from the client.
+exports.adminCreateBoat = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { ownerId, name, registrationNumber, engines } = request.data ?? {}
+  if (typeof ownerId !== 'string' || typeof name !== 'string' || !name.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const res = await dataConnect.executeGraphql(CREATE_BOAT_MUTATION, {
+    variables: { ownerId, name: name.trim(), registrationNumber: registrationNumber || null },
+  })
+  const boatId = res.data.boat_insert.id
+
+  for (const engine of Array.isArray(engines) ? engines : []) {
+    await dataConnect.executeGraphql(CREATE_ENGINE_MUTATION, {
+      variables: {
+        boatId,
+        engineType: engine.engineType,
+        chassisNumber: engine.chassisNumber,
+        propellerSerialNumber: engine.propellerSerialNumber,
+      },
+    })
+  }
+
+  return { boatId }
+})
+
+exports.adminUpdateBoat = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { boatId, ownerId, name, registrationNumber } = request.data ?? {}
+  if (typeof boatId !== 'string' || typeof ownerId !== 'string' || typeof name !== 'string' || !name.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_BOAT_MUTATION, {
+    variables: { id: boatId, ownerId, name: name.trim(), registrationNumber: registrationNumber || null },
+  })
+  return { success: true }
+})
+
+exports.adminCreateEngine = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { boatId, engineType, chassisNumber, propellerSerialNumber } = request.data ?? {}
+  if (
+    typeof boatId !== 'string' ||
+    typeof engineType !== 'string' ||
+    typeof chassisNumber !== 'string' ||
+    typeof propellerSerialNumber !== 'string' ||
+    !engineType.trim() ||
+    !chassisNumber.trim() ||
+    !propellerSerialNumber.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(CREATE_ENGINE_MUTATION, {
+    variables: { boatId, engineType, chassisNumber, propellerSerialNumber },
+  })
+  return { success: true }
+})
+
+exports.adminUpdateEngine = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { engineId, engineType, chassisNumber, propellerSerialNumber } = request.data ?? {}
+  if (
+    typeof engineId !== 'string' ||
+    typeof engineType !== 'string' ||
+    typeof chassisNumber !== 'string' ||
+    typeof propellerSerialNumber !== 'string'
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_ENGINE_MUTATION, {
+    variables: { id: engineId, engineType, chassisNumber, propellerSerialNumber },
+  })
+  return { success: true }
+})
+
+exports.adminDeleteEngine = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { engineId } = request.data ?? {}
+  if (typeof engineId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del motor.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_ENGINE_MUTATION, { variables: { id: engineId } })
+  return { success: true }
+})
