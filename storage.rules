@@ -5,46 +5,47 @@ rules_version = '2';
 // report directly inside, and photos/quotes in their own subfolders as
 // those features are built.
 //
-// Authorization is currently "signed in" only, same as the Data Connect
-// connector (every operation there is @auth(level: USER), not permission-
-// scoped either) - role/permission enforcement is a client-side UI concern
-// for now (see usePermission/HasPermission).
+// Authorization: reads are "signed in" only (same broad model as the Data
+// Connect connector's @auth(level: USER) - no per-order authorization check
+// here, since Storage rules can't query Data Connect/Postgres to verify
+// "is this reader actually linked to this order's customer/assignments".
+// Closing that would need mirroring authorization data into Firestore, or
+// serving downloads through a Cloud Function that checks Data Connect first
+// - real gap, but a bigger architecture change than this pass; left as is.
 //
-// TODO: request.auth.token.role/.permissions are now populated for real
-// (see functions/index.js syncUserClaims and firestore.rules), so
-// role()/hasPermission() below could be activated - deliberately left
-// commented out for now. Doing it properly needs a path-by-path decision,
-// not a blind wire-up: e.g. photos/{start,final} are uploaded by whichever
-// technician is managing the order (gated client-side by canManageOrder,
-// not by the photos:upload permission), so requiring hasPermission
-// ('photos:upload') there would actually break that flow. Revisit deliberately.
+// Writes are now permission-scoped (request.auth.token.role/.permissions are
+// populated for real - see functions/index.js syncUserClaims and
+// firestore.rules). Confirmed against live data before wiring this up:
+// every currently-active user already holds photos:upload, and only ADMIN
+// users hold quotes:upload (matches the client's own HasPermission gating on
+// the quote-upload button) - so this doesn't change who can actually do
+// these things today, it just stops anyone signed in but ungranted (e.g. a
+// CLIENT account) from doing them directly against the Storage endpoint.
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // function role() {
-    //   return request.auth.token.role;
-    // }
-    //
-    // function hasPermission(permission) {
-    //   return isSignedIn() &&
-    //     request.auth.token.permissions is list &&
-    //     permission in request.auth.token.permissions;
-    // }
+    function hasPermission(permission) {
+      return isSignedIn() &&
+        request.auth.token.permissions is list &&
+        permission in request.auth.token.permissions;
+    }
 
-    // Generated report(s), directly inside the order's folder.
+    // Generated report(s), directly inside the order's folder - only ever
+    // written server-side (Admin SDK, createWorkOrder), which bypasses these
+    // rules entirely, so this is effectively read-only from any client.
     match /work-orders/{code}/{fileName} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.resource.contentType == 'application/pdf';
+      allow write: if false;
     }
 
     // Videos are capped at 20s client-side (see src/lib/media.ts) - Storage
     // rules can only see file size/type, not duration.
     match /work-orders/{code}/photos/{stage}/{fileName} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() &&
+      allow write: if hasPermission('photos:upload') &&
         stage in ['start', 'incident', 'final'] &&
         ((request.resource.contentType.matches('image/.*') &&
           request.resource.size < 15 * 1024 * 1024) ||
@@ -54,7 +55,7 @@ service firebase.storage {
 
     match /work-orders/{code}/quotes/{fileName} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() &&
+      allow write: if hasPermission('quotes:upload') &&
         request.resource.size < 20 * 1024 * 1024 &&
         request.resource.contentType == 'application/pdf';
     }

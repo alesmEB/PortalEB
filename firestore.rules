@@ -15,10 +15,10 @@ rules_version = '2';
 // The syncUserClaims Cloud Function mirrors Data Connect's User.role and
 // granted permissions onto this uid's Auth custom claims (see
 // functions/index.js) - called on every login and right after an admin
-// edits someone's role/permissions. isAdmin() below also falls back to the
-// older adminUsers existence-mirror for any session whose token predates
-// this (e.g. one that hasn't refreshed since rollout); that mirror can be
-// retired once we're confident every active session has synced claims.
+// edits someone's role/permissions. isAdmin() used to also fall back to an
+// adminUsers existence-mirror for sessions whose token predated claims
+// syncing; retired now that every active session has had a chance to sync
+// (self-healing on next login regardless, via the call in AuthContext).
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
@@ -32,9 +32,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() &&
-        (request.auth.token.role == 'ADMIN' ||
-         exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid)));
+      return isSignedIn() && request.auth.token.role == 'ADMIN';
     }
 
     function isParticipant(chatData) {
@@ -86,15 +84,6 @@ service cloud.firestore {
           request.resource.data.createdAt == request.time;
         allow update, delete: if false;
       }
-    }
-
-    // Existence-only mirror of "this uid currently has role ADMIN" in Data
-    // Connect - see isAdmin() above. Kept in sync by AuthContext on login;
-    // a user may only ever write their own doc, so a non-admin can't just
-    // grant themselves admin chat access.
-    match /adminUsers/{uid} {
-      allow read: if false;
-      allow write: if isSignedIn() && request.auth.uid == uid;
     }
 
     // One document per FCM registration token, keyed by the token itself so

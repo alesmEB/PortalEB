@@ -12,26 +12,11 @@ import {
   signOut as firebaseSignOut,
   type User as FirebaseUser,
 } from 'firebase/auth'
-import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getCurrentUser, UserRole } from '@dataconnect/generated'
-import { auth, firestore } from '../lib/firebase'
+import { auth } from '../lib/firebase'
 import { FRESH } from '../lib/dataConnectOptions'
 import { registerDeviceToken } from '../lib/pushNotifications'
 import { syncUserClaims } from '../lib/userClaims'
-
-/**
- * Firestore security rules (chat) can't read Data Connect, so a user's
- * "is admin" status is mirrored here as doc existence - self-healing on
- * every login since there's no Cloud Function reacting to role changes yet.
- */
-async function syncAdminMirror(profile: AuthUserProfile) {
-  const ref = doc(firestore, 'adminUsers', profile.id)
-  if (profile.role === UserRole.ADMIN) {
-    await setDoc(ref, { syncedAt: serverTimestamp() })
-  } else {
-    await deleteDoc(ref).catch(() => {})
-  }
-}
 
 export type { UserRole }
 
@@ -93,11 +78,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setPermissions(permissions)
         if (profile) {
           registerDeviceToken(profile.id)
-          syncAdminMirror(profile).catch(() => {})
-          // Self-healing, like syncAdminMirror above: refreshes this token's
-          // role/permissions custom claims from Data Connect on every login,
-          // then force-reloads the token so a just-changed permission is
-          // usable immediately instead of waiting for its natural refresh.
+          // Self-healing: refreshes this token's role/permissions custom
+          // claims from Data Connect on every login, then force-reloads the
+          // token so a just-changed permission is usable immediately instead
+          // of waiting for its natural refresh.
           syncUserClaims()
             .then(() => getIdToken(user, true))
             .catch(() => {})
