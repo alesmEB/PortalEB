@@ -1,7 +1,9 @@
+const { randomUUID } = require('crypto')
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
 const { onDocumentCreated } = require('firebase-functions/v2/firestore')
 const { getDataConnect } = require('firebase-admin/data-connect')
 const admin = require('firebase-admin')
+const { renderWorkOrderPdfBuffer } = require('./workOrderPdf')
 
 admin.initializeApp()
 
@@ -83,6 +85,11 @@ const CREATE_WORK_ORDER_MUTATION = `
 const CREATE_WORK_ORDER_TASK_MUTATION = `
   mutation CreateWorkOrderTaskAdmin($workOrderId: UUID!, $description: String!) {
     workOrderTask_insert(data: { workOrderId: $workOrderId, description: $description })
+  }
+`
+const SET_WORK_ORDER_REPORT_URL_MUTATION = `
+  mutation SetWorkOrderReportUrlAdmin($id: UUID!, $finalReportUrl: String!) {
+    workOrder_update(id: $id, data: { finalReportUrl: $finalReportUrl })
   }
 `
 const LOG_ORDER_EVENT_MUTATION = `
@@ -328,6 +335,24 @@ async function reserveOrderSequenceNumber(locationCode) {
   })
 }
 
+// The Admin SDK's Storage client has no equivalent of the client SDK's
+// getDownloadURL() - that URL scheme relies on a `firebaseStorageDownloadTokens`
+// value the client SDK generates and attaches automatically on upload, which
+// the Admin SDK knows nothing about. Replicating it by hand here (rather than
+// switching to expiring signed URLs) keeps finalReportUrl behaving exactly
+// like every URL already produced client-side (permanent, works directly in
+// PdfViewer, no changes needed anywhere else that reads that field).
+async function uploadPdfAndGetDownloadUrl(storagePath, buffer) {
+  const bucket = admin.storage().bucket()
+  const file = bucket.file(storagePath)
+  const token = randomUUID()
+  await file.save(buffer, {
+    contentType: 'application/pdf',
+    metadata: { metadata: { firebaseStorageDownloadTokens: token } },
+  })
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`
+}
+
 function chunk(items, size) {
   const chunks = []
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
@@ -539,6 +564,7 @@ exports.createWorkOrder = onCall(async (request) => {
     description,
     tasks,
     skipQuote,
+    pdfData,
   } = request.data ?? {}
 
   if (
@@ -622,6 +648,27 @@ exports.createWorkOrder = onCall(async (request) => {
     })
   }
 
+  // Report generation is optional - the lab quick-create shortcut doesn't
+  // send pdfData at all, keeping that path fast and report-less like before.
+  // pdfData's display fields (customer/boat/engine names etc.) come from the
+  // client, which already has them in memory for both new and existing
+  // customers/boats - no need for an extra Data Connect read here.
+  let finalReportUrl = null
+  if (pdfData) {
+    const buffer = await renderWorkOrderPdfBuffer({
+      ...pdfData,
+      code,
+      createdAt: new Date(),
+      assetLocation: assetLocation.trim(),
+      tasks,
+      comments: description || undefined,
+    })
+    finalReportUrl = await uploadPdfAndGetDownloadUrl(`work-orders/${code}/informe.pdf`, buffer)
+    await dataConnect.executeGraphql(SET_WORK_ORDER_REPORT_URL_MUTATION, {
+      variables: { id: workOrderId, finalReportUrl },
+    })
+  }
+
   // Seed both per-order chats (see src/lib/chat.ts) directly via the Admin
   // SDK, which bypasses firestore.rules the same way it bypasses Data
   // Connect's @auth. customerLinkedUserId comes straight from the client
@@ -637,7 +684,7 @@ exports.createWorkOrder = onCall(async (request) => {
     { merge: true },
   )
 
-  return { workOrderId, code, customerId, boatId }
+  return { workOrderId, code, customerId, boatId, finalReportUrl }
 })
 
 // --- Order-lifecycle actions ------------------------------------------------

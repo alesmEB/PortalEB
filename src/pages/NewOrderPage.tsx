@@ -4,7 +4,6 @@ import {
   OrderLocation,
   listBoats,
   listCustomers,
-  setWorkOrderReportUrl,
   type ListBoatsData,
   type ListCustomersData,
 } from '@dataconnect/generated'
@@ -151,7 +150,7 @@ export function NewOrderPage() {
     setSubmitting(true)
     setError(null)
     try {
-      const { workOrderId, code } = await createWorkOrder({
+      const { code, finalReportUrl } = await createWorkOrder({
         locationCode,
         customerId: selectedCustomerId ?? undefined,
         newCustomer: selectedCustomerId
@@ -166,26 +165,18 @@ export function NewOrderPage() {
         assetLocation: assetLocation.trim(),
         description: comments.trim() || undefined,
         tasks: filledTasks,
+        pdfData: {
+          customerName: customerName.trim(),
+          contactName: contactName.trim(),
+          phone: phone.trim(),
+          boatName: boatName.trim(),
+          registrationNumber: registrationNumber.trim() || undefined,
+          engines: [...existingEngines, ...filledNewEngines],
+          locationLabel: orderLocationLabel[locationCode],
+        },
       })
 
-      const { uploadWorkOrderPdf } = await import('../lib/pdf/WorkOrderPdf')
-      const reportUrl = await uploadWorkOrderPdf({
-        code,
-        locationLabel: orderLocationLabel[locationCode],
-        createdAt: new Date(),
-        customerName: customerName.trim(),
-        contactName: contactName.trim(),
-        phone: phone.trim(),
-        boatName: boatName.trim(),
-        registrationNumber: registrationNumber.trim() || undefined,
-        engines: [...existingEngines, ...filledNewEngines],
-        assetLocation: assetLocation.trim(),
-        tasks: filledTasks,
-        comments: comments.trim() || undefined,
-      })
-      await setWorkOrderReportUrl({ workOrderId, finalReportUrl: reportUrl })
-
-      setSuccessReportUrl(reportUrl)
+      setSuccessReportUrl(finalReportUrl)
       setSuccessCode(code)
     } catch {
       setError('No se pudo crear la orden. Inténtalo de nuevo.')

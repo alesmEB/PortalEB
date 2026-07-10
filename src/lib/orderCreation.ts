@@ -21,6 +21,16 @@ export interface CreateWorkOrderInput {
   tasks: string[]
   /** Skips straight to AWAITING_ASSIGNMENT - requires admin:lab. */
   skipQuote?: boolean
+  /** Omit to skip report generation entirely (used by the lab quick-create shortcut). */
+  pdfData?: {
+    customerName: string
+    contactName: string
+    phone: string
+    boatName: string
+    registrationNumber?: string
+    engines: EngineInput[]
+    locationLabel: string
+  }
 }
 
 interface CreateWorkOrderResult {
@@ -28,6 +38,7 @@ interface CreateWorkOrderResult {
   code: string
   customerId: string
   boatId: string
+  finalReportUrl: string | null
 }
 
 const callCreateWorkOrder = httpsCallable<CreateWorkOrderInput, CreateWorkOrderResult>(
