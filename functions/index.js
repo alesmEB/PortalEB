@@ -1267,9 +1267,7 @@ const UPDATE_TIME_LOG_MUTATION = `
 `
 const DELETE_TIME_LOG_MUTATION = `
   mutation DeleteTimeLogAdmin($id: UUID!) {
-    timeLog_delete(id: $id) {
-      id
-    }
+    timeLog_delete(id: $id)
   }
 `
 
