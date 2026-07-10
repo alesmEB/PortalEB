@@ -11,10 +11,11 @@ import {
   type ListPermissionsData,
   type ListUsersData,
 } from '@dataconnect/generated'
+import { HasPermission } from '../../components/HasPermission'
 import { SearchInput } from '../../components/SearchInput'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { createAuthUser } from '../../lib/secondaryAuth'
-import { syncUserClaims } from '../../lib/userClaims'
+import { changeUserPassword, syncUserClaims } from '../../lib/userClaims'
 
 const roleLabel: Record<UserRole, string> = {
   [UserRole.ADMIN]: 'Administrador',
@@ -201,6 +202,77 @@ function CreateUserForm({
   )
 }
 
+function ChangePasswordSection({ userId }: { userId: string }) {
+  const [open, setOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<'ok' | 'error' | null>(null)
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    setResult(null)
+    try {
+      await changeUserPassword(userId, newPassword)
+      setResult('ok')
+      setNewPassword('')
+    } catch {
+      setResult('error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-sm text-eb-blue underline"
+      >
+        Cambiar contraseña
+      </button>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+      <p className="text-xs text-amber-800">
+        Esto cambia la contraseña directamente, sin pasar por el email de restablecimiento, y
+        cierra las sesiones que este usuario tenga abiertas.
+      </p>
+      <input
+        type="password"
+        placeholder="Nueva contraseña (mín. 6 caracteres)"
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+        className={`mt-2 ${inputClass}`}
+      />
+      {result === 'ok' && <p className="mt-1 text-xs text-eb-teal-dark">Contraseña actualizada.</p>}
+      {result === 'error' && (
+        <p className="mt-1 text-xs text-red-600">No se pudo cambiar la contraseña.</p>
+      )}
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => {
+            setOpen(false)
+            setNewPassword('')
+            setResult(null)
+          }}
+          className="flex-1 rounded-lg border border-slate-300 py-1.5 text-sm text-slate-600"
+        >
+          Cancelar
+        </button>
+        <button
+          disabled={newPassword.length < 6 || submitting}
+          onClick={handleSubmit}
+          className="flex-1 rounded-lg bg-amber-600 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {submitting ? 'Cambiando...' : 'Confirmar cambio'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function EditUserForm({
   user,
   permissions,
@@ -266,6 +338,9 @@ function EditUserForm({
       >
         {submitting ? 'Guardando...' : 'Guardar cambios'}
       </button>
+      <HasPermission permission="users:changepassword">
+        <ChangePasswordSection userId={user.id} />
+      </HasPermission>
     </div>
   )
 }

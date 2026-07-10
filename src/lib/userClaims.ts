@@ -20,3 +20,19 @@ export async function syncUserClaims(uid?: string) {
   const res = await callSyncUserClaims({ uid })
   return res.data
 }
+
+interface ChangeUserPasswordInput {
+  uid: string
+  newPassword: string
+}
+
+const callChangeUserPassword = httpsCallable<ChangeUserPasswordInput, { success: boolean }>(
+  functions,
+  'changeUserPassword',
+)
+
+/** Sets `uid`'s password directly - requires the users:changepassword permission. */
+export async function changeUserPassword(uid: string, newPassword: string) {
+  const res = await callChangeUserPassword({ uid, newPassword })
+  return res.data
+}

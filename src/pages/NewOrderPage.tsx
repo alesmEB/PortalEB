@@ -1,26 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  OrderEventType,
   OrderLocation,
-  createBoat,
-  createCustomer,
-  createEngine,
-  createWorkOrder,
-  createWorkOrderTask,
-  getOrderSequence,
   listBoats,
   listCustomers,
-  logOrderEvent,
   setWorkOrderReportUrl,
-  upsertOrderSequence,
   type ListBoatsData,
   type ListCustomersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
-import { ensureChatDoc } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
-import { orderLocationLabel, formatOrderCode } from '../lib/orderCode'
+import { orderLocationLabel } from '../lib/orderCode'
+import { createWorkOrder } from '../lib/orderCreation'
 
 interface EngineDraft {
   engineType: string
@@ -160,56 +151,22 @@ export function NewOrderPage() {
     setSubmitting(true)
     setError(null)
     try {
-      let customerId = selectedCustomerId
-      if (!customerId) {
-        const res = await createCustomer({
-          name: customerName.trim(),
-          contactName: contactName.trim(),
-          phone: phone.trim(),
-        })
-        customerId = res.data.customer_insert.id
-      }
-
-      let boatId = selectedBoatId
-      if (!boatId) {
-        const res = await createBoat({
-          ownerId: customerId,
-          name: boatName.trim(),
-          registrationNumber: registrationNumber.trim() || undefined,
-        })
-        boatId = res.data.boat_insert.id
-      }
-
-      for (const engine of filledNewEngines) {
-        await createEngine({ boatId, ...engine })
-      }
-
-      const sequenceRes = await getOrderSequence({ locationCode }, FRESH)
-      const lastNumber = sequenceRes.data.orderSequences[0]?.lastNumber ?? 0
-      const sequenceNumber = lastNumber + 1
-      await upsertOrderSequence({ locationCode, lastNumber: sequenceNumber })
-      const code = formatOrderCode(locationCode, sequenceNumber)
-
-      const workOrderRes = await createWorkOrder({
-        code,
+      const { workOrderId, code } = await createWorkOrder({
         locationCode,
-        sequenceNumber,
-        customerId,
-        boatId,
+        customerId: selectedCustomerId ?? undefined,
+        newCustomer: selectedCustomerId
+          ? undefined
+          : { name: customerName.trim(), contactName: contactName.trim(), phone: phone.trim() },
+        customerLinkedUserId: customers.find((c) => c.id === selectedCustomerId)?.linkedUserId ?? undefined,
+        boatId: selectedBoatId ?? undefined,
+        newBoat: selectedBoatId
+          ? undefined
+          : { name: boatName.trim(), registrationNumber: registrationNumber.trim() || undefined },
+        newEngines: filledNewEngines,
         assetLocation: assetLocation.trim(),
         description: comments.trim() || undefined,
+        tasks: filledTasks,
       })
-      const workOrderId = workOrderRes.data.workOrder_insert.id
-
-      for (const task of filledTasks) {
-        await createWorkOrderTask({ workOrderId, description: task })
-      }
-
-      await logOrderEvent({ workOrderId, eventType: OrderEventType.ORDER_CREATED })
-
-      const linkedUserId = customers.find((c) => c.id === customerId)?.linkedUserId
-      await ensureChatDoc('client', workOrderId, linkedUserId ? [linkedUserId] : [])
-      await ensureChatDoc('technicians', workOrderId, [])
 
       const { uploadWorkOrderPdf } = await import('../lib/pdf/WorkOrderPdf')
       const reportUrl = await uploadWorkOrderPdf({

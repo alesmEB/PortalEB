@@ -1,25 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  OrderEventType,
-  OrderLocation,
-  WorkOrderStatus,
-  createBoat,
-  createCustomer,
-  createEngine,
-  createWorkOrder,
-  createWorkOrderTask,
-  getOrderSequence,
-  logOrderEvent,
-  updateWorkOrderStatus,
-  upsertOrderSequence,
-} from '@dataconnect/generated'
+import { OrderLocation } from '@dataconnect/generated'
 import logoElias from '../assets/branding/logo-elias.png'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
-import { ensureChatDoc } from '../lib/chat'
-import { FRESH } from '../lib/dataConnectOptions'
-import { formatOrderCode } from '../lib/orderCode'
+import { createWorkOrder } from '../lib/orderCreation'
 
 const roleLabel: Record<string, string> = {
   ADMIN: 'Administrador',
@@ -37,51 +22,19 @@ export function DashboardPage() {
   async function handleCreateTestOrder() {
     setCreatingTestOrder(true)
     try {
-      const locationCode = OrderLocation.ALGECIRAS
       const stamp = Date.now()
-
-      const customerRes = await createCustomer({
-        name: `Cliente lab ${stamp}`,
-        contactName: 'Lab',
-        phone: '600000000',
-      })
-      const customerId = customerRes.data.customer_insert.id
-
-      const boatRes = await createBoat({ ownerId: customerId, name: `Barco lab ${stamp}` })
-      const boatId = boatRes.data.boat_insert.id
-
-      await createEngine({
-        boatId,
-        engineType: 'Test',
-        chassisNumber: 'LAB-CH',
-        propellerSerialNumber: 'LAB-PROP',
-      })
-
-      const sequenceRes = await getOrderSequence({ locationCode }, FRESH)
-      const sequenceNumber = (sequenceRes.data.orderSequences[0]?.lastNumber ?? 0) + 1
-      await upsertOrderSequence({ locationCode, lastNumber: sequenceNumber })
-      const code = formatOrderCode(locationCode, sequenceNumber)
-
-      const workOrderRes = await createWorkOrder({
-        code,
-        locationCode,
-        sequenceNumber,
-        customerId,
-        boatId,
+      const { workOrderId } = await createWorkOrder({
+        locationCode: OrderLocation.ALGECIRAS,
+        newCustomer: { name: `Cliente lab ${stamp}`, contactName: 'Lab', phone: '600000000' },
+        newBoat: { name: `Barco lab ${stamp}` },
+        newEngines: [
+          { engineType: 'Test', chassisNumber: 'LAB-CH', propellerSerialNumber: 'LAB-PROP' },
+        ],
         assetLocation: 'Zona de pruebas',
         description: 'Orden de prueba rápida (lab)',
+        tasks: ['Tarea de prueba'],
+        skipQuote: true,
       })
-      const workOrderId = workOrderRes.data.workOrder_insert.id
-
-      await createWorkOrderTask({ workOrderId, description: 'Tarea de prueba' })
-      await logOrderEvent({ workOrderId, eventType: OrderEventType.ORDER_CREATED })
-      await updateWorkOrderStatus({
-        id: workOrderId,
-        status: WorkOrderStatus.AWAITING_ASSIGNMENT,
-        quoteAttempts: 0,
-      })
-      await ensureChatDoc('client', workOrderId, [])
-      await ensureChatDoc('technicians', workOrderId, [])
 
       navigate(`/orders/${workOrderId}`, { state: { from: '/', autoAssign: true } })
     } finally {
