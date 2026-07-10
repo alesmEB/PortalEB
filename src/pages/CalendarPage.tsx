@@ -3,56 +3,61 @@ import { X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   WorkOrderStatus,
-  listSchedulableWorkOrders,
-  type ListSchedulableWorkOrdersData,
+  listAssignedWorkOrders,
+  listWorkOrderScheduledDates,
+  type ListAssignedWorkOrdersData,
+  type ListWorkOrderScheduledDatesData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
 import { usePermission } from '../hooks/usePermission'
-import { scheduleWorkOrder } from '../lib/calendar'
+import { setWorkOrderScheduledDate } from '../lib/calendar'
 import { FRESH } from '../lib/dataConnectOptions'
 import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateKey } from '../lib/week'
 
-type OrderRow = ListSchedulableWorkOrdersData['workOrders'][number]
+type AssignedOrder = ListAssignedWorkOrdersData['workOrders'][number]
+type ScheduledEntry = ListWorkOrderScheduledDatesData['workOrderScheduledDates'][number]
 
 export function CalendarPage() {
   const navigate = useNavigate()
   const canManage = usePermission('calendar:manage')
-  const [orders, setOrders] = useState<OrderRow[] | null>(null)
+  const [assignedOrders, setAssignedOrders] = useState<AssignedOrder[] | null>(null)
+  const [scheduledEntries, setScheduledEntries] = useState<ScheduledEntry[] | null>(null)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
-  const [savingId, setSavingId] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   const todayKey = toDateKey(new Date())
 
   function load() {
-    listSchedulableWorkOrders(FRESH).then((res) => setOrders(res.data.workOrders))
+    listAssignedWorkOrders(FRESH).then((res) => setAssignedOrders(res.data.workOrders))
+    listWorkOrderScheduledDates(FRESH).then((res) =>
+      setScheduledEntries(res.data.workOrderScheduledDates),
+    )
   }
 
   useEffect(() => {
     if (canManage) load()
   }, [canManage])
 
-  const unscheduled = useMemo(() => orders?.filter((o) => !o.scheduledDate) ?? [], [orders])
-
-  const byDate = useMemo(() => {
-    const map = new Map<string, OrderRow[]>()
-    for (const order of orders ?? []) {
-      if (!order.scheduledDate) continue
-      const list = map.get(order.scheduledDate) ?? []
-      list.push(order)
-      map.set(order.scheduledDate, list)
+  const entriesByDate = useMemo(() => {
+    const map = new Map<string, ScheduledEntry[]>()
+    for (const entry of scheduledEntries ?? []) {
+      const list = map.get(entry.date) ?? []
+      list.push(entry)
+      map.set(entry.date, list)
     }
     return map
-  }, [orders])
+  }, [scheduledEntries])
 
-  async function handleSchedule(orderId: string, dateKey: string | null) {
-    setSavingId(orderId)
+  async function handleToggle(workOrderId: string, dateKey: string, scheduled: boolean) {
+    const key = `${workOrderId}-${dateKey}`
+    setSavingKey(key)
     try {
-      await scheduleWorkOrder(orderId, dateKey)
+      await setWorkOrderScheduledDate(workOrderId, dateKey, scheduled)
       load()
     } finally {
-      setSavingId(null)
+      setSavingKey(null)
     }
   }
 
@@ -95,15 +100,17 @@ export function CalendarPage() {
         </div>
       </div>
 
-      {orders === null && <p className="mt-4 text-sm text-slate-500">Cargando...</p>}
+      {(assignedOrders === null || scheduledEntries === null) && (
+        <p className="mt-4 text-sm text-slate-500">Cargando...</p>
+      )}
 
-      {orders !== null && (
+      {assignedOrders !== null && scheduledEntries !== null && (
         <>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
             {days.map((day) => {
               const key = toDateKey(day)
               const isToday = key === todayKey
-              const dayOrders = byDate.get(key) ?? []
+              const dayEntries = entriesByDate.get(key) ?? []
               return (
                 <div
                   key={key}
@@ -119,8 +126,10 @@ export function CalendarPage() {
                     {formatDayLabel(day)}
                   </p>
                   <div className="mt-2 space-y-2">
-                    {dayOrders.map((order) => {
+                    {dayEntries.map((entry) => {
+                      const order = entry.workOrder
                       const editable = order.status !== WorkOrderStatus.COMPLETED
+                      const saving = savingKey === `${order.id}-${key}`
                       return (
                         <div
                           key={order.id}
@@ -140,9 +149,9 @@ export function CalendarPage() {
                             </button>
                             {editable && (
                               <button
-                                disabled={savingId === order.id}
-                                onClick={() => handleSchedule(order.id, null)}
-                                title="Quitar del calendario"
+                                disabled={saving}
+                                onClick={() => handleToggle(order.id, key, false)}
+                                title="Quitar este día"
                                 className="text-slate-400 hover:text-red-600 disabled:opacity-50"
                               >
                                 <X className="h-3.5 w-3.5" />
@@ -159,24 +168,10 @@ export function CalendarPage() {
                               {order.assignments.map((a) => a.technician.displayName).join(', ')}
                             </p>
                           )}
-                          {editable && (
-                            <select
-                              disabled={savingId === order.id}
-                              value={key}
-                              onChange={(e) => handleSchedule(order.id, e.target.value)}
-                              className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-[11px] text-slate-700"
-                            >
-                              {days.map((d) => (
-                                <option key={toDateKey(d)} value={toDateKey(d)}>
-                                  {formatDayLabel(d)}
-                                </option>
-                              ))}
-                            </select>
-                          )}
                         </div>
                       )
                     })}
-                    {dayOrders.length === 0 && <p className="text-xs text-slate-400">Sin órdenes</p>}
+                    {dayEntries.length === 0 && <p className="text-xs text-slate-400">Sin órdenes</p>}
                   </div>
                 </div>
               )
@@ -185,41 +180,67 @@ export function CalendarPage() {
 
           <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
             <p className="text-sm font-medium text-eb-blue-dark">
-              Sin programar ({unscheduled.length})
+              Órdenes asignadas ({assignedOrders.length})
             </p>
             <p className="text-xs text-slate-500">
-              Órdenes con técnicos asignados que todavía no tienen un día asignado.
+              Marca los días de esta semana en los que se va a trabajar cada orden. Puedes marcar
+              varios días, incluso en semanas distintas.
             </p>
-            <div className="mt-3 space-y-2">
-              {unscheduled.map((order) => (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 p-2"
-                >
-                  <button onClick={() => navigate(`/orders/${order.id}`)} className="flex-1 text-left">
-                    <p className="font-mono text-sm font-semibold text-eb-blue-dark">{order.code}</p>
-                    <p className="text-xs text-slate-500">
-                      {order.customer.name} · {order.boat.name}
-                    </p>
-                  </button>
-                  <select
-                    disabled={savingId === order.id}
-                    value=""
-                    onChange={(e) => handleSchedule(order.id, e.target.value)}
-                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700"
-                  >
-                    <option value="" disabled>
-                      Asignar día
-                    </option>
-                    {days.map((day) => (
-                      <option key={toDateKey(day)} value={toDateKey(day)}>
-                        {formatDayLabel(day)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-              {unscheduled.length === 0 && <p className="text-xs text-slate-400">Ninguna</p>}
+            <div className="mt-3 space-y-3">
+              {assignedOrders.map((order) => {
+                const scheduledSet = new Set(order.scheduledDates.map((d) => d.date))
+                return (
+                  <div key={order.id} className="rounded-lg border border-slate-200 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => navigate(`/orders/${order.id}`)}
+                        className="flex-1 text-left"
+                      >
+                        <p className="font-mono text-sm font-semibold text-eb-blue-dark">
+                          {order.code}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {order.customer.name} · {order.boat.name}
+                        </p>
+                      </button>
+                    </div>
+                    {order.scheduledDates.length > 0 && (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Programada: {order.scheduledDates.map((d) => d.date).join(', ')}
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {days.map((day) => {
+                        const dayKey = toDateKey(day)
+                        const checked = scheduledSet.has(dayKey)
+                        const saving = savingKey === `${order.id}-${dayKey}`
+                        return (
+                          <label
+                            key={dayKey}
+                            className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs capitalize ${
+                              checked
+                                ? 'border-eb-teal bg-eb-teal text-white'
+                                : 'border-slate-300 text-slate-600'
+                            } ${saving ? 'opacity-50' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              disabled={saving}
+                              checked={checked}
+                              onChange={(e) => handleToggle(order.id, dayKey, e.target.checked)}
+                            />
+                            {formatDayLabel(day)}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+              {assignedOrders.length === 0 && (
+                <p className="text-xs text-slate-400">Ninguna orden con técnicos asignados.</p>
+              )}
             </div>
           </div>
         </>

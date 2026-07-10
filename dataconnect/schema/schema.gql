@@ -186,11 +186,6 @@ type WorkOrder @table(name: "work_orders") {
   # Enforced at the application layer: never exceeds 2 (see Quote below).
   quoteAttempts: Int! @default(value: 0)
   finalReportUrl: String
-  # Day the admin has scheduled this order's work for, shown on the weekly
-  # calendar. Only meaningful once technicians are assigned (ASSIGNED/
-  # IN_PROGRESS); freely reassignable/clearable until COMPLETED, enforced in
-  # the scheduleWorkOrder Cloud Function rather than here.
-  scheduledDate: Date
   createdAt: Timestamp! @default(expr: "request.time")
   updatedAt: Timestamp @default(expr: "request.time")
   completedAt: Timestamp
@@ -204,6 +199,20 @@ type WorkOrderTask @table(name: "work_order_tasks") {
   workOrder: WorkOrder! @ref(fields: ["workOrderId"])
   description: String!
   isCompleted: Boolean! @default(value: false)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Days the admin has scheduled this order's work for, shown on the weekly
+# calendar - a work order can span several (possibly non-consecutive) days,
+# so this is one row per day rather than a single field on WorkOrder. Only
+# meaningful once technicians are assigned (ASSIGNED/IN_PROGRESS); freely
+# addable/removable until COMPLETED, enforced in the
+# setWorkOrderScheduledDate Cloud Function rather than here.
+type WorkOrderScheduledDate
+  @table(name: "work_order_scheduled_dates", key: ["workOrder", "date"]) {
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  date: Date!
   createdAt: Timestamp! @default(expr: "request.time")
 }
 

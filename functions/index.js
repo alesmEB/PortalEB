@@ -121,9 +121,14 @@ const GET_WORK_ORDER_STATUS_QUERY = `
     }
   }
 `
-const SET_WORK_ORDER_SCHEDULED_DATE_MUTATION = `
-  mutation SetWorkOrderScheduledDateAdmin($id: UUID!, $scheduledDate: Date) {
-    workOrder_update(id: $id, data: { scheduledDate: $scheduledDate })
+const UPSERT_WORK_ORDER_SCHEDULED_DATE_MUTATION = `
+  mutation UpsertWorkOrderScheduledDateAdmin($workOrderId: UUID!, $date: Date!) {
+    workOrderScheduledDate_upsert(data: { workOrderId: $workOrderId, date: $date })
+  }
+`
+const DELETE_WORK_ORDER_SCHEDULED_DATE_MUTATION = `
+  mutation DeleteWorkOrderScheduledDateAdmin($workOrderId: UUID!, $date: Date!) {
+    workOrderScheduledDate_delete(key: { workOrderId: $workOrderId, date: $date })
   }
 `
 
@@ -1118,12 +1123,14 @@ exports.stopWorking = onCall(async (request) => {
 
 const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
 
-// Sets/clears which day a work order is placed on in the weekly calendar.
-// Requires calendar:manage. Re-checks the order's current status server-side
-// (rather than trusting the client's possibly-stale copy) since scheduling
-// only makes sense once technicians are assigned and stops being editable
-// once the order is COMPLETED - see schema.gql's scheduledDate comment.
-exports.scheduleWorkOrder = onCall(async (request) => {
+// Adds/removes one day a work order is placed on in the weekly calendar - a
+// work order can be scheduled on several (possibly non-consecutive) days, so
+// this toggles a single day rather than setting one field. Requires
+// calendar:manage. Re-checks the order's current status server-side (rather
+// than trusting the client's possibly-stale copy) since scheduling only
+// makes sense once technicians are assigned and stops being editable once
+// the order is COMPLETED - see schema.gql's WorkOrderScheduledDate comment.
+exports.setWorkOrderScheduledDate = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
   }
@@ -1134,11 +1141,11 @@ exports.scheduleWorkOrder = onCall(async (request) => {
     throw new HttpsError('permission-denied', 'No tienes permiso para editar el calendario.')
   }
 
-  const { workOrderId, scheduledDate } = request.data ?? {}
-  if (typeof workOrderId !== 'string') {
-    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  const { workOrderId, date, scheduled } = request.data ?? {}
+  if (typeof workOrderId !== 'string' || typeof scheduled !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
-  if (scheduledDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate ?? '')) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new HttpsError('invalid-argument', 'Fecha inválida.')
   }
 
@@ -1156,9 +1163,15 @@ exports.scheduleWorkOrder = onCall(async (request) => {
     )
   }
 
-  await dataConnect.executeGraphql(SET_WORK_ORDER_SCHEDULED_DATE_MUTATION, {
-    variables: { id: workOrderId, scheduledDate },
-  })
+  if (scheduled) {
+    await dataConnect.executeGraphql(UPSERT_WORK_ORDER_SCHEDULED_DATE_MUTATION, {
+      variables: { workOrderId, date },
+    })
+  } else {
+    await dataConnect.executeGraphql(DELETE_WORK_ORDER_SCHEDULED_DATE_MUTATION, {
+      variables: { workOrderId, date },
+    })
+  }
 
   return { success: true }
 })

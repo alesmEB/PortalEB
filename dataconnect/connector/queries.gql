@@ -177,24 +177,41 @@ query ListMyAssignedWorkOrders @auth(level: USER) {
   }
 }
 
-# Powers the weekly calendar page: every order that either already has
-# technicians assigned and isn't completed yet (the "unscheduled pool" the
-# admin can still drag onto a day), or is completed but was scheduled at
-# some point (kept visible on the calendar as a read-only past entry).
-query ListSchedulableWorkOrders @auth(level: USER) {
-  workOrders(
-    where: {
-      _or: [
-        { status: { in: [ASSIGNED, IN_PROGRESS] } }
-        { status: { eq: COMPLETED }, scheduledDate: { isNull: false } }
-      ]
+# Retired in favor of ListAssignedWorkOrders + ListWorkOrderScheduledDates
+# (multi-day scheduling replaced the single scheduledDate field this query
+# depended on). Kept as @retired rather than deleted so the previous preview
+# deploy's still-live client doesn't get connector errors mid-rollout.
+query ListSchedulableWorkOrders @auth(level: USER) @retired {
+  workOrders(where: { status: { in: [ASSIGNED, IN_PROGRESS] } }) {
+    id
+    code @retired
+    status @retired
+    locationCode @retired
+    assetLocation @retired
+    customer @retired {
+      name
     }
-    orderBy: { scheduledDate: ASC }
-  ) {
+    boat @retired {
+      name
+    }
+    assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } })
+      @retired {
+      technician {
+        displayName
+      }
+    }
+  }
+}
+
+# Powers the "Órdenes asignadas" panel of the weekly calendar page: every
+# order with technicians assigned that isn't completed yet, along with every
+# day it's already scheduled on (so the panel can show which of the current
+# week's checkboxes are already ticked, across any week).
+query ListAssignedWorkOrders @auth(level: USER) {
+  workOrders(where: { status: { in: [ASSIGNED, IN_PROGRESS] } }, orderBy: { code: ASC }) {
     id
     code
     status
-    scheduledDate
     locationCode
     assetLocation
     customer {
@@ -206,6 +223,36 @@ query ListSchedulableWorkOrders @auth(level: USER) {
     assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }) {
       technician {
         displayName
+      }
+    }
+    scheduledDates: workOrderScheduledDates_on_workOrder(orderBy: { date: ASC }) {
+      date
+    }
+  }
+}
+
+# Powers the day columns of the weekly calendar page - every scheduled day
+# for every order, regardless of the order's status, so a COMPLETED order's
+# past scheduled days still show up (read-only) instead of disappearing.
+query ListWorkOrderScheduledDates @auth(level: USER) {
+  workOrderScheduledDates(orderBy: { date: ASC }) {
+    date
+    workOrder {
+      id
+      code
+      status
+      locationCode
+      assetLocation
+      customer {
+        name
+      }
+      boat {
+        name
+      }
+      assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }) {
+        technician {
+          displayName
+        }
       }
     }
   }
