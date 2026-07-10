@@ -17,7 +17,7 @@ import { usePermission } from '../hooks/usePermission'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
-import { workOrderStatusLabel } from '../lib/orderStatus'
+import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 
 type LocationFilter = OrderLocation | 'ALL'
 type StatusFilter = WorkOrderStatus | 'ALL'
@@ -33,13 +33,15 @@ export function OrdersListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [boatFilter, setBoatFilter] = useState('')
   const [searchText, setSearchText] = useState('')
+  const [hideCompleted, setHideCompleted] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const activeFilterCount =
     (locationFilter !== 'ALL' ? 1 : 0) +
     (statusFilter !== 'ALL' ? 1 : 0) +
     (boatFilter.trim() ? 1 : 0) +
-    (searchText.trim() ? 1 : 0)
+    (searchText.trim() ? 1 : 0) +
+    (hideCompleted ? 1 : 0)
 
   useEffect(() => {
     if (!profile) return
@@ -75,6 +77,7 @@ export function OrdersListPage() {
     const searchQuery = searchText.trim().toLowerCase()
 
     return orders.filter((order) => {
+      if (hideCompleted && order.status === WorkOrderStatus.COMPLETED) return false
       if (locationFilter !== 'ALL' && order.locationCode !== locationFilter) return false
       if (statusFilter !== 'ALL' && order.status !== statusFilter) return false
       if (boatQuery && !order.boat.name.toLowerCase().includes(boatQuery)) return false
@@ -85,7 +88,7 @@ export function OrdersListPage() {
       }
       return true
     })
-  }, [orders, locationFilter, statusFilter, boatFilter, searchText])
+  }, [orders, hideCompleted, locationFilter, statusFilter, boatFilter, searchText])
 
   return (
     <div className="flex-1 p-4">
@@ -113,6 +116,15 @@ export function OrdersListPage() {
 
         {filtersOpen && (
           <div className="space-y-3 border-t border-slate-200 p-4">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={hideCompleted}
+                onChange={(e) => setHideCompleted(e.target.checked)}
+              />
+              Ocultar completadas
+            </label>
+
             <div>
               <p className="text-xs font-medium text-slate-500">Localización</p>
               <div className="mt-1 flex flex-wrap gap-2">
@@ -204,7 +216,9 @@ export function OrdersListPage() {
               >
                 <div className="flex items-center justify-between">
                   <p className="font-mono text-sm font-semibold text-eb-blue-dark">{order.code}</p>
-                  <span className="rounded-full bg-eb-teal/10 px-2.5 py-1 text-xs text-eb-teal-dark">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}
+                  >
                     {workOrderStatusLabel[order.status]}
                   </span>
                 </div>

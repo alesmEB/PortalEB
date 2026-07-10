@@ -13,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
-import { workOrderStatusLabel } from '../lib/orderStatus'
+import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 
 type Assignment = ListMyAssignedWorkOrdersData['technicianAssignments'][number]
 
@@ -82,7 +82,9 @@ export function AssignmentsPage() {
                       {assignment.isLead ? 'Jefe de la orden' : 'Autorizado'}
                     </span>
                   )}
-                  <span className="rounded-full bg-eb-teal/10 px-2.5 py-0.5 text-xs text-eb-teal-dark">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs ${workOrderStatusColor[assignment.workOrder.status]}`}
+                  >
                     {workOrderStatusLabel[assignment.workOrder.status]}
                   </span>
                 </div>
