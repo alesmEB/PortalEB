@@ -126,3 +126,14 @@ export async function adminUpdateTimeLog(input: AdminUpdateTimeLogInput) {
   const res = await callAdminUpdateTimeLog(input)
   return res.data
 }
+
+const callAdminDeleteTimeLog = httpsCallable<{ timeLogId: string }, { success: boolean }>(
+  functions,
+  'adminDeleteTimeLog',
+)
+
+/** Removes an already-finished shift entirely - requires admin:manage. */
+export async function adminDeleteTimeLog(timeLogId: string) {
+  const res = await callAdminDeleteTimeLog({ timeLogId })
+  return res.data
+}

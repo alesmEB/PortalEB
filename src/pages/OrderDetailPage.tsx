@@ -25,6 +25,7 @@ import { orderEventTypeLabel } from '../lib/orderEvent'
 import {
   acceptQuote,
   addQuote,
+  adminDeleteTimeLog,
   adminUpdateTimeLog,
   assignTechnicians,
   completeOrder,
@@ -387,6 +388,8 @@ function EditTimeLogModal({
   const [clockOut, setClockOut] = useState(toDatetimeLocalValue(timeLog.clockOut ?? timeLog.clockIn))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const canSubmit = !!clockIn && !!clockOut && new Date(clockOut) > new Date(clockIn)
 
@@ -404,6 +407,19 @@ function EditTimeLogModal({
       setError(err instanceof Error ? err.message : 'No se pudo guardar.')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    setError(null)
+    try {
+      await adminDeleteTimeLog(timeLog.id)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar.')
+      setDeleting(false)
+      setConfirmingDelete(false)
     }
   }
 
@@ -431,21 +447,54 @@ function EditTimeLogModal({
           />
         </label>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        <div className="mt-4 flex gap-2">
+
+        {confirmingDelete ? (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-xs text-red-700">
+              ¿Eliminar este turno? Esta acción no se puede deshacer.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+                className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={!canSubmit || submitting}
+              onClick={handleSubmit}
+              className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {submitting ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        )}
+        {!confirmingDelete && (
           <button
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+            onClick={() => setConfirmingDelete(true)}
+            className="mt-2 w-full text-center text-xs text-red-600 hover:underline"
           >
-            Cancelar
+            Eliminar turno
           </button>
-          <button
-            disabled={!canSubmit || submitting}
-            onClick={handleSubmit}
-            className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {submitting ? 'Guardando...' : 'Guardar'}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   )

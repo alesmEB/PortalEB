@@ -77,6 +77,7 @@ enum OrderEventType {
   ORDER_COMPLETED
   REPORT_GENERATED
   TIME_LOG_EDITED
+  TIME_LOG_DELETED
 }
 
 # ---------------------------------------------------------------------------

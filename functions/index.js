@@ -1251,7 +1251,9 @@ const GET_TIME_LOG_FOR_EDIT_QUERY = `
     timeLog(id: $timeLogId) {
       workOrderId
       technicianId
+      clockIn
       clockOut
+      durationMinutes
     }
   }
 `
@@ -1261,6 +1263,13 @@ const UPDATE_TIME_LOG_MUTATION = `
       id: $id
       data: { clockIn: $clockIn, clockOut: $clockOut, durationMinutes: $durationMinutes }
     )
+  }
+`
+const DELETE_TIME_LOG_MUTATION = `
+  mutation DeleteTimeLogAdmin($id: UUID!) {
+    timeLog_delete(id: $id) {
+      id
+    }
   }
 `
 
@@ -1323,6 +1332,50 @@ exports.adminUpdateTimeLog = onCall(async (request) => {
   })
 
   return { durationMinutes }
+})
+
+// Lets an admin remove a shift entirely (duplicate clock-in, test entry,
+// etc.) - same completed-shifts-only scope as adminUpdateTimeLog, for the
+// same reason (an active shift should be stopped via the real clock-out
+// flow, not deleted out from under the technician). The shift's own data
+// is captured in the audit metadata since the row itself won't exist
+// afterwards to look it up from.
+exports.adminDeleteTimeLog = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { timeLogId } = request.data ?? {}
+  if (typeof timeLogId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const timeLogRes = await dataConnect.executeGraphqlRead(GET_TIME_LOG_FOR_EDIT_QUERY, {
+    variables: { timeLogId },
+  })
+  const timeLog = timeLogRes.data.timeLog
+  if (!timeLog) {
+    throw new HttpsError('not-found', 'El turno no existe.')
+  }
+  if (!timeLog.clockOut) {
+    throw new HttpsError('failed-precondition', 'Solo se pueden eliminar turnos ya finalizados.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_TIME_LOG_MUTATION, { variables: { id: timeLogId } })
+
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: {
+      workOrderId: timeLog.workOrderId,
+      actorId: request.auth.uid,
+      eventType: 'TIME_LOG_DELETED',
+      metadata: {
+        technicianId: timeLog.technicianId,
+        clockIn: timeLog.clockIn,
+        clockOut: timeLog.clockOut,
+        durationMinutes: timeLog.durationMinutes,
+      },
+    },
+  })
+
+  return { success: true }
 })
 
 const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
