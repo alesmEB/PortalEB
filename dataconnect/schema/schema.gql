@@ -310,3 +310,51 @@ type OrderTracking @table(name: "order_tracking") {
   metadata: Any
   occurredAt: Timestamp! @default(expr: "request.time") # exact server time
 }
+
+# ---------------------------------------------------------------------------
+# "EB Engineering" intranet - unrelated to the repair-order workflow above.
+# A directory of clients who buy EB Engineering's own products (distinct
+# from the repair-service Customer type), company news and an FAQ. The
+# whole section is gated behind the "admin:lab" permission for now (see
+# EbEngineeringPage.tsx) while it's still being shaped.
+# ---------------------------------------------------------------------------
+
+type EbClient @table(name: "eb_clients") {
+  id: UUID! @default(expr: "uuidV4()")
+  name: String!
+  contactName: String
+  phone: String
+  email: String
+  notes: String
+  createdById: String!
+  createdBy: User! @ref(fields: ["createdById"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type EbClientProduct @table(name: "eb_client_products") {
+  id: UUID! @default(expr: "uuidV4()")
+  clientId: UUID!
+  client: EbClient! @ref(fields: ["clientId"])
+  productName: String!
+  purchasedAt: Date
+  notes: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type EbNewsPost @table(name: "eb_news_posts") {
+  id: UUID! @default(expr: "uuidV4()")
+  title: String!
+  body: String!
+  authorId: String!
+  author: User! @ref(fields: ["authorId"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type EbFaqItem @table(name: "eb_faq_items") {
+  id: UUID! @default(expr: "uuidV4()")
+  question: String!
+  answer: String!
+  createdById: String!
+  createdBy: User! @ref(fields: ["createdById"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}

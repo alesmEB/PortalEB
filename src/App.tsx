@@ -8,6 +8,7 @@ import { AssignmentsPage } from './pages/AssignmentsPage'
 import { CalendarPage } from './pages/CalendarPage'
 import { ChatPage } from './pages/ChatPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { EbEngineeringPage } from './pages/EbEngineeringPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
 import { OrdersListPage } from './pages/OrdersListPage'
@@ -91,6 +92,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ebengineering"
+            element={
+              <ProtectedRoute>
+                <EbEngineeringPage />
               </ProtectedRoute>
             }
           />

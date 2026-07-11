@@ -361,3 +361,45 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     }
   }
 }
+
+# "EB Engineering" intranet section (see schema.gql) - reads are plain
+# @auth(level: USER) queries gated client-side by the admin:lab permission
+# for now, same as ListUsers/ListPermissions above; writes all go through
+# Cloud Functions (see ebCreate*/ebAdd*/ebDelete* in functions/index.js).
+query ListEbClients @auth(level: USER) {
+  ebClients(orderBy: { name: ASC }) {
+    id
+    name
+    contactName
+    phone
+    email
+    notes
+    createdAt
+    products: ebClientProducts_on_client(orderBy: { purchasedAt: DESC }) {
+      id
+      productName
+      purchasedAt
+      notes
+    }
+  }
+}
+
+query ListEbNewsPosts @auth(level: USER) {
+  ebNewsPosts(orderBy: { createdAt: DESC }) {
+    id
+    title
+    body
+    createdAt
+    author {
+      displayName
+    }
+  }
+}
+
+query ListEbFaqItems @auth(level: USER) {
+  ebFaqItems(orderBy: { createdAt: ASC }) {
+    id
+    question
+    answer
+  }
+}

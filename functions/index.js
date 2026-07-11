@@ -1904,3 +1904,230 @@ exports.adminDeleteEngine = onCall(async (request) => {
   await dataConnect.executeGraphql(DELETE_ENGINE_MUTATION, { variables: { id: engineId } })
   return { success: true }
 })
+
+// ---------------------------------------------------------------------------
+// "EB Engineering" intranet (clients/products directory, news, FAQ) - see
+// schema.gql for the tables. Every write is gated behind admin:lab for now,
+// matching the single permission the whole section is gated behind on the
+// client (EbEngineeringPage.tsx); split into finer-grained permissions once
+// the section's real shape (and who should read vs. write it) is settled.
+// ---------------------------------------------------------------------------
+
+const CREATE_EB_CLIENT_MUTATION = `
+  mutation CreateEbClientAdmin(
+    $name: String!
+    $contactName: String
+    $phone: String
+    $email: String
+    $notes: String
+    $createdById: String!
+  ) {
+    ebClient_insert(
+      data: {
+        name: $name
+        contactName: $contactName
+        phone: $phone
+        email: $email
+        notes: $notes
+        createdById: $createdById
+      }
+    )
+  }
+`
+const UPDATE_EB_CLIENT_MUTATION = `
+  mutation UpdateEbClientAdmin(
+    $id: UUID!
+    $name: String!
+    $contactName: String
+    $phone: String
+    $email: String
+    $notes: String
+  ) {
+    ebClient_update(
+      id: $id
+      data: { name: $name, contactName: $contactName, phone: $phone, email: $email, notes: $notes }
+    )
+  }
+`
+const DELETE_EB_CLIENT_MUTATION = `
+  mutation DeleteEbClientAdmin($id: UUID!) {
+    ebClient_delete(id: $id)
+  }
+`
+const ADD_EB_CLIENT_PRODUCT_MUTATION = `
+  mutation AddEbClientProductAdmin(
+    $clientId: UUID!
+    $productName: String!
+    $purchasedAt: Date
+    $notes: String
+  ) {
+    ebClientProduct_insert(
+      data: { clientId: $clientId, productName: $productName, purchasedAt: $purchasedAt, notes: $notes }
+    )
+  }
+`
+const DELETE_EB_CLIENT_PRODUCT_MUTATION = `
+  mutation DeleteEbClientProductAdmin($id: UUID!) {
+    ebClientProduct_delete(id: $id)
+  }
+`
+const CREATE_EB_NEWS_POST_MUTATION = `
+  mutation CreateEbNewsPostAdmin($title: String!, $body: String!, $authorId: String!) {
+    ebNewsPost_insert(data: { title: $title, body: $body, authorId: $authorId })
+  }
+`
+const DELETE_EB_NEWS_POST_MUTATION = `
+  mutation DeleteEbNewsPostAdmin($id: UUID!) {
+    ebNewsPost_delete(id: $id)
+  }
+`
+const CREATE_EB_FAQ_ITEM_MUTATION = `
+  mutation CreateEbFaqItemAdmin($question: String!, $answer: String!, $createdById: String!) {
+    ebFaqItem_insert(data: { question: $question, answer: $answer, createdById: $createdById })
+  }
+`
+const DELETE_EB_FAQ_ITEM_MUTATION = `
+  mutation DeleteEbFaqItemAdmin($id: UUID!) {
+    ebFaqItem_delete(id: $id)
+  }
+`
+
+exports.ebCreateClient = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { name, contactName, phone, email, notes } = request.data ?? {}
+  if (typeof name !== 'string' || !name.trim()) {
+    throw new HttpsError('invalid-argument', 'Falta el nombre del cliente.')
+  }
+
+  await dataConnect.executeGraphql(CREATE_EB_CLIENT_MUTATION, {
+    variables: {
+      name: name.trim(),
+      contactName: contactName || null,
+      phone: phone || null,
+      email: email || null,
+      notes: notes || null,
+      createdById: request.auth.uid,
+    },
+  })
+  return { success: true }
+})
+
+exports.ebUpdateClient = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { clientId, name, contactName, phone, email, notes } = request.data ?? {}
+  if (typeof clientId !== 'string' || typeof name !== 'string' || !name.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_EB_CLIENT_MUTATION, {
+    variables: {
+      id: clientId,
+      name: name.trim(),
+      contactName: contactName || null,
+      phone: phone || null,
+      email: email || null,
+      notes: notes || null,
+    },
+  })
+  return { success: true }
+})
+
+// Client's own products cascade-delete at the DB level (see the
+// ebClient_id foreign key in schema.gql/the migration), so there's nothing
+// else to clean up here.
+exports.ebDeleteClient = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { clientId } = request.data ?? {}
+  if (typeof clientId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del cliente.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_EB_CLIENT_MUTATION, { variables: { id: clientId } })
+  return { success: true }
+})
+
+exports.ebAddClientProduct = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { clientId, productName, purchasedAt, notes } = request.data ?? {}
+  if (typeof clientId !== 'string' || typeof productName !== 'string' || !productName.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(ADD_EB_CLIENT_PRODUCT_MUTATION, {
+    variables: {
+      clientId,
+      productName: productName.trim(),
+      purchasedAt: purchasedAt || null,
+      notes: notes || null,
+    },
+  })
+  return { success: true }
+})
+
+exports.ebDeleteClientProduct = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { productId } = request.data ?? {}
+  if (typeof productId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del producto.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_EB_CLIENT_PRODUCT_MUTATION, { variables: { id: productId } })
+  return { success: true }
+})
+
+exports.ebCreateNewsPost = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { title, body } = request.data ?? {}
+  if (typeof title !== 'string' || !title.trim() || typeof body !== 'string' || !body.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(CREATE_EB_NEWS_POST_MUTATION, {
+    variables: { title: title.trim(), body: body.trim(), authorId: request.auth.uid },
+  })
+  return { success: true }
+})
+
+exports.ebDeleteNewsPost = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { postId } = request.data ?? {}
+  if (typeof postId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la noticia.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_EB_NEWS_POST_MUTATION, { variables: { id: postId } })
+  return { success: true }
+})
+
+exports.ebCreateFaqItem = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { question, answer } = request.data ?? {}
+  if (typeof question !== 'string' || !question.trim() || typeof answer !== 'string' || !answer.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(CREATE_EB_FAQ_ITEM_MUTATION, {
+    variables: { question: question.trim(), answer: answer.trim(), createdById: request.auth.uid },
+  })
+  return { success: true }
+})
+
+exports.ebDeleteFaqItem = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const { faqId } = request.data ?? {}
+  if (typeof faqId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la pregunta.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_EB_FAQ_ITEM_MUTATION, { variables: { id: faqId } })
+  return { success: true }
+})

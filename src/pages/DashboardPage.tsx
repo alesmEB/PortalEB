@@ -123,6 +123,15 @@ export function DashboardPage() {
               {creatingTestOrder ? 'Creando orden...' : 'Orden de prueba → asignación (lab)'}
             </button>
           </HasPermission>
+
+          <HasPermission permission="admin:lab">
+            <button
+              onClick={() => navigate('/ebengineering')}
+              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
+            >
+              EB Engineering (lab)
+            </button>
+          </HasPermission>
         </div>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
