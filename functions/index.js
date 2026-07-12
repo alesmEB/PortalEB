@@ -1381,11 +1381,13 @@ const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
 
 // Adds/removes one day a work order is placed on in the weekly calendar - a
 // work order can be scheduled on several (possibly non-consecutive) days, so
-// this toggles a single day rather than setting one field. Requires
-// calendar:manage. Re-checks the order's current status server-side (rather
-// than trusting the client's possibly-stale copy) since scheduling only
-// makes sense once technicians are assigned and stops being editable once
-// the order is COMPLETED - see schema.gql's WorkOrderScheduledDate comment.
+// this toggles a single day rather than setting one field. Editing is
+// admin/admin:lab only - technicians and clients can view the calendar
+// (CalendarPage.tsx) but never call this. Re-checks the order's current
+// status server-side (rather than trusting the client's possibly-stale
+// copy) since scheduling only makes sense once technicians are assigned and
+// stops being editable once the order is COMPLETED - see schema.gql's
+// WorkOrderScheduledDate comment.
 exports.setWorkOrderScheduledDate = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
@@ -1393,7 +1395,7 @@ exports.setWorkOrderScheduledDate = onCall(async (request) => {
   const permissions = Array.isArray(request.auth.token?.permissions)
     ? request.auth.token.permissions
     : []
-  if (!permissions.includes('calendar:manage')) {
+  if (request.auth.token?.role !== 'ADMIN' && !permissions.includes('admin:lab')) {
     throw new HttpsError('permission-denied', 'No tienes permiso para editar el calendario.')
   }
 

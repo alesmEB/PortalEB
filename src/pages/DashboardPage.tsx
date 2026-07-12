@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { OrderLocation } from '@dataconnect/generated'
+import { OrderLocation, UserRole } from '@dataconnect/generated'
 import logoElias from '../assets/branding/logo-elias.png'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
@@ -87,21 +87,23 @@ export function DashboardPage() {
             </button>
           </HasPermission>
 
+          {(profile?.role === UserRole.ADMIN ||
+            profile?.role === UserRole.TECHNICIAN ||
+            permissions.includes('admin:lab')) && (
+            <button
+              onClick={() => navigate('/calendar')}
+              className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+            >
+              Calendario
+            </button>
+          )}
+
           <HasPermission permission="admin:manage">
             <button
               onClick={() => navigate('/admin')}
               className="w-full rounded-lg bg-eb-blue-dark py-3 text-base font-semibold text-white transition-colors hover:opacity-90"
             >
               Administración
-            </button>
-          </HasPermission>
-
-          <HasPermission permission="admin:lab">
-            <button
-              onClick={() => navigate('/calendar')}
-              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
-            >
-              Calendario semanal (lab)
             </button>
           </HasPermission>
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
+  UserRole,
   WorkOrderStatus,
   listAssignedWorkOrders,
   listWorkOrderScheduledDates,
@@ -9,6 +10,7 @@ import {
   type ListWorkOrderScheduledDatesData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { setWorkOrderScheduledDate } from '../lib/calendar'
 import { FRESH } from '../lib/dataConnectOptions'
@@ -38,7 +40,12 @@ function taskProgressLabel(tasks: { isCompleted: boolean }[]) {
 
 export function CalendarPage() {
   const navigate = useNavigate()
-  const canManage = usePermission('calendar:manage')
+  const { profile } = useAuth()
+  const isLab = usePermission('admin:lab')
+  // Clients never see the calendar; technicians can view it but only
+  // admins (and lab, as the usual bypass for testing) can edit it.
+  const canView = profile?.role === UserRole.ADMIN || profile?.role === UserRole.TECHNICIAN || isLab
+  const canManage = profile?.role === UserRole.ADMIN || isLab
   const [assignedOrders, setAssignedOrders] = useState<AssignedOrder[] | null>(null)
   const [scheduledEntries, setScheduledEntries] = useState<ScheduledEntry[] | null>(null)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
@@ -58,8 +65,8 @@ export function CalendarPage() {
   }
 
   useEffect(() => {
-    if (canManage) load()
-  }, [canManage])
+    if (canView) load()
+  }, [canView])
 
   const entriesByDate = useMemo(() => {
     const map = new Map<string, ScheduledEntry[]>()
@@ -82,7 +89,7 @@ export function CalendarPage() {
     }
   }
 
-  if (!canManage) {
+  if (!canView) {
     return (
       <div className="flex-1 p-4">
         <BackButton to="/" />
@@ -263,7 +270,7 @@ export function CalendarPage() {
                                 {order.customer.name} · {order.boat.name}
                               </p>
                             </button>
-                            {editable && (
+                            {canManage && editable && (
                               <button
                                 disabled={saving}
                                 onClick={() => handleToggle(order.id, key, false)}
@@ -299,6 +306,7 @@ export function CalendarPage() {
             })}
           </div>
 
+          {canManage && (
           <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
             <p className="text-sm font-medium text-eb-blue-dark">
               Órdenes asignadas ({assignedOrders.length})
@@ -365,6 +373,7 @@ export function CalendarPage() {
               )}
             </div>
           </div>
+          )}
         </>
       )}
     </div>
