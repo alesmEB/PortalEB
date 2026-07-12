@@ -60,6 +60,16 @@ service firebase.storage {
         request.resource.contentType == 'application/pdf';
     }
 
+    // Images embedded in "EB Engineering" news posts (see EbNewsTab.tsx's
+    // rich text editor) - gated behind admin:lab, same as who can write a
+    // news post at all right now.
+    match /eb-news/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('admin:lab') &&
+        request.resource.contentType.matches('image/.*') &&
+        request.resource.size < 10 * 1024 * 1024;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }

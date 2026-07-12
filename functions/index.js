@@ -4,6 +4,7 @@ const { onDocumentCreated } = require('firebase-functions/v2/firestore')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { getDataConnect } = require('firebase-admin/data-connect')
 const admin = require('firebase-admin')
+const sanitizeHtml = require('sanitize-html')
 const { renderWorkOrderPdfBuffer } = require('./workOrderPdf')
 
 admin.initializeApp()
@@ -2080,16 +2081,43 @@ exports.ebDeleteClientProduct = onCall(async (request) => {
   return { success: true }
 })
 
+// The rich text editor (RichTextEditor.tsx) already only produces this
+// subset, but the sanitizer is what actually keeps stored posts safe - any
+// caller can invoke this function directly with arbitrary HTML, and this
+// section is expected to end up visible to far more than admin:lab once
+// it's opened up (see EbEngineeringPage.tsx). Images always come from our
+// own Storage upload (uploadEbNewsImage), so only http(s) is allowed - no
+// data: URIs.
+const EB_NEWS_BODY_SANITIZE_OPTIONS = {
+  allowedTags: [
+    'p', 'br', 'strong', 'em', 'u', 's', 'h2', 'h3',
+    'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre',
+  ],
+  allowedAttributes: {
+    a: ['href', 'target', 'rel'],
+    img: ['src', 'alt'],
+  },
+  allowedSchemes: ['http', 'https', 'mailto'],
+  transformTags: {
+    a: sanitizeHtml.simpleTransform('a', { target: '_blank', rel: 'noopener noreferrer' }, true),
+  },
+}
+
 exports.ebCreateNewsPost = onCall(async (request) => {
   requirePermission(request, 'admin:lab')
 
   const { title, body } = request.data ?? {}
-  if (typeof title !== 'string' || !title.trim() || typeof body !== 'string' || !body.trim()) {
+  if (typeof title !== 'string' || !title.trim() || typeof body !== 'string') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const sanitizedBody = sanitizeHtml(body, EB_NEWS_BODY_SANITIZE_OPTIONS)
+  if (!sanitizeHtml(sanitizedBody, { allowedTags: [] }).trim() && !sanitizedBody.includes('<img')) {
     throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
 
   await dataConnect.executeGraphql(CREATE_EB_NEWS_POST_MUTATION, {
-    variables: { title: title.trim(), body: body.trim(), authorId: request.auth.uid },
+    variables: { title: title.trim(), body: sanitizedBody, authorId: request.auth.uid },
   })
   return { success: true }
 })

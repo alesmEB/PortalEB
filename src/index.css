@@ -18,3 +18,58 @@
 body {
   margin: 0;
 }
+
+/* Shared between RichTextEditor's editable area and the read-only news
+   render (EbNewsTab.tsx), so what you see while writing matches what
+   readers get. */
+.eb-rich-content {
+  outline: none;
+}
+.eb-rich-content p {
+  margin: 0.5em 0;
+}
+.eb-rich-content h2 {
+  margin: 0.75em 0 0.35em;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-eb-blue-dark);
+}
+.eb-rich-content h3 {
+  margin: 0.65em 0 0.3em;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-eb-blue-dark);
+}
+.eb-rich-content ul,
+.eb-rich-content ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.eb-rich-content ul {
+  list-style: disc;
+}
+.eb-rich-content ol {
+  list-style: decimal;
+}
+.eb-rich-content blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.75em;
+  border-left: 3px solid var(--color-eb-teal);
+  color: #475569;
+}
+.eb-rich-content a {
+  color: var(--color-eb-blue);
+  text-decoration: underline;
+}
+.eb-rich-content img {
+  max-width: 100%;
+  border-radius: 0.5rem;
+  margin: 0.5em 0;
+}
+.eb-rich-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #94a3b8;
+  pointer-events: none;
+}

@@ -1,22 +1,33 @@
 import { useEffect, useState } from 'react'
+import DOMPurify from 'dompurify'
 import { listEbNewsPosts, type ListEbNewsPostsData } from '@dataconnect/generated'
+import { RichTextEditor } from '../../components/RichTextEditor'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { ebCreateNewsPost, ebDeleteNewsPost } from '../../lib/ebEngineering'
+import { uploadEbNewsImage } from '../../lib/ebNewsStorage'
 
 type NewsPost = ListEbNewsPostsData['ebNewsPosts'][number]
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
 
+/** Whether the editor's HTML has no visible text and no image - i.e. really empty. */
+function isBodyEmpty(html: string) {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  return !doc.body.textContent?.trim() && !doc.querySelector('img')
+}
+
 function NewPostForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const canSubmit = !!title.trim() && !isBodyEmpty(body)
+
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      await ebCreateNewsPost({ title: title.trim(), body: body.trim() })
+      await ebCreateNewsPost({ title: title.trim(), body })
       onSaved()
     } finally {
       setSubmitting(false)
@@ -31,12 +42,11 @@ function NewPostForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () 
         onChange={(e) => setTitle(e.target.value)}
         className={inputClass}
       />
-      <textarea
-        placeholder="Contenido"
+      <RichTextEditor
         value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={4}
-        className={inputClass}
+        onChange={setBody}
+        onImageUpload={uploadEbNewsImage}
+        placeholder="Contenido de la noticia..."
       />
       <div className="flex gap-2">
         <button
@@ -46,7 +56,7 @@ function NewPostForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () 
           Cancelar
         </button>
         <button
-          disabled={!title.trim() || !body.trim() || submitting}
+          disabled={!canSubmit || submitting}
           onClick={handleSubmit}
           className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
@@ -103,7 +113,10 @@ export function EbNewsTab() {
                 ✕
               </button>
             </div>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{post.body}</p>
+            <div
+              className="eb-rich-content mt-2 text-sm text-slate-600"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.body) }}
+            />
           </div>
         ))}
         {posts?.length === 0 && <p className="text-xs text-slate-400">Ninguna noticia todavía.</p>}
