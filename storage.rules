@@ -33,6 +33,15 @@ service firebase.storage {
         permission in request.auth.token.permissions;
     }
 
+    // Same "role, or the usual lab bypass" as functions/index.js's
+    // requireAdminOrLab - "EB Engineering" management (clients/products/
+    // news/FAQ) should work for any admin, not just accounts that also
+    // happen to hold the admin:lab testing flag.
+    function isAdminOrLab() {
+      return isSignedIn() &&
+        (request.auth.token.role == 'ADMIN' || hasPermission('admin:lab'));
+    }
+
     // Generated report(s), directly inside the order's folder - only ever
     // written server-side (Admin SDK, createWorkOrder), which bypasses these
     // rules entirely, so this is effectively read-only from any client.
@@ -61,13 +70,21 @@ service firebase.storage {
     }
 
     // Images embedded in "EB Engineering" news posts (see EbNewsTab.tsx's
-    // rich text editor) - gated behind admin:lab, same as who can write a
-    // news post at all right now.
+    // rich text editor) - gated the same as who can write a news post at
+    // all right now.
     match /eb-news/{fileName} {
       allow read: if isSignedIn();
-      allow write: if hasPermission('admin:lab') &&
+      allow write: if isAdminOrLab() &&
         request.resource.contentType.matches('image/.*') &&
         request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // A purchased EBcontroller unit's custom program download (see
+    // EbProductsTab.tsx) - arbitrary binary/config format, no content-type
+    // restriction, just a generous size cap.
+    match /eb-products/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isAdminOrLab() && request.resource.size < 50 * 1024 * 1024;
     }
 
     // Photos/videos/documents attached to a chat message (see ChatPage.tsx) -

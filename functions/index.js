@@ -1552,6 +1552,20 @@ function requirePermission(request, permission) {
   }
 }
 
+// Same "role, or the usual lab bypass" shape as the calendar's access rule
+// (see setWorkOrderScheduledDate) - used for "EB Engineering" management
+// (clients/products/news/FAQ), which any ADMIN should be able to do, not
+// just accounts that happen to also hold the admin:lab testing flag.
+function requireAdminOrLab(request) {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+  const permissions = Array.isArray(request.auth.token?.permissions) ? request.auth.token.permissions : []
+  if (request.auth.token?.role !== 'ADMIN' && !permissions.includes('admin:lab')) {
+    throw new HttpsError('permission-denied', 'No tienes permiso para realizar esta acción.')
+  }
+}
+
 function setsEqual(a, b) {
   if (a.size !== b.size) return false
   for (const item of a) if (!b.has(item)) return false
@@ -1977,28 +1991,33 @@ exports.adminDeleteEngine = onCall(async (request) => {
 
 // ---------------------------------------------------------------------------
 // "EB Engineering" intranet (clients/products directory, news, FAQ) - see
-// schema.gql for the tables. Every write is gated behind admin:lab for now,
-// matching the single permission the whole section is gated behind on the
-// client (EbEngineeringPage.tsx); split into finer-grained permissions once
-// the section's real shape (and who should read vs. write it) is settled.
+// schema.gql for the tables. Management writes require ADMIN role or
+// admin:lab (requireAdminOrLab) - matches the client's access gate
+// (EbEngineeringPage.tsx). A linked EbClient's own portal account reads
+// only their own products (ListMyEbClientProducts, gated to their own
+// clientId - see EbMyProductsPage.tsx), no elevated permission needed.
 // ---------------------------------------------------------------------------
 
 const CREATE_EB_CLIENT_MUTATION = `
   mutation CreateEbClientAdmin(
-    $name: String!
-    $contactName: String
-    $phone: String
-    $email: String
-    $notes: String
+    $email: String!
+    $companyName: String!
+    $contactName: String!
+    $phone: String!
+    $country: String!
+    $distributorId: UUID
+    $linkedUserId: String
     $createdById: String!
   ) {
     ebClient_insert(
       data: {
-        name: $name
+        email: $email
+        companyName: $companyName
         contactName: $contactName
         phone: $phone
-        email: $email
-        notes: $notes
+        country: $country
+        distributorId: $distributorId
+        linkedUserId: $linkedUserId
         createdById: $createdById
       }
     )
@@ -2007,15 +2026,25 @@ const CREATE_EB_CLIENT_MUTATION = `
 const UPDATE_EB_CLIENT_MUTATION = `
   mutation UpdateEbClientAdmin(
     $id: UUID!
-    $name: String!
-    $contactName: String
-    $phone: String
-    $email: String
-    $notes: String
+    $email: String!
+    $companyName: String!
+    $contactName: String!
+    $phone: String!
+    $country: String!
+    $distributorId: UUID
+    $linkedUserId: String
   ) {
     ebClient_update(
       id: $id
-      data: { name: $name, contactName: $contactName, phone: $phone, email: $email, notes: $notes }
+      data: {
+        email: $email
+        companyName: $companyName
+        contactName: $contactName
+        phone: $phone
+        country: $country
+        distributorId: $distributorId
+        linkedUserId: $linkedUserId
+      }
     )
   }
 `
@@ -2024,21 +2053,66 @@ const DELETE_EB_CLIENT_MUTATION = `
     ebClient_delete(id: $id)
   }
 `
-const ADD_EB_CLIENT_PRODUCT_MUTATION = `
-  mutation AddEbClientProductAdmin(
+const CREATE_EB_CABLE_TYPE_MUTATION = `
+  mutation CreateEbCableTypeAdmin($code: String!, $name: String!) {
+    ebCableType_insert(data: { code: $code, name: $name })
+  }
+`
+const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
+  mutation CreateEbClientProductAdmin(
     $clientId: UUID!
-    $productName: String!
+    $serialNumber: String!
+    $hardwareNumber: String!
     $purchasedAt: Date
-    $notes: String
+    $programFileUrl: String
+    $createdById: String!
   ) {
     ebClientProduct_insert(
-      data: { clientId: $clientId, productName: $productName, purchasedAt: $purchasedAt, notes: $notes }
+      data: {
+        clientId: $clientId
+        serialNumber: $serialNumber
+        hardwareNumber: $hardwareNumber
+        purchasedAt: $purchasedAt
+        programFileUrl: $programFileUrl
+        createdById: $createdById
+      }
+    )
+  }
+`
+const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
+  mutation UpdateEbClientProductAdmin(
+    $id: UUID!
+    $clientId: UUID!
+    $serialNumber: String!
+    $hardwareNumber: String!
+    $purchasedAt: Date
+    $programFileUrl: String
+  ) {
+    ebClientProduct_update(
+      id: $id
+      data: {
+        clientId: $clientId
+        serialNumber: $serialNumber
+        hardwareNumber: $hardwareNumber
+        purchasedAt: $purchasedAt
+        programFileUrl: $programFileUrl
+      }
     )
   }
 `
 const DELETE_EB_CLIENT_PRODUCT_MUTATION = `
   mutation DeleteEbClientProductAdmin($id: UUID!) {
     ebClientProduct_delete(id: $id)
+  }
+`
+const ADD_EB_CLIENT_PRODUCT_CABLE_MUTATION = `
+  mutation AddEbClientProductCableAdmin($productId: UUID!, $cableTypeId: UUID!) {
+    ebClientProductCable_insert(data: { productId: $productId, cableTypeId: $cableTypeId })
+  }
+`
+const DELETE_EB_CLIENT_PRODUCT_CABLES_MUTATION = `
+  mutation DeleteEbClientProductCablesAdmin($productId: UUID!) {
+    ebClientProductCable_deleteMany(where: { productId: { eq: $productId } })
   }
 `
 const CREATE_EB_NEWS_POST_MUTATION = `
@@ -2063,20 +2137,28 @@ const DELETE_EB_FAQ_ITEM_MUTATION = `
 `
 
 exports.ebCreateClient = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
-  const { name, contactName, phone, email, notes } = request.data ?? {}
-  if (typeof name !== 'string' || !name.trim()) {
-    throw new HttpsError('invalid-argument', 'Falta el nombre del cliente.')
+  const { email, companyName, contactName, phone, country, distributorId, linkedUserId } = request.data ?? {}
+  if (
+    typeof email !== 'string' || !email.trim() ||
+    typeof companyName !== 'string' || !companyName.trim() ||
+    typeof contactName !== 'string' || !contactName.trim() ||
+    typeof phone !== 'string' || !phone.trim() ||
+    typeof country !== 'string' || !country.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
 
   await dataConnect.executeGraphql(CREATE_EB_CLIENT_MUTATION, {
     variables: {
-      name: name.trim(),
-      contactName: contactName || null,
-      phone: phone || null,
-      email: email || null,
-      notes: notes || null,
+      email: email.trim(),
+      companyName: companyName.trim(),
+      contactName: contactName.trim(),
+      phone: phone.trim(),
+      country: country.trim(),
+      distributorId: distributorId || null,
+      linkedUserId: linkedUserId || null,
       createdById: request.auth.uid,
     },
   })
@@ -2084,21 +2166,34 @@ exports.ebCreateClient = onCall(async (request) => {
 })
 
 exports.ebUpdateClient = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
-  const { clientId, name, contactName, phone, email, notes } = request.data ?? {}
-  if (typeof clientId !== 'string' || typeof name !== 'string' || !name.trim()) {
+  const { clientId, email, companyName, contactName, phone, country, distributorId, linkedUserId } =
+    request.data ?? {}
+  if (
+    typeof clientId !== 'string' ||
+    typeof email !== 'string' || !email.trim() ||
+    typeof companyName !== 'string' || !companyName.trim() ||
+    typeof contactName !== 'string' || !contactName.trim() ||
+    typeof phone !== 'string' || !phone.trim() ||
+    typeof country !== 'string' || !country.trim()
+  ) {
     throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  if (distributorId && distributorId === clientId) {
+    throw new HttpsError('invalid-argument', 'Un cliente no puede ser su propio distribuidor.')
   }
 
   await dataConnect.executeGraphql(UPDATE_EB_CLIENT_MUTATION, {
     variables: {
       id: clientId,
-      name: name.trim(),
-      contactName: contactName || null,
-      phone: phone || null,
-      email: email || null,
-      notes: notes || null,
+      email: email.trim(),
+      companyName: companyName.trim(),
+      contactName: contactName.trim(),
+      phone: phone.trim(),
+      country: country.trim(),
+      distributorId: distributorId || null,
+      linkedUserId: linkedUserId || null,
     },
   })
   return { success: true }
@@ -2108,7 +2203,7 @@ exports.ebUpdateClient = onCall(async (request) => {
 // ebClient_id foreign key in schema.gql/the migration), so there's nothing
 // else to clean up here.
 exports.ebDeleteClient = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
   const { clientId } = request.data ?? {}
   if (typeof clientId !== 'string') {
@@ -2119,27 +2214,98 @@ exports.ebDeleteClient = onCall(async (request) => {
   return { success: true }
 })
 
-exports.ebAddClientProduct = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+exports.ebCreateCableType = onCall(async (request) => {
+  requireAdminOrLab(request)
 
-  const { clientId, productName, purchasedAt, notes } = request.data ?? {}
-  if (typeof clientId !== 'string' || typeof productName !== 'string' || !productName.trim()) {
+  const { code, name } = request.data ?? {}
+  if (typeof code !== 'string' || !code.trim() || typeof name !== 'string' || !name.trim()) {
     throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
 
-  await dataConnect.executeGraphql(ADD_EB_CLIENT_PRODUCT_MUTATION, {
-    variables: {
-      clientId,
-      productName: productName.trim(),
-      purchasedAt: purchasedAt || null,
-      notes: notes || null,
-    },
+  await dataConnect.executeGraphql(CREATE_EB_CABLE_TYPE_MUTATION, {
+    variables: { code: code.trim(), name: name.trim() },
   })
   return { success: true }
 })
 
+exports.ebAddClientProduct = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { clientId, serialNumber, hardwareNumber, purchasedAt, programFileUrl, cableTypeIds } =
+    request.data ?? {}
+  if (
+    typeof clientId !== 'string' ||
+    typeof serialNumber !== 'string' || !serialNumber.trim() ||
+    typeof hardwareNumber !== 'string' || !hardwareNumber.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const res = await dataConnect.executeGraphql(CREATE_EB_CLIENT_PRODUCT_MUTATION, {
+    variables: {
+      clientId,
+      serialNumber: serialNumber.trim(),
+      hardwareNumber: hardwareNumber.trim(),
+      purchasedAt: purchasedAt || null,
+      programFileUrl: programFileUrl || null,
+      createdById: request.auth.uid,
+    },
+  })
+  const productId = res.data.ebClientProduct_insert.id
+
+  for (const cableTypeId of Array.isArray(cableTypeIds) ? cableTypeIds : []) {
+    await dataConnect.executeGraphql(ADD_EB_CLIENT_PRODUCT_CABLE_MUTATION, {
+      variables: { productId, cableTypeId },
+    })
+  }
+
+  return { productId }
+})
+
+// clientId is reassignable here on purpose: when a distributor reports
+// having resold a unit to one of their own end clients, the admin repoints
+// this same purchase record at that end client (creating it first if it's
+// new - see ebCreateClient's distributorId) rather than creating a
+// duplicate record, since it's still the same physical unit.
+exports.ebUpdateClientProduct = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { productId, clientId, serialNumber, hardwareNumber, purchasedAt, programFileUrl, cableTypeIds } =
+    request.data ?? {}
+  if (
+    typeof productId !== 'string' ||
+    typeof clientId !== 'string' ||
+    typeof serialNumber !== 'string' || !serialNumber.trim() ||
+    typeof hardwareNumber !== 'string' || !hardwareNumber.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_EB_CLIENT_PRODUCT_MUTATION, {
+    variables: {
+      id: productId,
+      clientId,
+      serialNumber: serialNumber.trim(),
+      hardwareNumber: hardwareNumber.trim(),
+      purchasedAt: purchasedAt || null,
+      programFileUrl: programFileUrl || null,
+    },
+  })
+
+  if (Array.isArray(cableTypeIds)) {
+    await dataConnect.executeGraphql(DELETE_EB_CLIENT_PRODUCT_CABLES_MUTATION, { variables: { productId } })
+    for (const cableTypeId of cableTypeIds) {
+      await dataConnect.executeGraphql(ADD_EB_CLIENT_PRODUCT_CABLE_MUTATION, {
+        variables: { productId, cableTypeId },
+      })
+    }
+  }
+
+  return { success: true }
+})
+
 exports.ebDeleteClientProduct = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
   const { productId } = request.data ?? {}
   if (typeof productId !== 'string') {
@@ -2173,7 +2339,7 @@ const EB_NEWS_BODY_SANITIZE_OPTIONS = {
 }
 
 exports.ebCreateNewsPost = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
   const { title, body } = request.data ?? {}
   if (typeof title !== 'string' || !title.trim() || typeof body !== 'string') {
@@ -2192,7 +2358,7 @@ exports.ebCreateNewsPost = onCall(async (request) => {
 })
 
 exports.ebDeleteNewsPost = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
   const { postId } = request.data ?? {}
   if (typeof postId !== 'string') {
@@ -2204,7 +2370,7 @@ exports.ebDeleteNewsPost = onCall(async (request) => {
 })
 
 exports.ebCreateFaqItem = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
   const { question, answer } = request.data ?? {}
   if (typeof question !== 'string' || !question.trim() || typeof answer !== 'string' || !answer.trim()) {
@@ -2218,7 +2384,7 @@ exports.ebCreateFaqItem = onCall(async (request) => {
 })
 
 exports.ebDeleteFaqItem = onCall(async (request) => {
-  requirePermission(request, 'admin:lab')
+  requireAdminOrLab(request)
 
   const { faqId } = request.data ?? {}
   if (typeof faqId !== 'string') {

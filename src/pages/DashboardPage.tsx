@@ -1,15 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { OrderLocation, UserRole } from '@dataconnect/generated'
+import { OrderLocation, UserRole, getMyEbClient } from '@dataconnect/generated'
 import logoElias from '../assets/branding/logo-elias.png'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
+import { FRESH } from '../lib/dataConnectOptions'
 import { createWorkOrder } from '../lib/orderCreation'
 
 export function DashboardPage() {
   const { profile, permissions, signOut } = useAuth()
   const navigate = useNavigate()
   const [creatingTestOrder, setCreatingTestOrder] = useState(false)
+  const [hasEbClient, setHasEbClient] = useState(false)
+
+  useEffect(() => {
+    if (profile?.role !== UserRole.CLIENT) return
+    getMyEbClient(FRESH).then((res) => setHasEbClient(res.data.ebClients.length > 0))
+  }, [profile?.role])
 
   // Lab-only shortcut for QA: creates a throwaway order and drops straight
   // into technician assignment, skipping the quote step entirely.
@@ -114,14 +121,23 @@ export function DashboardPage() {
             </button>
           </HasPermission>
 
-          <HasPermission permission="admin:lab">
+          {(profile?.role === UserRole.ADMIN || permissions.includes('admin:lab')) && (
             <button
               onClick={() => navigate('/ebengineering')}
-              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
+              className="w-full rounded-lg bg-eb-blue-dark py-3 text-base font-semibold text-white transition-colors hover:opacity-90"
             >
-              EB Engineering (lab)
+              EB Engineering
             </button>
-          </HasPermission>
+          )}
+
+          {hasEbClient && (
+            <button
+              onClick={() => navigate('/ebengineering/my-products')}
+              className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+            >
+              Mis productos EBcontroller
+            </button>
+          )}
         </div>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">

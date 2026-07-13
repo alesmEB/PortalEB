@@ -1,45 +1,59 @@
 import { useEffect, useState } from 'react'
-import { listEbClients, type ListEbClientsData } from '@dataconnect/generated'
+import {
+  UserRole,
+  listEbClients,
+  listUsers,
+  type ListEbClientsData,
+  type ListUsersData,
+} from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
 import { FRESH } from '../../lib/dataConnectOptions'
-import {
-  ebAddClientProduct,
-  ebCreateClient,
-  ebDeleteClient,
-  ebDeleteClientProduct,
-  ebUpdateClient,
-} from '../../lib/ebEngineering'
+import { ebCreateClient, ebDeleteClient, ebUpdateClient } from '../../lib/ebEngineering'
 
 type ClientRow = ListEbClientsData['ebClients'][number]
+type PortalUsers = ListUsersData['users']
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
 
 function ClientForm({
   client,
+  clients,
+  portalUsers,
   onSaved,
   onCancel,
 }: {
   client?: ClientRow
+  clients: ClientRow[]
+  portalUsers: PortalUsers
   onSaved: () => void
   onCancel: () => void
 }) {
-  const [name, setName] = useState(client?.name ?? '')
+  const [email, setEmail] = useState(client?.email ?? '')
+  const [companyName, setCompanyName] = useState(client?.companyName ?? '')
   const [contactName, setContactName] = useState(client?.contactName ?? '')
   const [phone, setPhone] = useState(client?.phone ?? '')
-  const [email, setEmail] = useState(client?.email ?? '')
-  const [notes, setNotes] = useState(client?.notes ?? '')
+  const [country, setCountry] = useState(client?.country ?? '')
+  const [distributorId, setDistributorId] = useState(client?.distributorId ?? '')
+  const [linkedUserId, setLinkedUserId] = useState(client?.linkedUserId ?? '')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const canSubmit =
+    email.trim() && companyName.trim() && contactName.trim() && phone.trim() && country.trim()
 
   async function handleSubmit() {
     setSubmitting(true)
+    setError(null)
     try {
       const input = {
-        name: name.trim(),
-        contactName: contactName.trim() || undefined,
-        phone: phone.trim() || undefined,
-        email: email.trim() || undefined,
-        notes: notes.trim() || undefined,
+        email: email.trim(),
+        companyName: companyName.trim(),
+        contactName: contactName.trim(),
+        phone: phone.trim(),
+        country: country.trim(),
+        distributorId: distributorId || undefined,
+        linkedUserId: linkedUserId || undefined,
       }
       if (client) {
         await ebUpdateClient({ clientId: client.id, ...input })
@@ -47,44 +61,81 @@ function ClientForm({
         await ebCreateClient(input)
       }
       onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar.')
     } finally {
       setSubmitting(false)
     }
   }
 
+  const distributorOptions = clients.filter((c) => c.id !== client?.id)
+
   return (
     <div className="mt-3 space-y-3 border-t border-slate-200 pt-3 first:mt-0 first:border-t-0 first:pt-0">
       <input
-        placeholder="Nombre del cliente"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
+        placeholder="Nombre de la empresa"
+        value={companyName}
+        onChange={(e) => setCompanyName(e.target.value)}
         className={inputClass}
       />
       <input
-        placeholder="Persona de contacto (opcional)"
+        placeholder="Nombre del responsable"
         value={contactName}
         onChange={(e) => setContactName(e.target.value)}
         className={inputClass}
       />
       <input
-        placeholder="Teléfono (opcional)"
+        placeholder="Email"
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className={inputClass}
+      />
+      <input
+        placeholder="Teléfono"
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
         className={inputClass}
       />
       <input
-        placeholder="Email (opcional)"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        placeholder="País"
+        value={country}
+        onChange={(e) => setCountry(e.target.value)}
         className={inputClass}
       />
-      <textarea
-        placeholder="Notas (opcional)"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        rows={2}
-        className={inputClass}
-      />
+      <label className="block text-xs font-medium text-slate-500">
+        Distribuidor (opcional, si este cliente compra a través de otro)
+        <select
+          value={distributorId}
+          onChange={(e) => setDistributorId(e.target.value)}
+          className={`mt-1 ${inputClass}`}
+        >
+          <option value="">Ninguno</option>
+          {distributorOptions.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.companyName}
+            </option>
+          ))}
+        </select>
+      </label>
+      {client && (
+        <label className="block text-xs font-medium text-slate-500">
+          Usuario del portal (para que el cliente vea sus productos)
+          <select
+            value={linkedUserId}
+            onChange={(e) => setLinkedUserId(e.target.value)}
+            className={`mt-1 ${inputClass}`}
+          >
+            <option value="">Sin vincular</option>
+            {portalUsers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.displayName} ({u.email})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button
           onClick={onCancel}
@@ -93,7 +144,7 @@ function ClientForm({
           Cancelar
         </button>
         <button
-          disabled={!name.trim() || submitting}
+          disabled={!canSubmit || submitting}
           onClick={handleSubmit}
           className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
@@ -104,70 +155,18 @@ function ClientForm({
   )
 }
 
-function AddProductForm({ clientId, onAdded }: { clientId: string; onAdded: () => void }) {
-  const [productName, setProductName] = useState('')
-  const [purchasedAt, setPurchasedAt] = useState('')
-  const [notes, setNotes] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-
-  async function handleAdd() {
-    setSubmitting(true)
-    try {
-      await ebAddClientProduct({
-        clientId,
-        productName: productName.trim(),
-        purchasedAt: purchasedAt || undefined,
-        notes: notes.trim() || undefined,
-      })
-      setProductName('')
-      setPurchasedAt('')
-      setNotes('')
-      onAdded()
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      <input
-        placeholder="Producto"
-        value={productName}
-        onChange={(e) => setProductName(e.target.value)}
-        className={`${inputClass} flex-1 basis-32`}
-      />
-      <input
-        type="date"
-        value={purchasedAt}
-        onChange={(e) => setPurchasedAt(e.target.value)}
-        className={`${inputClass} basis-36`}
-      />
-      <input
-        placeholder="Notas (opcional)"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        className={`${inputClass} flex-1 basis-32`}
-      />
-      <button
-        disabled={!productName.trim() || submitting}
-        onClick={handleAdd}
-        className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        + Añadir
-      </button>
-    </div>
-  )
-}
-
 export function EbClientsTab() {
   const [clients, setClients] = useState<ClientRow[] | null>(null)
+  const [portalUsers, setPortalUsers] = useState<PortalUsers>([])
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
-  function refresh() {
-    listEbClients(FRESH).then((res) => setClients(res.data.ebClients))
+  async function refresh() {
+    const [clientsRes, usersRes] = await Promise.all([listEbClients(FRESH), listUsers(FRESH)])
+    setClients(clientsRes.data.ebClients)
+    setPortalUsers(usersRes.data.users.filter((u) => u.role === UserRole.CLIENT))
   }
 
   useEffect(() => {
@@ -176,7 +175,11 @@ export function EbClientsTab() {
 
   const query = search.trim().toLowerCase()
   const filteredClients = clients?.filter(
-    (client) => !query || client.name.toLowerCase().includes(query),
+    (client) =>
+      !query ||
+      client.companyName.toLowerCase().includes(query) ||
+      client.contactName.toLowerCase().includes(query) ||
+      client.country.toLowerCase().includes(query),
   )
 
   return (
@@ -192,10 +195,21 @@ export function EbClientsTab() {
       </div>
 
       <div className="mt-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nombre..." />
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Buscar por empresa, responsable o país..."
+        />
       </div>
 
-      {creating && <ClientForm onSaved={() => { setCreating(false); refresh() }} onCancel={() => setCreating(false)} />}
+      {creating && (
+        <ClientForm
+          clients={clients ?? []}
+          portalUsers={portalUsers}
+          onSaved={() => { setCreating(false); refresh() }}
+          onCancel={() => setCreating(false)}
+        />
+      )}
 
       <div className="mt-4 space-y-2">
         {filteredClients?.map((client) => (
@@ -205,10 +219,19 @@ export function EbClientsTab() {
                 onClick={() => setEditingId(editingId === client.id ? null : client.id)}
                 className="flex-1 text-left"
               >
-                <p className="text-sm font-semibold text-eb-blue-dark">{client.name}</p>
-                {(client.contactName || client.phone) && (
-                  <p className="text-xs text-slate-500">
-                    {[client.contactName, client.phone].filter(Boolean).join(' · ')}
+                <p className="text-sm font-semibold text-eb-blue-dark">{client.companyName}</p>
+                <p className="text-xs text-slate-500">
+                  {client.contactName} · {client.phone} · {client.country}
+                </p>
+                <p className="text-xs text-slate-400">{client.email}</p>
+                {client.distributor && (
+                  <p className="mt-1 text-[11px] text-eb-teal-dark">
+                    Vía distribuidor: {client.distributor.companyName}
+                  </p>
+                )}
+                {client.linkedUser && (
+                  <p className="text-[11px] text-slate-400">
+                    Portal: {client.linkedUser.displayName}
                   </p>
                 )}
               </button>
@@ -224,7 +247,7 @@ export function EbClientsTab() {
             {confirmingDeleteId === client.id && (
               <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
                 <p className="text-xs text-red-700">
-                  ¿Eliminar "{client.name}" y todos sus productos? Esta acción no se puede deshacer.
+                  ¿Eliminar "{client.companyName}" y todos sus productos? Esta acción no se puede deshacer.
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -246,39 +269,12 @@ export function EbClientsTab() {
             {editingId === client.id && (
               <ClientForm
                 client={client}
+                clients={clients ?? []}
+                portalUsers={portalUsers}
                 onSaved={() => { setEditingId(null); refresh() }}
                 onCancel={() => setEditingId(null)}
               />
             )}
-
-            <div className="mt-3 border-t border-slate-200 pt-3">
-              <p className="text-xs font-medium text-slate-500">Productos comprados</p>
-              {client.products.length === 0 && (
-                <p className="mt-1 text-xs text-slate-400">Ninguno todavía.</p>
-              )}
-              <ul className="mt-1 space-y-1">
-                {client.products.map((product) => (
-                  <li
-                    key={product.id}
-                    className="flex items-center justify-between gap-2 text-xs text-slate-600"
-                  >
-                    <span>
-                      {product.productName}
-                      {product.purchasedAt ? ` · ${product.purchasedAt}` : ''}
-                      {product.notes ? ` · ${product.notes}` : ''}
-                    </span>
-                    <button
-                      onClick={() => ebDeleteClientProduct(product.id).then(refresh)}
-                      className="text-slate-400 hover:text-red-600"
-                      title="Eliminar producto"
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <AddProductForm clientId={client.id} onAdded={refresh} />
-            </div>
           </div>
         ))}
         {filteredClients?.length === 0 && (

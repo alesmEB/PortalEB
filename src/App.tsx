@@ -10,6 +10,7 @@ import { CalendarPage } from './pages/CalendarPage'
 import { ChatPage } from './pages/ChatPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EbEngineeringPage } from './pages/EbEngineeringPage'
+import { EbMyProductsPage } from './pages/EbMyProductsPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
 import { OrdersListPage } from './pages/OrdersListPage'
@@ -102,6 +103,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <EbEngineeringPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ebengineering/my-products"
+            element={
+              <ProtectedRoute>
+                <EbMyProductsPage />
               </ProtectedRoute>
             }
           />

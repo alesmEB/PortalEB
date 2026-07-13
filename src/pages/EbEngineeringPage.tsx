@@ -1,11 +1,14 @@
 import { useState, type ReactNode } from 'react'
+import { UserRole } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { EbClientsTab } from './eb/EbClientsTab'
 import { EbFaqTab } from './eb/EbFaqTab'
 import { EbNewsTab } from './eb/EbNewsTab'
+import { EbProductsTab } from './eb/EbProductsTab'
 
-type Tab = 'clients' | 'news' | 'faq'
+type Tab = 'clients' | 'products' | 'news' | 'faq'
 
 function TabButton({
   active,
@@ -29,7 +32,9 @@ function TabButton({
 }
 
 export function EbEngineeringPage() {
-  const canAccess = usePermission('admin:lab')
+  const { profile } = useAuth()
+  const isLab = usePermission('admin:lab')
+  const canAccess = profile?.role === UserRole.ADMIN || isLab
   const [tab, setTab] = useState<Tab>('clients')
 
   if (!canAccess) {
@@ -45,13 +50,14 @@ export function EbEngineeringPage() {
     <div className="flex-1 p-4">
       <BackButton to="/" />
       <h1 className="text-lg font-semibold text-eb-blue-dark">EB Engineering</h1>
-      <p className="text-sm text-slate-500">
-        Sección en construcción - de momento solo visible para admin:lab.
-      </p>
+      <p className="text-sm text-slate-500">Sección en construcción - visible para admins.</p>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <TabButton active={tab === 'clients'} onClick={() => setTab('clients')}>
           Clientes
+        </TabButton>
+        <TabButton active={tab === 'products'} onClick={() => setTab('products')}>
+          Productos
         </TabButton>
         <TabButton active={tab === 'news'} onClick={() => setTab('news')}>
           Noticias
@@ -63,6 +69,7 @@ export function EbEngineeringPage() {
 
       <div className="mt-4">
         {tab === 'clients' && <EbClientsTab />}
+        {tab === 'products' && <EbProductsTab />}
         {tab === 'news' && <EbNewsTab />}
         {tab === 'faq' && <EbFaqTab />}
       </div>

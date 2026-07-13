@@ -314,31 +314,77 @@ type OrderTracking @table(name: "order_tracking") {
 # ---------------------------------------------------------------------------
 # "EB Engineering" intranet - unrelated to the repair-order workflow above.
 # A directory of clients who buy EB Engineering's own products (distinct
-# from the repair-service Customer type), company news and an FAQ. The
-# whole section is gated behind the "admin:lab" permission for now (see
-# EbEngineeringPage.tsx) while it's still being shaped.
+# from the repair-service Customer type), the products themselves, company
+# news and an FAQ. Admin/products management is gated behind ADMIN role or
+# admin:lab for now (see EbEngineeringPage.tsx) while it's still being
+# shaped; a linked EbClient's own portal user gets a read-only view of just
+# their own purchases (see GetMyEbClient/ListMyEbClientProducts).
 # ---------------------------------------------------------------------------
 
 type EbClient @table(name: "eb_clients") {
   id: UUID! @default(expr: "uuidV4()")
-  name: String!
-  contactName: String
-  phone: String
-  email: String
-  notes: String
+  email: String!
+  companyName: String!
+  contactName: String!
+  phone: String!
+  country: String!
+  # Some clients are distributors who resell to their own end clients rather
+  # than buying for themselves - when EB Engineering is notified of one of
+  # those resales, the sold unit's EbClientProduct.clientId is repointed at
+  # the end client (created here if new), and that end client's distributorId
+  # records which distributor's zone they came through. Nullable/self-ref
+  # since most clients buy directly and aren't under any distributor.
+  distributorId: UUID
+  distributor: EbClient @ref(fields: ["distributorId"])
+  # Set only if this client also has a portal login (role CLIENT) to see
+  # their own purchases - same pattern as Customer.linkedUserId.
+  linkedUserId: String
+  linkedUser: User @ref(fields: ["linkedUserId"])
   createdById: String!
   createdBy: User! @ref(fields: ["createdById"])
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
+# A cable that can be included with an EbClientProduct purchase - its own
+# small catalog (rather than a fixed enum) so admins can add new cable
+# types later without a schema change. `code` is the human-facing
+# identifier (e.g. "EBEN-180100"), not the surrogate `id`.
+type EbCableType @table(name: "eb_cable_types") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique
+  name: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# One purchased EBcontroller unit. `productName` defaults to "EBcontroller"
+# (the only product sold today) as a plain string rather than its own
+# catalog table/type - deliberately not over-built for a second product
+# that doesn't exist yet; easy to promote to a real catalog once it does.
+# `programFileUrl` is the unit's custom program download - not treated as
+# part of what defines the product, just an attachment on its purchase
+# record, uploaded/replaced independently of the rest of this data.
 type EbClientProduct @table(name: "eb_client_products") {
   id: UUID! @default(expr: "uuidV4()")
   clientId: UUID!
   client: EbClient! @ref(fields: ["clientId"])
-  productName: String!
+  productName: String! @default(value: "EBcontroller")
+  serialNumber: String!
+  hardwareNumber: String!
+  programFileUrl: String
   purchasedAt: Date
-  notes: String
+  createdById: String!
+  createdBy: User! @ref(fields: ["createdById"])
   createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Many-to-many EbClientProduct <-> EbCableType - a purchase can include
+# several cables (e.g. both "Cable single" and "EBups").
+type EbClientProductCable
+  @table(name: "eb_client_product_cables", key: ["product", "cableType"]) {
+  productId: UUID!
+  product: EbClientProduct! @ref(fields: ["productId"])
+  cableTypeId: UUID!
+  cableType: EbCableType! @ref(fields: ["cableTypeId"])
 }
 
 type EbNewsPost @table(name: "eb_news_posts") {

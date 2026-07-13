@@ -2,14 +2,17 @@ import { httpsCallable } from 'firebase/functions'
 import { functions } from './firebase'
 
 // "EB Engineering" intranet section - clients/products directory, news and
-// FAQ. Every write requires admin:lab for now (see functions/index.js).
+// FAQ. Every management write requires ADMIN role or admin:lab (see
+// requireAdminOrLab in functions/index.js).
 
 interface EbClientInput {
-  name: string
-  contactName?: string
-  phone?: string
-  email?: string
-  notes?: string
+  email: string
+  companyName: string
+  contactName: string
+  phone: string
+  country: string
+  distributorId?: string
+  linkedUserId?: string
 }
 
 const callEbCreateClient = httpsCallable<EbClientInput, { success: boolean }>(
@@ -46,21 +49,48 @@ export async function ebDeleteClient(clientId: string) {
   return res.data
 }
 
-interface EbAddClientProductInput {
-  clientId: string
-  productName: string
-  /** "YYYY-MM-DD", optional. */
-  purchasedAt?: string
-  notes?: string
+const callEbCreateCableType = httpsCallable<{ code: string; name: string }, { success: boolean }>(
+  functions,
+  'ebCreateCableType',
+)
+
+export async function ebCreateCableType(code: string, name: string) {
+  const res = await callEbCreateCableType({ code, name })
+  return res.data
 }
 
-const callEbAddClientProduct = httpsCallable<EbAddClientProductInput, { success: boolean }>(
+interface EbClientProductInput {
+  clientId: string
+  serialNumber: string
+  hardwareNumber: string
+  /** "YYYY-MM-DD", optional. */
+  purchasedAt?: string
+  programFileUrl?: string
+  cableTypeIds?: string[]
+}
+
+const callEbAddClientProduct = httpsCallable<EbClientProductInput, { productId: string }>(
   functions,
   'ebAddClientProduct',
 )
 
-export async function ebAddClientProduct(input: EbAddClientProductInput) {
+export async function ebAddClientProduct(input: EbClientProductInput) {
   const res = await callEbAddClientProduct(input)
+  return res.data
+}
+
+interface EbUpdateClientProductInput extends EbClientProductInput {
+  productId: string
+}
+
+const callEbUpdateClientProduct = httpsCallable<EbUpdateClientProductInput, { success: boolean }>(
+  functions,
+  'ebUpdateClientProduct',
+)
+
+/** clientId can be changed here - e.g. reassigning a unit a distributor resold to their own end client. */
+export async function ebUpdateClientProduct(input: EbUpdateClientProductInput) {
+  const res = await callEbUpdateClientProduct(input)
   return res.data
 }
 

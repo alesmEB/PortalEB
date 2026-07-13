@@ -363,23 +363,90 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
 }
 
 # "EB Engineering" intranet section (see schema.gql) - reads are plain
-# @auth(level: USER) queries gated client-side by the admin:lab permission
-# for now, same as ListUsers/ListPermissions above; writes all go through
-# Cloud Functions (see ebCreate*/ebAdd*/ebDelete* in functions/index.js).
+# @auth(level: USER) queries gated client-side (ADMIN role or admin:lab for
+# the management screens, own-record-only for a linked client - see
+# EbEngineeringPage.tsx/EbMyProductsPage.tsx), same broad-read model as
+# ListUsers/ListPermissions above; writes all go through Cloud Functions
+# (see ebCreate*/ebAdd*/ebUpdate*/ebDelete* in functions/index.js).
 query ListEbClients @auth(level: USER) {
-  ebClients(orderBy: { name: ASC }) {
+  ebClients(orderBy: { companyName: ASC }) {
     id
-    name
+    email
+    companyName
     contactName
     phone
-    email
-    notes
+    country
+    linkedUserId
+    linkedUser {
+      displayName
+    }
+    distributorId
+    distributor {
+      companyName
+    }
     createdAt
-    products: ebClientProducts_on_client(orderBy: { purchasedAt: DESC }) {
+  }
+}
+
+query ListEbCableTypes @auth(level: USER) {
+  ebCableTypes(orderBy: { code: ASC }) {
+    id
+    code
+    name
+  }
+}
+
+# Flat list of every unit ever sold, across every client - powers the admin
+# "all products sold" screen (filtered client-side by date/country/etc,
+# same pattern as OrdersListPage's filters).
+query ListEbClientProducts @auth(level: USER) {
+  ebClientProducts(orderBy: { purchasedAt: DESC }) {
+    id
+    productName
+    serialNumber
+    hardwareNumber
+    programFileUrl
+    purchasedAt
+    createdAt
+    client {
       id
-      productName
-      purchasedAt
-      notes
+      companyName
+      country
+    }
+    cables: ebClientProductCables_on_product {
+      cableType {
+        id
+        code
+        name
+      }
+    }
+  }
+}
+
+# Resolves the signed-in user to "their" EB Engineering client record, if
+# any (set via EbClient.linkedUserId, wired up in the admin Clientes
+# screen) - same pattern as GetMyLinkedCustomer above.
+query GetMyEbClient @auth(level: USER) {
+  ebClients(where: { linkedUserId: { eq_expr: "auth.uid" } }) {
+    id
+    companyName
+  }
+}
+
+query ListMyEbClientProducts($clientId: UUID!) @auth(level: USER) {
+  ebClientProducts(where: { clientId: { eq: $clientId } }, orderBy: { purchasedAt: DESC }) {
+    id
+    productName
+    serialNumber
+    hardwareNumber
+    programFileUrl
+    purchasedAt
+    cables: ebClientProductCables_on_product {
+      cableType {
+        id
+        code
+        name
+      }
     }
   }
 }
