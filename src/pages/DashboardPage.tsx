@@ -45,11 +45,15 @@ export function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <img src={logoElias} alt="Elías Blanco naval · industrial" className="h-8 w-auto" />
-          <div className="hidden sm:block">
-            <p className="text-sm font-semibold text-eb-blue-dark">{profile?.displayName}</p>
-            <p className="text-xs text-slate-500">{profile ? roleLabel[profile.role] : ''}</p>
+        <div className="flex min-w-0 items-center gap-3">
+          <img src={logoElias} alt="Elías Blanco naval · industrial" className="h-8 w-auto shrink-0" />
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold text-eb-blue-dark sm:text-sm">
+              {profile?.displayName}
+            </p>
+            <p className="hidden text-xs text-slate-500 sm:block">
+              {profile ? roleLabel[profile.role] : ''}
+            </p>
           </div>
         </div>
         <button
