@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { Camera, Images } from 'lucide-react'
+import { Camera, Images, Video } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   MediaType,
@@ -264,22 +264,39 @@ function MediaPicker({
 
   return (
     <div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
+      {/* Separate single-mimetype inputs for photo vs video capture -
+          `capture` only reliably jumps straight to the camera/camcorder app
+          when `accept` is unambiguous; combining "image/*,video/*" on one
+          input leaves Android unsure which capture mode to launch, so it
+          falls back to the gallery picker instead. */}
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-3 text-center text-xs text-eb-blue">
           <Camera className="h-5 w-5" />
-          {validating ? 'Comprobando...' : 'Hacer foto/vídeo'}
+          {validating ? '...' : 'Foto'}
           <input
             type="file"
-            accept="image/*,video/*"
+            accept="image/*"
             capture="environment"
             disabled={validating}
             className="hidden"
             onChange={handleFilesSelected}
           />
         </label>
-        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
+        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-3 text-center text-xs text-eb-blue">
+          <Video className="h-5 w-5" />
+          {validating ? '...' : 'Vídeo'}
+          <input
+            type="file"
+            accept="video/*"
+            capture="environment"
+            disabled={validating}
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+        </label>
+        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-3 text-center text-xs text-eb-blue">
           <Images className="h-5 w-5" />
-          {validating ? 'Comprobando...' : 'Elegir de galería'}
+          {validating ? '...' : 'Galería'}
           <input
             type="file"
             accept="image/*,video/*"
