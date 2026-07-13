@@ -13,6 +13,7 @@ import {
   where,
   type Unsubscribe,
 } from 'firebase/firestore'
+import { MediaType } from '@dataconnect/generated'
 import { firestore } from './firebase'
 
 export type ChatKind = 'client' | 'technicians'
@@ -27,6 +28,8 @@ export interface ChatMessage {
   senderId: string
   senderName: string
   text: string
+  mediaUrl?: string
+  mediaType?: MediaType
   createdAt: Timestamp | null
 }
 
@@ -81,9 +84,16 @@ export async function sendChatMessage(
   senderId: string,
   senderName: string,
   text: string,
+  media?: { url: string; type: MediaType },
 ) {
   const messagesRef = collection(chatDocRef(kind, orderId), 'messages')
-  await addDoc(messagesRef, { senderId, senderName, text, createdAt: serverTimestamp() })
+  await addDoc(messagesRef, {
+    senderId,
+    senderName,
+    text,
+    ...(media ? { mediaUrl: media.url, mediaType: media.type } : {}),
+    createdAt: serverTimestamp(),
+  })
   // setDoc+merge rather than updateDoc: orders created before this feature
   // shipped may not have a chat doc yet (see ensureChatDoc at order creation).
   await setDoc(

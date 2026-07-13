@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
+import { Camera, Images, Video, X } from 'lucide-react'
+import { MediaType } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
 import { useAuth } from '../contexts/AuthContext'
 import {
@@ -9,6 +11,8 @@ import {
   type ChatKind,
   type ChatMessage,
 } from '../lib/chat'
+import { uploadChatMedia } from '../lib/chatStorage'
+import { mediaTypeOf, validateMediaFile } from '../lib/media'
 
 const titleByKind: Record<ChatKind, string> = {
   client: 'Chat con el cliente',
@@ -22,8 +26,16 @@ export function ChatPage() {
   const { profile } = useAuth()
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
   const [text, setText] = useState('')
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [mediaError, setMediaError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  const previewUrl = useMemo(
+    () => (pendingFile && mediaTypeOf(pendingFile) === MediaType.PHOTO ? URL.createObjectURL(pendingFile) : null),
+    [pendingFile],
+  )
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
   useEffect(() => {
     if (!kind || !orderId) return
@@ -38,12 +50,32 @@ export function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages?.length])
 
+  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const err = await validateMediaFile(file)
+    if (err) {
+      setMediaError(err)
+      return
+    }
+    setMediaError(null)
+    setPendingFile(file)
+  }
+
   async function handleSend() {
-    if (!kind || !orderId || !profile || !text.trim()) return
+    if (!kind || !orderId || !profile) return
+    if (!text.trim() && !pendingFile) return
     setSending(true)
     try {
-      await sendChatMessage(kind, orderId, profile.id, profile.displayName, text.trim())
+      let media: { url: string; type: MediaType } | undefined
+      if (pendingFile) {
+        const url = await uploadChatMedia(kind, orderId, pendingFile)
+        media = { url, type: mediaTypeOf(pendingFile) }
+      }
+      await sendChatMessage(kind, orderId, profile.id, profile.displayName, text.trim(), media)
       setText('')
+      setPendingFile(null)
     } finally {
       setSending(false)
     }
@@ -73,7 +105,18 @@ export function ChatPage() {
                 {!isMine && (
                   <p className="text-xs font-semibold opacity-70">{message.senderName}</p>
                 )}
-                <p className="whitespace-pre-wrap">{message.text}</p>
+                {message.mediaUrl && message.mediaType === MediaType.PHOTO && (
+                  <img
+                    src={message.mediaUrl}
+                    alt=""
+                    onClick={() => window.open(message.mediaUrl, '_blank')}
+                    className="mt-1 max-h-64 cursor-pointer rounded-lg"
+                  />
+                )}
+                {message.mediaUrl && message.mediaType === MediaType.VIDEO && (
+                  <video src={message.mediaUrl} controls className="mt-1 max-h-64 rounded-lg" />
+                )}
+                {message.text && <p className="mt-1 whitespace-pre-wrap">{message.text}</p>}
                 {message.createdAt && (
                   <p className={`mt-1 text-[10px] ${isMine ? 'text-white/70' : 'text-slate-400'}`}>
                     {message.createdAt.toDate().toLocaleString('es-ES')}
@@ -86,7 +129,47 @@ export function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="mt-3 flex gap-2">
+      {mediaError && <p className="mt-2 text-xs text-red-600">{mediaError}</p>}
+
+      {pendingFile && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+          {previewUrl ? (
+            <img src={previewUrl} alt="" className="h-10 w-10 rounded object-cover" />
+          ) : (
+            <Video className="h-8 w-8 text-slate-400" />
+          )}
+          <span className="flex-1 truncate text-xs text-slate-600">{pendingFile.name}</span>
+          <button onClick={() => setPendingFile(null)} className="text-slate-400 hover:text-red-600">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center gap-2">
+        <label className="cursor-pointer rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue">
+          <Camera className="h-5 w-5" />
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+        </label>
+        <label className="cursor-pointer rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue">
+          <Video className="h-5 w-5" />
+          <input
+            type="file"
+            accept="video/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+        </label>
+        <label className="cursor-pointer rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue">
+          <Images className="h-5 w-5" />
+          <input type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelected} />
+        </label>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -97,14 +180,14 @@ export function ChatPage() {
             }
           }}
           placeholder="Escribe un mensaje..."
-          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-eb-blue"
+          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-eb-blue"
         />
         <button
-          disabled={!text.trim() || sending}
+          disabled={(!text.trim() && !pendingFile) || sending}
           onClick={handleSend}
-          className="rounded-lg bg-eb-blue px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="shrink-0 rounded-lg bg-eb-blue px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
-          Enviar
+          {sending ? '...' : 'Enviar'}
         </button>
       </div>
     </div>

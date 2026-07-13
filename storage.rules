@@ -70,6 +70,21 @@ service firebase.storage {
         request.resource.size < 10 * 1024 * 1024;
     }
 
+    // Photos/videos attached to a chat message (see ChatPage.tsx) - keyed by
+    // orderId (not the human-readable code) since ChatPage only has the id
+    // from the route params, same size limits as work order photos. Gated
+    // by chat:write, the same permission Firestore's message-create rule
+    // already requires.
+    match /chat-media/{orderId}/{kind}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('chat:write') &&
+        kind in ['client', 'technicians'] &&
+        ((request.resource.contentType.matches('image/.*') &&
+          request.resource.size < 15 * 1024 * 1024) ||
+         (request.resource.contentType.matches('video/.*') &&
+          request.resource.size < 20 * 1024 * 1024));
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
