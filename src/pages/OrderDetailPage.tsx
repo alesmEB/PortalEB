@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { Camera, Images } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   MediaType,
@@ -263,17 +264,32 @@ function MediaPicker({
 
   return (
     <div>
-      <label className="mt-3 block cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
-        {validating ? 'Comprobando archivo...' : '+ Elegir fotos o vídeos de la galería'}
-        <input
-          type="file"
-          accept="image/*,video/*"
-          multiple
-          disabled={validating}
-          className="hidden"
-          onChange={handleFilesSelected}
-        />
-      </label>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
+          <Camera className="h-5 w-5" />
+          {validating ? 'Comprobando...' : 'Hacer foto/vídeo'}
+          <input
+            type="file"
+            accept="image/*,video/*"
+            capture="environment"
+            disabled={validating}
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+        </label>
+        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-4 text-center text-sm text-eb-blue">
+          <Images className="h-5 w-5" />
+          {validating ? 'Comprobando...' : 'Elegir de galería'}
+          <input
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            disabled={validating}
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+        </label>
+      </div>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       {files.length > 0 && (
         <ul className="mt-3 space-y-1">
