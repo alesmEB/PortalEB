@@ -40,3 +40,14 @@ export async function validateMediaFile(file: File): Promise<string | null> {
   if (file.size > MAX_IMAGE_BYTES) return `${file.name}: supera los 15 MB`
   return null
 }
+
+const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+
+// Kept in sync by hand with storage.rules' chat-media allowed content types.
+export const DOCUMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt'
+
+/** Returns an error message if the document fails the size limit, or null if it's fine. */
+export function validateDocumentFile(file: File): string | null {
+  if (file.size > MAX_DOCUMENT_BYTES) return `${file.name}: supera los 20 MB`
+  return null
+}

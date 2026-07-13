@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { Camera, Images, Video } from 'lucide-react'
+import { Camera, ChevronDown, FileText, Images, Paperclip, Video } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   MediaType,
@@ -19,6 +19,7 @@ import { HasPermission } from '../components/HasPermission'
 import { PdfViewer } from '../components/PdfViewer'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
+import { subscribeToMessages, type ChatKind, type ChatMessage } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { mediaTypeOf, validateMediaFile } from '../lib/media'
 import { orderLocationLabel } from '../lib/orderCode'
@@ -602,6 +603,101 @@ function PhotoUploadModal({
   )
 }
 
+const chatLabelByKind: Record<ChatKind, string> = {
+  client: 'Chat cliente',
+  technicians: 'Chat técnicos',
+}
+
+/** Every photo/video/document ever attached in either chat for this order,
+ * collapsed by default - each viewer only ever sees the chat(s) they can
+ * actually access (subscribeToMessages degrades a chat they're not part of
+ * to an empty list rather than erroring). */
+function ChatFilesSection({ orderId }: { orderId: string }) {
+  const [open, setOpen] = useState(false)
+  const [clientMessages, setClientMessages] = useState<ChatMessage[] | null>(null)
+  const [technicianMessages, setTechnicianMessages] = useState<ChatMessage[] | null>(null)
+
+  useEffect(() => {
+    const unsubClient = subscribeToMessages('client', orderId, setClientMessages)
+    const unsubTechnicians = subscribeToMessages('technicians', orderId, setTechnicianMessages)
+    return () => {
+      unsubClient()
+      unsubTechnicians()
+    }
+  }, [orderId])
+
+  const files = useMemo(() => {
+    const tagged = [
+      ...(clientMessages ?? []).map((m) => ({ message: m, kind: 'client' as const })),
+      ...(technicianMessages ?? []).map((m) => ({ message: m, kind: 'technicians' as const })),
+    ]
+    return tagged
+      .filter((t) => t.message.attachmentUrl)
+      .sort((a, b) => (b.message.createdAt?.toMillis() ?? 0) - (a.message.createdAt?.toMillis() ?? 0))
+  }, [clientMessages, technicianMessages])
+
+  const loaded = clientMessages !== null && technicianMessages !== null
+
+  return (
+    <div className="mt-4 rounded-xl border border-slate-200 bg-white/90 backdrop-blur-sm">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between p-4"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-eb-blue-dark">
+          <Paperclip className="h-4 w-4" />
+          Archivos del chat
+          {loaded && files.length > 0 && (
+            <span className="rounded-full bg-eb-blue px-2 py-0.5 text-xs text-white">
+              {files.length}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div className="space-y-2 border-t border-slate-200 p-4">
+          {!loaded && <p className="text-xs text-slate-400">Cargando...</p>}
+          {loaded && files.length === 0 && (
+            <p className="text-xs text-slate-400">Todavía no se han compartido archivos.</p>
+          )}
+          {files.map(({ message, kind }) => (
+            <a
+              key={message.id}
+              href={message.attachmentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-lg border border-slate-200 p-2 hover:border-eb-blue"
+            >
+              {message.attachmentType === 'PHOTO' && (
+                <img src={message.attachmentUrl} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
+              )}
+              {message.attachmentType === 'VIDEO' && (
+                <Video className="h-6 w-6 shrink-0 text-slate-400" />
+              )}
+              {message.attachmentType === 'FILE' && (
+                <FileText className="h-6 w-6 shrink-0 text-slate-400" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-slate-700">
+                  {message.attachmentName ?? (message.attachmentType === 'VIDEO' ? 'Vídeo' : 'Foto')}
+                </p>
+                <p className="truncate text-[11px] text-slate-400">
+                  {chatLabelByKind[kind]} · {message.senderName}
+                  {message.createdAt ? ` · ${message.createdAt.toDate().toLocaleDateString('es-ES')}` : ''}
+                </p>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
@@ -932,6 +1028,8 @@ export function OrderDetailPage() {
           </button>
         </HasPermission>
       </div>
+
+      <ChatFilesSection orderId={order.id} />
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
         <h2 className="text-sm font-semibold text-eb-teal-dark">Cliente</h2>

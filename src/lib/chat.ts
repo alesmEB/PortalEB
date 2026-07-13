@@ -13,10 +13,15 @@ import {
   where,
   type Unsubscribe,
 } from 'firebase/firestore'
-import { MediaType } from '@dataconnect/generated'
 import { firestore } from './firebase'
 
 export type ChatKind = 'client' | 'technicians'
+
+// Not Data Connect's MediaType (PHOTO/VIDEO only) - chat attachments also
+// cover plain documents (PDF, Word, Excel...), and chat itself lives
+// entirely in Firestore, so there's no reason to tie this to the Data
+// Connect schema.
+export type ChatAttachmentType = 'PHOTO' | 'VIDEO' | 'FILE'
 
 const COLLECTION_BY_KIND: Record<ChatKind, string> = {
   client: 'clientChats',
@@ -28,8 +33,9 @@ export interface ChatMessage {
   senderId: string
   senderName: string
   text: string
-  mediaUrl?: string
-  mediaType?: MediaType
+  attachmentUrl?: string
+  attachmentType?: ChatAttachmentType
+  attachmentName?: string
   createdAt: Timestamp | null
 }
 
@@ -73,9 +79,15 @@ export function subscribeToMessages(
   callback: (messages: ChatMessage[]) => void,
 ): Unsubscribe {
   const messagesRef = collection(chatDocRef(kind, orderId), 'messages')
-  return onSnapshot(query(messagesRef, orderBy('createdAt', 'asc')), (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ChatMessage, 'id'>) })))
-  })
+  return onSnapshot(
+    query(messagesRef, orderBy('createdAt', 'asc')),
+    (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ChatMessage, 'id'>) }))),
+    // permission-denied if the caller isn't a participant of this particular
+    // chat (e.g. OrderDetailPage's "Archivos del chat" section subscribes to
+    // both chats regardless of which one(s) the viewer is actually in) -
+    // degrade to "no messages" rather than leaving a dangling error.
+    () => callback([]),
+  )
 }
 
 export async function sendChatMessage(
@@ -84,14 +96,16 @@ export async function sendChatMessage(
   senderId: string,
   senderName: string,
   text: string,
-  media?: { url: string; type: MediaType },
+  attachment?: { url: string; type: ChatAttachmentType; name: string },
 ) {
   const messagesRef = collection(chatDocRef(kind, orderId), 'messages')
   await addDoc(messagesRef, {
     senderId,
     senderName,
     text,
-    ...(media ? { mediaUrl: media.url, mediaType: media.type } : {}),
+    ...(attachment
+      ? { attachmentUrl: attachment.url, attachmentType: attachment.type, attachmentName: attachment.name }
+      : {}),
     createdAt: serverTimestamp(),
   })
   // setDoc+merge rather than updateDoc: orders created before this feature
