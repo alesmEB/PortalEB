@@ -10,12 +10,7 @@ import {
 } from '../../lib/adminActions'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { changeUserPassword } from '../../lib/userClaims'
-
-const roleLabel: Record<UserRole, string> = {
-  [UserRole.ADMIN]: 'Administrador',
-  [UserRole.CLIENT]: 'Cliente',
-  [UserRole.TECHNICIAN]: 'Técnico',
-}
+import { roleLabel } from '../../lib/userRole'
 
 type UserRow = ListUsersData['users'][number]
 type Permissions = ListPermissionsData['permissions']

@@ -3,6 +3,7 @@ import { ActiveShiftBanner } from './components/ActiveShiftBanner'
 import { AppBackground } from './components/AppBackground'
 import { Footer } from './components/Footer'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { UserBar } from './components/UserBar'
 import { AdminPage } from './pages/AdminPage'
 import { AssignmentsPage } from './pages/AssignmentsPage'
 import { CalendarPage } from './pages/CalendarPage'
@@ -19,6 +20,7 @@ function App() {
   return (
     <div className="flex min-h-svh flex-col">
       <AppBackground />
+      <UserBar />
 
       <div className="flex flex-1 flex-col">
         <Routes>

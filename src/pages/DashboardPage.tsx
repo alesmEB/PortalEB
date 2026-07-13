@@ -6,12 +6,6 @@ import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
 import { createWorkOrder } from '../lib/orderCreation'
 
-const roleLabel: Record<string, string> = {
-  ADMIN: 'Administrador',
-  CLIENT: 'Cliente',
-  TECHNICIAN: 'Técnico',
-}
-
 export function DashboardPage() {
   const { profile, permissions, signOut } = useAuth()
   const navigate = useNavigate()
@@ -45,17 +39,7 @@ export function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur-sm">
-        <div className="flex min-w-0 items-center gap-3">
-          <img src={logoElias} alt="Elías Blanco naval · industrial" className="h-8 w-auto shrink-0" />
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-eb-blue-dark sm:text-sm">
-              {profile?.displayName}
-            </p>
-            <p className="hidden text-xs text-slate-500 sm:block">
-              {profile ? roleLabel[profile.role] : ''}
-            </p>
-          </div>
-        </div>
+        <img src={logoElias} alt="Elías Blanco naval · industrial" className="h-8 w-auto" />
         <button
           onClick={() => signOut()}
           className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue hover:text-eb-blue"
