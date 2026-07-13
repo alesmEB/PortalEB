@@ -72,6 +72,34 @@ export async function adminDeletePermission(permissionId: string) {
   return res.data
 }
 
+export interface UserDevice {
+  id: string
+  userAgent: string | null
+  updatedAt: string | null
+}
+
+const callAdminListUserDevices = httpsCallable<{ userId: string }, { devices: UserDevice[] }>(
+  functions,
+  'adminListUserDevices',
+)
+
+/** Requires admin:manage. */
+export async function adminListUserDevices(userId: string) {
+  const res = await callAdminListUserDevices({ userId })
+  return res.data.devices
+}
+
+const callAdminDeleteUserDevice = httpsCallable<{ deviceId: string }, { success: boolean }>(
+  functions,
+  'adminDeleteUserDevice',
+)
+
+/** Stops push notifications reaching that device until it re-registers - requires admin:manage. */
+export async function adminDeleteUserDevice(deviceId: string) {
+  const res = await callAdminDeleteUserDevice({ deviceId })
+  return res.data
+}
+
 // --- Customers ---------------------------------------------------------------
 
 interface AdminCreateCustomerInput {

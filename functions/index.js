@@ -412,7 +412,11 @@ async function sendToUsers(userIds, { notification, data }) {
   if (tokenDocs.length === 0) return { sent: 0, failed: 0 }
 
   const response = await admin.messaging().sendEachForMulticast({
-    tokens: tokenDocs.map((doc) => doc.id),
+    // Pre-migration docs (keyed by the token itself, no `token` field of
+    // their own) still work via this fallback until they're naturally
+    // replaced by a fresh doc.id-keyed registration - see
+    // getOrCreateDeviceId in src/lib/pushNotifications.ts.
+    tokens: tokenDocs.map((doc) => doc.data().token ?? doc.id),
     notification,
     data,
   })
@@ -451,6 +455,41 @@ exports.sendPushNotification = onCall(async (request) => {
     notification: { title: title.trim(), body: body.trim() },
     data: orderId ? { orderId } : {},
   })
+})
+
+// Lets an admin see a user's registered devices (to spot a stale/duplicate
+// one - e.g. the same phone registered once from a browser tab and again
+// after being installed as a PWA, see getOrCreateDeviceId) and remove it.
+// Firestore's deviceTokens collection has no client-facing reads at all
+// (see firestore.rules), so this - not a direct client query - is the only
+// way to list them.
+exports.adminListUserDevices = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { userId } = request.data ?? {}
+  if (typeof userId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del usuario.')
+  }
+
+  const snapshot = await admin.firestore().collection('deviceTokens').where('userId', '==', userId).get()
+  const devices = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    userAgent: doc.data().userAgent ?? null,
+    updatedAt: doc.data().updatedAt?.toDate().toISOString() ?? null,
+  }))
+  return { devices }
+})
+
+exports.adminDeleteUserDevice = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { deviceId } = request.data ?? {}
+  if (typeof deviceId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del dispositivo.')
+  }
+
+  await admin.firestore().collection('deviceTokens').doc(deviceId).delete()
+  return { success: true }
 })
 
 // Fires for every new chat message (see src/lib/chat.ts sendChatMessage) and

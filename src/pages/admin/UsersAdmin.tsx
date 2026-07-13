@@ -6,8 +6,12 @@ import {
   adminCreatePermission,
   adminCreateUser,
   adminDeletePermission,
+  adminDeleteUserDevice,
+  adminListUserDevices,
   adminUpdateUser,
+  type UserDevice,
 } from '../../lib/adminActions'
+import { deviceLabelFromUserAgent } from '../../lib/deviceLabel'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { changeUserPassword } from '../../lib/userClaims'
 import { roleLabel } from '../../lib/userRole'
@@ -263,6 +267,85 @@ function ChangePasswordSection({ userId }: { userId: string }) {
   )
 }
 
+function DevicesSection({ userId }: { userId: string }) {
+  const [devices, setDevices] = useState<UserDevice[] | null>(null)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+
+  function refresh() {
+    adminListUserDevices(userId).then(setDevices)
+  }
+
+  useEffect(() => {
+    refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
+
+  async function handleDelete(deviceId: string) {
+    await adminDeleteUserDevice(deviceId)
+    setConfirmingDeleteId(null)
+    refresh()
+  }
+
+  if (devices === null) {
+    return <p className="text-xs text-slate-400">Cargando dispositivos...</p>
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-500">
+        Dispositivos con notificaciones ({devices.length})
+      </p>
+      {devices.length === 0 && (
+        <p className="mt-1 text-xs text-slate-400">Ninguno registrado.</p>
+      )}
+      <ul className="mt-1 space-y-1">
+        {devices.map((device) => (
+          <li key={device.id} className="rounded-lg border border-slate-200 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-slate-700">
+                  {deviceLabelFromUserAgent(device.userAgent)}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Última vez: {device.updatedAt ? new Date(device.updatedAt).toLocaleString('es-ES') : 'desconocida'}
+                </p>
+              </div>
+              <button
+                onClick={() => setConfirmingDeleteId(device.id)}
+                className="shrink-0 text-slate-400 hover:text-red-600"
+                title="Quitar dispositivo"
+              >
+                ✕
+              </button>
+            </div>
+            {confirmingDeleteId === device.id && (
+              <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2">
+                <p className="text-xs text-red-700">
+                  Dejará de recibir notificaciones en este dispositivo hasta que vuelva a abrir la app.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => setConfirmingDeleteId(null)}
+                    className="flex-1 rounded-lg border border-slate-300 py-1 text-xs text-slate-600"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(device.id)}
+                    className="flex-1 rounded-lg bg-red-600 py-1 text-xs font-semibold text-white"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function EditUserForm({
   user,
   permissions,
@@ -338,6 +421,7 @@ function EditUserForm({
       <HasPermission permission="users:changepassword">
         <ChangePasswordSection userId={user.id} />
       </HasPermission>
+      <DevicesSection userId={user.id} />
     </div>
   )
 }

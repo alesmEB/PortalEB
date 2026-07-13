@@ -86,11 +86,17 @@ service cloud.firestore {
       }
     }
 
-    // One document per FCM registration token, keyed by the token itself so
-    // re-registering the same token is just an overwrite. Only the owning
-    // user can write their own token; reads are server-only (Admin SDK,
-    // which bypasses rules) since sending is done from a Cloud Function.
-    match /deviceTokens/{token} {
+    // One document per physical device, keyed by a random id generated once
+    // and persisted in localStorage (see getOrCreateDeviceId in
+    // pushNotifications.ts) - NOT by the FCM token itself, since a browser
+    // can be issued a new token for what's still the same device (e.g. the
+    // same origin re-registering push after being installed as a PWA),
+    // which used to leave the old token around as a permanent duplicate
+    // send target. Only the owning user can write their own device; reads
+    // are server-only (Admin SDK, which bypasses rules) - sending is done
+    // from a Cloud Function, and the admin devices list/delete UI goes
+    // through adminListUserDevices/adminDeleteUserDevice for the same reason.
+    match /deviceTokens/{deviceId} {
       allow read: if false;
       allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
