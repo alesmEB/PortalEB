@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { UserRole, listPermissions, listUsers, type ListPermissionsData, type ListUsersData } from '@dataconnect/generated'
 import { HasPermission } from '../../components/HasPermission'
 import { SearchInput } from '../../components/SearchInput'
-import { adminCreatePermission, adminCreateUser, adminUpdateUser } from '../../lib/adminActions'
+import {
+  adminCreatePermission,
+  adminCreateUser,
+  adminDeletePermission,
+  adminUpdateUser,
+} from '../../lib/adminActions'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { changeUserPassword } from '../../lib/userClaims'
 
@@ -108,7 +113,7 @@ function CreateUserForm({
   onCreated,
 }: {
   permissions: Permissions
-  onCreated: () => void
+  onCreated: (displayName: string) => void
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -140,7 +145,7 @@ function CreateUserForm({
         role,
         permissionIds: [...selected],
       })
-      onCreated()
+      onCreated(displayName.trim())
     } catch {
       setError(
         'No se pudo crear el usuario. Comprueba que el email no esté ya en uso y que la contraseña tenga al menos 6 caracteres.',
@@ -348,7 +353,9 @@ export function UsersAdmin() {
   const [creating, setCreating] = useState(false)
   const [creatingPermission, setCreatingPermission] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [confirmingDeletePermissionId, setConfirmingDeletePermissionId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [createdMessage, setCreatedMessage] = useState<string | null>(null)
 
   async function refresh() {
     const [usersRes, permissionsRes] = await Promise.all([listUsers(FRESH), listPermissions(FRESH)])
@@ -384,12 +391,20 @@ export function UsersAdmin() {
         <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nombre o email..." />
       </div>
 
+      {createdMessage && (
+        <p className="mt-3 rounded-lg bg-eb-teal/10 px-3 py-2 text-sm text-eb-teal-dark">
+          {createdMessage}
+        </p>
+      )}
+
       {creating && permissions && (
         <CreateUserForm
           permissions={permissions}
-          onCreated={() => {
+          onCreated={(displayName) => {
             setCreating(false)
+            setCreatedMessage(`Usuario "${displayName}" creado correctamente.`)
             refresh()
+            setTimeout(() => setCreatedMessage(null), 4000)
           }}
         />
       )}
@@ -407,15 +422,43 @@ export function UsersAdmin() {
           </button>
         </div>
         <ul className="mt-2 flex flex-wrap gap-2">
-          {permissions?.map((permission) => (
-            <li
-              key={permission.id}
-              title={permission.description}
-              className="rounded-full bg-eb-blue/10 px-2.5 py-1 text-xs text-eb-blue-dark"
-            >
-              {permission.key}
-            </li>
-          ))}
+          {permissions?.map((permission) =>
+            confirmingDeletePermissionId === permission.id ? (
+              <li
+                key={permission.id}
+                className="flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs text-red-700"
+              >
+                ¿Eliminar "{permission.key}"?
+                <button
+                  onClick={() =>
+                    adminDeletePermission(permission.id).then(() => {
+                      setConfirmingDeletePermissionId(null)
+                      refresh()
+                    })
+                  }
+                  className="font-semibold underline"
+                >
+                  Sí
+                </button>
+                <button onClick={() => setConfirmingDeletePermissionId(null)}>No</button>
+              </li>
+            ) : (
+              <li
+                key={permission.id}
+                title={permission.description}
+                className="flex items-center gap-1 rounded-full bg-eb-blue/10 px-2.5 py-1 text-xs text-eb-blue-dark"
+              >
+                {permission.key}
+                <button
+                  onClick={() => setConfirmingDeletePermissionId(permission.id)}
+                  className="text-eb-blue-dark/50 hover:text-red-600"
+                  title="Eliminar permiso"
+                >
+                  ✕
+                </button>
+              </li>
+            ),
+          )}
         </ul>
         {creatingPermission && (
           <CreatePermissionForm

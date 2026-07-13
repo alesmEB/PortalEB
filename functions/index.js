@@ -1549,6 +1549,16 @@ const CREATE_PERMISSION_MUTATION = `
     permission_insert(data: { key: $key, description: $description })
   }
 `
+const DELETE_PERMISSION_GRANTS_MUTATION = `
+  mutation DeletePermissionGrantsAdmin($permissionId: UUID!) {
+    userPermission_deleteMany(where: { permissionId: { eq: $permissionId } })
+  }
+`
+const DELETE_PERMISSION_MUTATION = `
+  mutation DeletePermissionAdmin($id: UUID!) {
+    permission_delete(id: $id)
+  }
+`
 const GRANT_PERMISSION_MUTATION = `
   mutation GrantPermissionAdmin($userId: String!, $permissionId: UUID!, $grantedById: String!) {
     userPermission_insert(data: { userId: $userId, permissionId: $permissionId, grantedById: $grantedById })
@@ -1758,6 +1768,24 @@ exports.adminCreatePermission = onCall(async (request) => {
   await dataConnect.executeGraphql(CREATE_PERMISSION_MUTATION, {
     variables: { key: key.trim(), description: description.trim() },
   })
+  return { success: true }
+})
+
+// Revokes the permission from every user who held it, then removes it from
+// the catalog - for retiring a permission that's no longer checked anywhere
+// in code (e.g. calendar:manage, superseded by role-based calendar access).
+// Affected users' custom claims still list it until their token naturally
+// refreshes or they call syncUserClaims, same as any other revoke.
+exports.adminDeletePermission = onCall(async (request) => {
+  requirePermission(request, 'admin:manage')
+
+  const { permissionId } = request.data ?? {}
+  if (typeof permissionId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del permiso.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_PERMISSION_GRANTS_MUTATION, { variables: { permissionId } })
+  await dataConnect.executeGraphql(DELETE_PERMISSION_MUTATION, { variables: { id: permissionId } })
   return { success: true }
 })
 

@@ -61,6 +61,17 @@ export async function adminCreatePermission(key: string, description: string) {
   return res.data
 }
 
+const callAdminDeletePermission = httpsCallable<{ permissionId: string }, { success: boolean }>(
+  functions,
+  'adminDeletePermission',
+)
+
+/** Also revokes it from every user who held it - requires admin:manage. */
+export async function adminDeletePermission(permissionId: string) {
+  const res = await callAdminDeletePermission({ permissionId })
+  return res.data
+}
+
 // --- Customers ---------------------------------------------------------------
 
 interface AdminCreateCustomerInput {
