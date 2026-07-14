@@ -706,7 +706,9 @@ export function OrderDetailPage() {
   const backTo = routerState?.from ?? '/orders'
   const autoAssignTriggered = useRef(false)
   const { profile } = useAuth()
-  const canViewQuotes = usePermission('quotes:upload') || usePermission('quotes:approve')
+  const canUploadQuotes = usePermission('quotes:upload')
+  const canApproveQuotes = usePermission('quotes:approve')
+  const canViewQuotes = canUploadQuotes || canApproveQuotes
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
@@ -762,12 +764,6 @@ export function OrderDetailPage() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (file) handleAddQuote(file)
-  }
-
-  async function handleAddQuoteLab() {
-    const { createBlankPdfBlob } = await import('../lib/pdf/blankPdf')
-    const blob = await createBlankPdfBlob()
-    await handleAddQuote(blob)
   }
 
   async function handleAcceptQuote() {
@@ -927,18 +923,6 @@ export function OrderDetailPage() {
               className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               + Añadir presupuesto
-            </button>
-          </HasPermission>
-        )}
-        {(order.status === WorkOrderStatus.PENDING_QUOTE ||
-          order.status === WorkOrderStatus.QUOTE_REJECTED) && (
-          <HasPermission permission="admin:lab">
-            <button
-              disabled={busy || order.quoteAttempts >= 2}
-              onClick={handleAddQuoteLab}
-              className="rounded-lg border-2 border-dashed border-eb-teal px-3 py-1.5 text-sm font-semibold text-eb-teal-dark disabled:opacity-50"
-            >
-              Añadir presupuesto (lab)
             </button>
           </HasPermission>
         )}
