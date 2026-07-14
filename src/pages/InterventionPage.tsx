@@ -204,12 +204,20 @@ export function InterventionPage() {
         <p className="text-lg font-semibold text-eb-blue-dark">
           Orden de intervención {successCode} creada correctamente
         </p>
-        <button
-          onClick={() => navigate('/')}
-          className="rounded-lg bg-eb-blue px-4 py-2 text-sm font-semibold text-white"
-        >
-          Volver al panel
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate('/')}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"
+          >
+            Volver al panel
+          </button>
+          <button
+            onClick={() => navigate('/interventions')}
+            className="rounded-lg bg-eb-blue px-4 py-2 text-sm font-semibold text-white"
+          >
+            Ver lista
+          </button>
+        </div>
       </div>
     )
   }

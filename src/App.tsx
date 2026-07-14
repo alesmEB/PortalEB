@@ -12,6 +12,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { EbEngineeringPage } from './pages/EbEngineeringPage'
 import { EbMyProductsPage } from './pages/EbMyProductsPage'
 import { InterventionPage } from './pages/InterventionPage'
+import { InterventionsListPage } from './pages/InterventionsListPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
 import { OrdersListPage } from './pages/OrdersListPage'
@@ -120,6 +121,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <InterventionPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/interventions"
+            element={
+              <ProtectedRoute>
+                <InterventionsListPage />
               </ProtectedRoute>
             }
           />

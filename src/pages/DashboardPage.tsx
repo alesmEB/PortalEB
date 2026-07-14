@@ -126,7 +126,16 @@ export function DashboardPage() {
               onClick={() => navigate('/intervention/new')}
               className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
             >
-              Orden de intervención (lab)
+              Nueva orden de intervención (lab)
+            </button>
+          </HasPermission>
+
+          <HasPermission permission="admin:lab">
+            <button
+              onClick={() => navigate('/interventions')}
+              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
+            >
+              Órdenes de intervención (lab)
             </button>
           </HasPermission>
 

@@ -473,3 +473,39 @@ query ListEbFaqItems @auth(level: USER) {
     answer
   }
 }
+
+# Interventions list ("Orden de intervención" intake, see intervention.pdf) -
+# lab-only screen for now, same access model as createIntervention.
+query ListInterventions @auth(level: USER) {
+  interventions(orderBy: { createdAt: DESC }) {
+    id
+    code
+    locationCode
+    createdAt
+    expectedDeliveryAt
+    homePort
+    pier
+    berthPosition
+    engineComponentInfo
+    keysLeft
+    wantsQuoteFirst
+    requestedWork
+    observations
+    signatureUrl
+    customer {
+      name
+      contactName
+      phone
+    }
+    boat {
+      name
+      registrationNumber
+      manufacturerModel
+      loaMeters
+      beamMeters
+    }
+    receivedBy {
+      displayName
+    }
+  }
+}
