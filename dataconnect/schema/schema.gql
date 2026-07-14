@@ -149,6 +149,12 @@ type Boat @table(name: "boats") {
   registrationNumber: String
   hullMaterial: String
   loaMeters: Float
+  # "Astillero - Fabricante - Modelo" and "Manga" on the intervention intake
+  # sheet (see Intervention below) - free text/beam width, not collected by
+  # the older work-order creation flow but reused here since it's the same
+  # underlying Boat row.
+  manufacturerModel: String
+  beamMeters: Float
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
@@ -402,5 +408,48 @@ type EbFaqItem @table(name: "eb_faq_items") {
   answer: String!
   createdById: String!
   createdBy: User! @ref(fields: ["createdById"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# ---------------------------------------------------------------------------
+# Repair intake ("Orden de Reparación" counter form)
+# ---------------------------------------------------------------------------
+
+# Digitizes the front-desk intake sheet filled in when a customer drops off
+# a boat/machine - deliberately its own entity, not a WorkOrder: at this
+# stage nothing has been quoted or assigned yet, the customer is just
+# stating what they want done and signing the intake consent. Its own code
+# sequence (not WorkOrder's - see reserveInterventionSequenceNumber in
+# functions/index.js), since it isn't a per-location numbering like work
+# order codes are on the physical sheet.
+type Intervention @table(name: "interventions") {
+  id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique # e.g. "INT-000001"
+  sequenceNumber: Int!
+  locationCode: OrderLocation!
+  customerId: UUID!
+  customer: Customer! @ref(fields: ["customerId"])
+  boatId: UUID!
+  boat: Boat! @ref(fields: ["boatId"])
+  receivedById: String! # "Recepcionista"
+  receivedBy: User! @ref(fields: ["receivedById"])
+  expectedDeliveryAt: Date
+  # "Puerto Base - Localización" / "Pantalán - Ubicación" / "Atraque -
+  # Posición" / "Motor - Componente - Hélice" boxes on the sheet - specific
+  # to this visit, not a permanent Boat attribute.
+  homePort: String
+  pier: String
+  berthPosition: String
+  engineComponentInfo: String
+  keysLeft: Boolean!
+  # true = "Presupuesto" box checked; false = "Reparación (Renuncia al
+  # presupuesto)" - the two are mutually exclusive on the sheet.
+  wantsQuoteFirst: Boolean!
+  requestedWork: String!
+  observations: String
+  # PNG of the customer's signature, rendered server-side from the canvas
+  # data URL the client submits - see createIntervention in functions/index.js.
+  signatureUrl: String!
+  consentSignedAt: Timestamp!
   createdAt: Timestamp! @default(expr: "request.time")
 }

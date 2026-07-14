@@ -57,6 +57,9 @@ query ListBoats @auth(level: USER) {
     id
     name
     registrationNumber
+    manufacturerModel
+    beamMeters
+    loaMeters
     ownerId
     owner {
       name

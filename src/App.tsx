@@ -11,6 +11,7 @@ import { ChatPage } from './pages/ChatPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EbEngineeringPage } from './pages/EbEngineeringPage'
 import { EbMyProductsPage } from './pages/EbMyProductsPage'
+import { InterventionPage } from './pages/InterventionPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
 import { OrdersListPage } from './pages/OrdersListPage'
@@ -111,6 +112,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <EbMyProductsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/intervention/new"
+            element={
+              <ProtectedRoute>
+                <InterventionPage />
               </ProtectedRoute>
             }
           />

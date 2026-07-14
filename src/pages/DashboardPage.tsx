@@ -121,6 +121,15 @@ export function DashboardPage() {
             </button>
           </HasPermission>
 
+          <HasPermission permission="admin:lab">
+            <button
+              onClick={() => navigate('/intervention/new')}
+              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
+            >
+              Orden de intervención (lab)
+            </button>
+          </HasPermission>
+
           {(profile?.role === UserRole.ADMIN || permissions.includes('admin:lab')) && (
             <button
               onClick={() => navigate('/ebengineering')}

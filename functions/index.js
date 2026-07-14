@@ -38,8 +38,24 @@ const CREATE_CUSTOMER_MUTATION = `
   }
 `
 const CREATE_BOAT_MUTATION = `
-  mutation CreateBoatAdmin($ownerId: UUID!, $name: String!, $registrationNumber: String) {
-    boat_insert(data: { ownerId: $ownerId, name: $name, registrationNumber: $registrationNumber })
+  mutation CreateBoatAdmin(
+    $ownerId: UUID!
+    $name: String!
+    $registrationNumber: String
+    $manufacturerModel: String
+    $loaMeters: Float
+    $beamMeters: Float
+  ) {
+    boat_insert(
+      data: {
+        ownerId: $ownerId
+        name: $name
+        registrationNumber: $registrationNumber
+        manufacturerModel: $manufacturerModel
+        loaMeters: $loaMeters
+        beamMeters: $beamMeters
+      }
+    )
   }
 `
 const CREATE_ENGINE_MUTATION = `
@@ -109,6 +125,51 @@ const LOG_ORDER_EVENT_MUTATION = `
 const UPSERT_ORDER_SEQUENCE_MUTATION = `
   mutation UpsertOrderSequenceAdmin($locationCode: OrderLocation!, $lastNumber: Int!) {
     orderSequence_upsert(data: { locationCode: $locationCode, lastNumber: $lastNumber })
+  }
+`
+
+// See createIntervention below.
+const CREATE_INTERVENTION_MUTATION = `
+  mutation CreateInterventionAdmin(
+    $code: String!
+    $sequenceNumber: Int!
+    $locationCode: OrderLocation!
+    $customerId: UUID!
+    $boatId: UUID!
+    $receivedById: String!
+    $expectedDeliveryAt: Date
+    $homePort: String
+    $pier: String
+    $berthPosition: String
+    $engineComponentInfo: String
+    $keysLeft: Boolean!
+    $wantsQuoteFirst: Boolean!
+    $requestedWork: String!
+    $observations: String
+    $signatureUrl: String!
+    $consentSignedAt: Timestamp!
+  ) {
+    intervention_insert(
+      data: {
+        code: $code
+        sequenceNumber: $sequenceNumber
+        locationCode: $locationCode
+        customerId: $customerId
+        boatId: $boatId
+        receivedById: $receivedById
+        expectedDeliveryAt: $expectedDeliveryAt
+        homePort: $homePort
+        pier: $pier
+        berthPosition: $berthPosition
+        engineComponentInfo: $engineComponentInfo
+        keysLeft: $keysLeft
+        wantsQuoteFirst: $wantsQuoteFirst
+        requestedWork: $requestedWork
+        observations: $observations
+        signatureUrl: $signatureUrl
+        consentSignedAt: $consentSignedAt
+      }
+    )
   }
 `
 const UPDATE_WORK_ORDER_STATUS_MUTATION = `
@@ -373,6 +434,37 @@ async function reserveOrderSequenceNumber(locationCode) {
   })
 }
 
+// Interventions have their own global sequence (not per-location like work
+// orders - the physical intake sheet's "Número O.T." box isn't split by
+// branch), same bootstrap-from-max-then-Firestore-transaction shape as
+// reserveOrderSequenceNumber above.
+const GET_MAX_INTERVENTION_SEQUENCE_QUERY = `
+  query GetMaxInterventionSequenceAdmin {
+    interventions(orderBy: { sequenceNumber: DESC }, limit: 1) {
+      sequenceNumber
+    }
+  }
+`
+
+function formatInterventionCode(sequenceNumber) {
+  return `INT-${String(sequenceNumber).padStart(6, '0')}`
+}
+
+async function reserveInterventionSequenceNumber() {
+  const ref = admin.firestore().collection('interventionSequenceCounters').doc('global')
+  return admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    let current = snap.data()?.lastNumber
+    if (current == null) {
+      const res = await dataConnect.executeGraphqlRead(GET_MAX_INTERVENTION_SEQUENCE_QUERY, {})
+      current = res.data.interventions[0]?.sequenceNumber ?? 0
+    }
+    const next = current + 1
+    tx.set(ref, { lastNumber: next }, { merge: true })
+    return next
+  })
+}
+
 // The Admin SDK's Storage client has no equivalent of the client SDK's
 // getDownloadURL() - that URL scheme relies on a `firebaseStorageDownloadTokens`
 // value the client SDK generates and attaches automatically on upload, which
@@ -380,15 +472,19 @@ async function reserveOrderSequenceNumber(locationCode) {
 // switching to expiring signed URLs) keeps finalReportUrl behaving exactly
 // like every URL already produced client-side (permanent, works directly in
 // PdfViewer, no changes needed anywhere else that reads that field).
-async function uploadPdfAndGetDownloadUrl(storagePath, buffer) {
+async function uploadFileAndGetDownloadUrl(storagePath, buffer, contentType) {
   const bucket = admin.storage().bucket()
   const file = bucket.file(storagePath)
   const token = randomUUID()
   await file.save(buffer, {
-    contentType: 'application/pdf',
+    contentType,
     metadata: { metadata: { firebaseStorageDownloadTokens: token } },
   })
   return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`
+}
+
+async function uploadPdfAndGetDownloadUrl(storagePath, buffer) {
+  return uploadFileAndGetDownloadUrl(storagePath, buffer, 'application/pdf')
 }
 
 function chunk(items, size) {
@@ -768,6 +864,113 @@ exports.createWorkOrder = onCall(async (request) => {
   )
 
   return { workOrderId, code, customerId, boatId, finalReportUrl }
+})
+
+// Digitizes the front-desk "Orden de Reparación" intake sheet (see
+// intervention.pdf) - lab-only for now, same admin:lab gate as the rest of
+// this early pass. Same new-or-existing customer/boat resolution as
+// createWorkOrder above (and reuses its mutations), but its own code
+// sequence (see reserveInterventionSequenceNumber) since this isn't a
+// WorkOrder yet - just the signed intake record a future step may convert
+// into one. The signature is a PNG canvas snapshot sent as a base64 string
+// (no data: URL prefix) and rendered to Storage server-side, the same
+// "client sends raw data, server owns the upload" shape as createWorkOrder's
+// PDF report - avoids needing a Storage-rules-writable path for it at all.
+exports.createIntervention = onCall(async (request) => {
+  requirePermission(request, 'admin:lab')
+
+  const {
+    locationCode,
+    customerId: existingCustomerId,
+    newCustomer,
+    boatId: existingBoatId,
+    newBoat,
+    expectedDeliveryAt,
+    homePort,
+    pier,
+    berthPosition,
+    engineComponentInfo,
+    keysLeft,
+    wantsQuoteFirst,
+    requestedWork,
+    observations,
+    signaturePngBase64,
+  } = request.data ?? {}
+
+  if (
+    typeof locationCode !== 'string' ||
+    typeof requestedWork !== 'string' ||
+    !requestedWork.trim() ||
+    typeof keysLeft !== 'boolean' ||
+    typeof wantsQuoteFirst !== 'boolean' ||
+    typeof signaturePngBase64 !== 'string' ||
+    !signaturePngBase64
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const callerUid = request.auth.uid
+
+  let customerId = existingCustomerId
+  if (!customerId) {
+    if (!newCustomer?.name || !newCustomer?.contactName || !newCustomer?.phone) {
+      throw new HttpsError('invalid-argument', 'Faltan datos del cliente nuevo.')
+    }
+    const res = await dataConnect.executeGraphql(CREATE_CUSTOMER_MUTATION, { variables: newCustomer })
+    customerId = res.data.customer_insert.id
+  }
+
+  let boatId = existingBoatId
+  if (!boatId) {
+    if (!newBoat?.name) {
+      throw new HttpsError('invalid-argument', 'Faltan datos de la embarcación/máquina nueva.')
+    }
+    const res = await dataConnect.executeGraphql(CREATE_BOAT_MUTATION, {
+      variables: {
+        ownerId: customerId,
+        name: newBoat.name,
+        registrationNumber: newBoat.registrationNumber ?? null,
+        manufacturerModel: newBoat.manufacturerModel ?? null,
+        loaMeters: newBoat.loaMeters ?? null,
+        beamMeters: newBoat.beamMeters ?? null,
+      },
+    })
+    boatId = res.data.boat_insert.id
+  }
+
+  const sequenceNumber = await reserveInterventionSequenceNumber()
+  const code = formatInterventionCode(sequenceNumber)
+
+  const signatureUrl = await uploadFileAndGetDownloadUrl(
+    `interventions/${code}/signature.png`,
+    Buffer.from(signaturePngBase64, 'base64'),
+    'image/png',
+  )
+
+  const now = new Date().toISOString()
+  const interventionRes = await dataConnect.executeGraphql(CREATE_INTERVENTION_MUTATION, {
+    variables: {
+      code,
+      sequenceNumber,
+      locationCode,
+      customerId,
+      boatId,
+      receivedById: callerUid,
+      expectedDeliveryAt: expectedDeliveryAt || null,
+      homePort: homePort || null,
+      pier: pier || null,
+      berthPosition: berthPosition || null,
+      engineComponentInfo: engineComponentInfo || null,
+      keysLeft,
+      wantsQuoteFirst,
+      requestedWork: requestedWork.trim(),
+      observations: observations || null,
+      signatureUrl,
+      consentSignedAt: now,
+    },
+  })
+
+  return { interventionId: interventionRes.data.intervention_insert.id, code, signatureUrl }
 })
 
 // --- Order-lifecycle actions ------------------------------------------------
