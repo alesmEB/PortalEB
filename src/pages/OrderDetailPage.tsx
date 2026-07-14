@@ -97,19 +97,26 @@ function TechnicianAssignModal({
   }
 
   // Being the order's lead implies being authorized to start/finish it, so
-  // isAllowed can't be unchecked while isLead is on.
+  // isAllowed can't be unchecked while isLead is on. Only one technician can
+  // be the order's lead at a time, so marking one clears any other.
   function setFlag(id: string, flag: keyof AssignmentFlags, value: boolean) {
     setSelected((prev) => {
       const current = prev.get(id)
       if (!current) return prev
       if (flag === 'isAllowed' && !value && current.isLead) return prev
       const next = new Map(prev)
+      if (flag === 'isLead' && value) {
+        for (const [otherId, otherFlags] of next) {
+          if (otherId !== id && otherFlags.isLead) next.set(otherId, { ...otherFlags, isLead: false })
+        }
+      }
       next.set(id, flag === 'isLead' && value ? { isAllowed: true, isLead: true } : { ...current, [flag]: value })
       return next
     })
   }
 
-  const canSubmit = selected.size > 0
+  const hasLead = [...selected.values()].some((flags) => flags.isLead)
+  const canSubmit = selected.size > 0 && hasLead
 
   async function handleConfirm() {
     setSubmitting(true)
@@ -211,6 +218,11 @@ function TechnicianAssignModal({
           })}
         </div>
 
+        {selected.size > 0 && !hasLead && (
+          <p className="mt-2 text-xs text-amber-600">
+            Debes marcar un "Jefe de la orden" para poder confirmar.
+          </p>
+        )}
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         <div className="mt-4 flex gap-2">
           <button
