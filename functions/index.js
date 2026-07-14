@@ -2274,6 +2274,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
     $hardwareNumber: String!
     $purchasedAt: Date
     $programFileUrl: String
+    $observations: String
     $createdById: String!
   ) {
     ebClientProduct_insert(
@@ -2283,6 +2284,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
         hardwareNumber: $hardwareNumber
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
+        observations: $observations
         createdById: $createdById
       }
     )
@@ -2296,6 +2298,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
     $hardwareNumber: String!
     $purchasedAt: Date
     $programFileUrl: String
+    $observations: String
   ) {
     ebClientProduct_update(
       id: $id
@@ -2305,6 +2308,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
         hardwareNumber: $hardwareNumber
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
+        observations: $observations
       }
     )
   }
@@ -2312,6 +2316,18 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
 const DELETE_EB_CLIENT_PRODUCT_MUTATION = `
   mutation DeleteEbClientProductAdmin($id: UUID!) {
     ebClientProduct_delete(id: $id)
+  }
+`
+const GET_EB_CLIENT_PRODUCT_RETIRED_QUERY = `
+  query GetEbClientProductRetiredAdmin($id: UUID!) {
+    ebClientProduct(id: $id) {
+      retiredAt
+    }
+  }
+`
+const RETIRE_EB_CLIENT_PRODUCT_MUTATION = `
+  mutation RetireEbClientProductAdmin($id: UUID!, $retiredAt: Timestamp) {
+    ebClientProduct_update(id: $id, data: { retiredAt: $retiredAt })
   }
 `
 const ADD_EB_CLIENT_PRODUCT_CABLE_MUTATION = `
@@ -2440,7 +2456,7 @@ exports.ebCreateCableType = onCall(async (request) => {
 exports.ebAddClientProduct = onCall(async (request) => {
   requireAdminOrLab(request)
 
-  const { clientId, serialNumber, hardwareNumber, purchasedAt, programFileUrl, cableTypeIds } =
+  const { clientId, serialNumber, hardwareNumber, purchasedAt, programFileUrl, observations, cableTypeIds } =
     request.data ?? {}
   if (
     typeof clientId !== 'string' ||
@@ -2457,6 +2473,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
       hardwareNumber: hardwareNumber.trim(),
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
+      observations: observations || null,
       createdById: request.auth.uid,
     },
   })
@@ -2479,8 +2496,16 @@ exports.ebAddClientProduct = onCall(async (request) => {
 exports.ebUpdateClientProduct = onCall(async (request) => {
   requireAdminOrLab(request)
 
-  const { productId, clientId, serialNumber, hardwareNumber, purchasedAt, programFileUrl, cableTypeIds } =
-    request.data ?? {}
+  const {
+    productId,
+    clientId,
+    serialNumber,
+    hardwareNumber,
+    purchasedAt,
+    programFileUrl,
+    observations,
+    cableTypeIds,
+  } = request.data ?? {}
   if (
     typeof productId !== 'string' ||
     typeof clientId !== 'string' ||
@@ -2498,6 +2523,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
       hardwareNumber: hardwareNumber.trim(),
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
+      observations: observations || null,
     },
   })
 
@@ -2510,6 +2536,31 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     }
   }
 
+  return { success: true }
+})
+
+// Marks a unit decommissioned (e.g. broken) or reactivates it, without
+// touching any of its other fields - kept separate from ebUpdateClientProduct
+// so editing e.g. its observations doesn't reset how long it's been retired.
+// Preserves the original retiredAt if it was already retired, rather than
+// bumping it to "now" on every unrelated no-op toggle.
+exports.ebSetClientProductRetired = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { productId, retired } = request.data ?? {}
+  if (typeof productId !== 'string' || typeof retired !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  let retiredAt = null
+  if (retired) {
+    const current = await dataConnect.executeGraphqlRead(GET_EB_CLIENT_PRODUCT_RETIRED_QUERY, {
+      variables: { id: productId },
+    })
+    retiredAt = current.data.ebClientProduct?.retiredAt ?? new Date().toISOString()
+  }
+
+  await dataConnect.executeGraphql(RETIRE_EB_CLIENT_PRODUCT_MUTATION, { variables: { id: productId, retiredAt } })
   return { success: true }
 })
 

@@ -8,21 +8,22 @@ import {
   type ListEbClientsData,
 } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
+import { countryFlag } from '../../lib/countryFlag'
 import { FRESH } from '../../lib/dataConnectOptions'
 import {
   ebAddClientProduct,
   ebCreateCableType,
   ebDeleteClientProduct,
+  ebSetClientProductRetired,
   ebUpdateClientProduct,
 } from '../../lib/ebEngineering'
-import { uploadEbProgramFile } from '../../lib/ebProductStorage'
 
 type ProductRow = ListEbClientProductsData['ebClientProducts'][number]
 type ClientRow = ListEbClientsData['ebClients'][number]
 type CableType = ListEbCableTypesData['ebCableTypes'][number]
 
 const inputClass =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
 
 function CableTypePicker({
   cableTypes,
@@ -129,10 +130,10 @@ function ProductForm({
   const [serialNumber, setSerialNumber] = useState(product?.serialNumber ?? '')
   const [hardwareNumber, setHardwareNumber] = useState(product?.hardwareNumber ?? '')
   const [purchasedAt, setPurchasedAt] = useState(product?.purchasedAt ?? '')
+  const [observations, setObservations] = useState(product?.observations ?? '')
   const [selectedCables, setSelectedCables] = useState<Set<string>>(
     new Set(product?.cables.map((c) => c.cableType.id) ?? []),
   )
-  const [programFile, setProgramFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -151,16 +152,13 @@ function ProductForm({
     setSubmitting(true)
     setError(null)
     try {
-      let programFileUrl = product?.programFileUrl ?? undefined
-      if (programFile) {
-        programFileUrl = await uploadEbProgramFile(programFile)
-      }
       const input = {
         clientId,
         serialNumber: serialNumber.trim(),
         hardwareNumber: hardwareNumber.trim(),
         purchasedAt: purchasedAt || undefined,
-        programFileUrl,
+        observations: observations.trim() || undefined,
+        programFileUrl: product?.programFileUrl ?? undefined,
         cableTypeIds: [...selectedCables],
       }
       if (product) {
@@ -221,20 +219,11 @@ function ProductForm({
         onCreated={onCableTypesChanged}
       />
       <label className="block text-xs font-medium text-slate-500">
-        Archivo de programa personalizado (opcional)
-        {product?.programFileUrl && !programFile && (
-          <a
-            href={product.programFileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 block text-xs text-eb-blue underline"
-          >
-            Ver archivo actual
-          </a>
-        )}
-        <input
-          type="file"
-          onChange={(e) => setProgramFile(e.target.files?.[0] ?? null)}
+        Observaciones (opcional)
+        <textarea
+          value={observations}
+          onChange={(e) => setObservations(e.target.value)}
+          rows={3}
           className={`mt-1 ${inputClass}`}
         />
       </label>
@@ -265,6 +254,7 @@ export function EbProductsTab() {
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const [retiringId, setRetiringId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [countryFilter, setCountryFilter] = useState('')
   const [fromDate, setFromDate] = useState('')
@@ -289,10 +279,39 @@ export function EbProductsTab() {
     refresh()
   }, [])
 
+  async function handleToggleRetired(product: ProductRow) {
+    setRetiringId(product.id)
+    try {
+      await ebSetClientProductRetired(product.id, !product.retiredAt)
+      await refresh()
+    } finally {
+      setRetiringId(null)
+    }
+  }
+
   const countries = useMemo(
     () => [...new Set(clients.map((c) => c.country))].sort(),
     [clients],
   )
+
+  // Global "número de EBcontroller" and per-country sale order, both oldest
+  // first - computed from the full, unfiltered list so the numbers stay
+  // stable regardless of the search/country/date filters below. Units
+  // without a purchasedAt fall back to createdAt for ordering purposes only.
+  const ranksByProductId = useMemo(() => {
+    const map = new Map<string, { globalRank: number; countryRank: number }>()
+    if (!products) return map
+    const effectiveDate = (p: ProductRow) => p.purchasedAt ?? p.createdAt
+    const sorted = [...products].sort((a, b) => (effectiveDate(a) < effectiveDate(b) ? -1 : 1))
+    const countryCounters = new Map<string, number>()
+    sorted.forEach((product, index) => {
+      const country = product.client.country
+      const countryRank = (countryCounters.get(country) ?? 0) + 1
+      countryCounters.set(country, countryRank)
+      map.set(product.id, { globalRank: index + 1, countryRank })
+    })
+    return map
+  }, [products])
 
   const query = search.trim().toLowerCase()
   const filteredProducts = products?.filter((product) => {
@@ -365,76 +384,114 @@ export function EbProductsTab() {
       )}
 
       <div className="mt-4 space-y-2">
-        {filteredProducts?.map((product) => (
-          <div key={product.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <button
-                onClick={() => setEditingId(editingId === product.id ? null : product.id)}
-                className="flex-1 text-left"
-              >
-                <p className="text-sm font-semibold text-eb-blue-dark">
-                  {product.productName} · {product.client.companyName}
-                </p>
-                <p className="text-xs text-slate-500">
-                  Serie {product.serialNumber} · HW {product.hardwareNumber} · {product.client.country}
-                </p>
-                {product.cables.length > 0 && (
-                  <p className="text-xs text-slate-400">
-                    Cables: {product.cables.map((c) => c.cableType.name).join(', ')}
-                  </p>
-                )}
-                <p className="text-[11px] text-slate-400">
-                  {product.purchasedAt ? `Comprado: ${product.purchasedAt}` : 'Sin fecha de compra'}
-                </p>
-              </button>
-              <button
-                onClick={() => setConfirmingDeleteId(product.id)}
-                className="text-slate-400 hover:text-red-600"
-                title="Eliminar producto"
-              >
-                ✕
-              </button>
-            </div>
+        {filteredProducts?.map((product) => {
+          const ranks = ranksByProductId.get(product.id)
+          const retired = !!product.retiredAt
+          return (
+            <div
+              key={product.id}
+              className={`rounded-xl border p-4 ${
+                retired ? 'border-slate-200 bg-slate-100/80' : 'border-slate-200 bg-white/90'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-3">
+                  <div className="flex shrink-0 flex-col items-center pt-0.5">
+                    <span className="text-lg font-bold leading-none text-eb-blue-dark">
+                      #{ranks?.globalRank}
+                    </span>
+                    <span className="mt-0.5 flex items-center gap-1 text-xs leading-none text-slate-400">
+                      #{ranks?.countryRank} <span>{countryFlag(product.client.country)}</span>
+                    </span>
+                  </div>
 
-            {confirmingDeleteId === product.id && (
-              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
-                <p className="text-xs text-red-700">
-                  ¿Eliminar esta unidad? Esta acción no se puede deshacer.
-                </p>
-                <div className="mt-2 flex gap-2">
                   <button
-                    onClick={() => setConfirmingDeleteId(null)}
-                    className="flex-1 rounded-lg border border-slate-300 py-1.5 text-sm text-slate-600"
+                    onClick={() => setEditingId(editingId === product.id ? null : product.id)}
+                    className="flex-1 text-left"
                   >
-                    Cancelar
+                    <p className="flex items-center gap-2 text-sm font-semibold text-eb-blue-dark">
+                      {product.productName} · {product.client.companyName}
+                      {retired && (
+                        <span className="rounded-full bg-slate-300 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                          Dado de baja
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Serie {product.serialNumber} · HW {product.hardwareNumber} · {product.client.country}
+                    </p>
+                    {product.cables.length > 0 && (
+                      <p className="text-xs text-slate-400">
+                        Cables: {product.cables.map((c) => c.cableType.name).join(', ')}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-400">
+                      {product.purchasedAt ? `Comprado: ${product.purchasedAt}` : 'Sin fecha de compra'}
+                    </p>
+                    {product.observations && (
+                      <p className="mt-1 text-xs text-slate-500">{product.observations}</p>
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <button
+                    onClick={() => setConfirmingDeleteId(product.id)}
+                    className="text-slate-400 hover:text-red-600"
+                    title="Eliminar producto"
+                  >
+                    ✕
                   </button>
                   <button
-                    onClick={() =>
-                      ebDeleteClientProduct(product.id).then(() => {
-                        setConfirmingDeleteId(null)
-                        refresh()
-                      })
-                    }
-                    className="flex-1 rounded-lg bg-red-600 py-1.5 text-sm font-semibold text-white"
+                    disabled={retiringId === product.id}
+                    onClick={() => handleToggleRetired(product)}
+                    className="whitespace-nowrap text-xs text-eb-blue underline disabled:opacity-50"
                   >
-                    Eliminar
+                    {retired ? 'Reactivar' : 'Dar de baja'}
                   </button>
                 </div>
               </div>
-            )}
 
-            {editingId === product.id && (
-              <ProductForm
-                product={product}
-                clients={clients}
-                cableTypes={cableTypes}
-                onSaved={() => { setEditingId(null); refresh() }}
-                onCancel={() => setEditingId(null)}
-                onCableTypesChanged={refreshCableTypes}
-              />
-            )}
-          </div>
-        ))}
+              {confirmingDeleteId === product.id && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-xs text-red-700">
+                    ¿Eliminar esta unidad? Esta acción no se puede deshacer.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => setConfirmingDeleteId(null)}
+                      className="flex-1 rounded-lg border border-slate-300 py-1.5 text-sm text-slate-600"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() =>
+                        ebDeleteClientProduct(product.id).then(() => {
+                          setConfirmingDeleteId(null)
+                          refresh()
+                        })
+                      }
+                      className="flex-1 rounded-lg bg-red-600 py-1.5 text-sm font-semibold text-white"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {editingId === product.id && (
+                <ProductForm
+                  product={product}
+                  clients={clients}
+                  cableTypes={cableTypes}
+                  onSaved={() => { setEditingId(null); refresh() }}
+                  onCancel={() => setEditingId(null)}
+                  onCableTypesChanged={refreshCableTypes}
+                />
+              )}
+            </div>
+          )
+        })}
         {filteredProducts?.length === 0 && (
           <p className="text-xs text-slate-400">Ninguna venta registrada todavía.</p>
         )}

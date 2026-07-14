@@ -410,6 +410,8 @@ query ListEbClientProducts @auth(level: USER) {
     hardwareNumber
     programFileUrl
     purchasedAt
+    observations
+    retiredAt
     createdAt
     client {
       id

@@ -66,6 +66,7 @@ interface EbClientProductInput {
   /** "YYYY-MM-DD", optional. */
   purchasedAt?: string
   programFileUrl?: string
+  observations?: string
   cableTypeIds?: string[]
 }
 
@@ -101,6 +102,17 @@ const callEbDeleteClientProduct = httpsCallable<{ productId: string }, { success
 
 export async function ebDeleteClientProduct(productId: string) {
   const res = await callEbDeleteClientProduct({ productId })
+  return res.data
+}
+
+const callEbSetClientProductRetired = httpsCallable<
+  { productId: string; retired: boolean },
+  { success: boolean }
+>(functions, 'ebSetClientProductRetired')
+
+/** Marks a unit decommissioned (e.g. broken) or reactivates it - kept in the DB either way. */
+export async function ebSetClientProductRetired(productId: string, retired: boolean) {
+  const res = await callEbSetClientProductRetired({ productId, retired })
   return res.data
 }
 

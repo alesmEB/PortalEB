@@ -378,6 +378,12 @@ type EbClientProduct @table(name: "eb_client_products") {
   hardwareNumber: String!
   programFileUrl: String
   purchasedAt: Date
+  observations: String
+  # Set when a unit is decommissioned (e.g. broken) - null means active. Kept
+  # in the database and still visible in the list rather than deleted, since
+  # the sale/serial history matters even for a dead unit. See
+  # ebSetClientProductRetired in functions/index.js.
+  retiredAt: Timestamp
   createdById: String!
   createdBy: User! @ref(fields: ["createdById"])
   createdAt: Timestamp! @default(expr: "request.time")
