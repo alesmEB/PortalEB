@@ -966,7 +966,13 @@ exports.assignTechnicians = onCall(async (request) => {
         notification: { title: 'Nueva asignación', body: `Has sido asignado a la orden ${code}` },
         data: { orderId: workOrderId },
       },
-    ).catch(() => {})
+    )
+      .then((result) =>
+        console.log(
+          `[assign-notify] ${workOrderId}: recipients=${newlyAssigned.length} sent=${result.sent} failed=${result.failed}`,
+        ),
+      )
+      .catch((err) => console.error(`[assign-notify] ${workOrderId}: threw`, err))
   }
 
   return { assigned: newlyAssigned.length, unassigned: toUnassign.length }
