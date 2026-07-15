@@ -379,6 +379,10 @@ type EbClientProduct @table(name: "eb_client_products") {
   programFileUrl: String
   purchasedAt: Date
   observations: String
+  # Set via the "Vender a cliente final" action (see EbProductsTab.tsx) when
+  # a distributor resells this unit - the date is chosen there (defaults to
+  # today), not necessarily when the transfer is recorded in the app.
+  soldToEndUserAt: Date
   # Set when a unit is decommissioned (e.g. broken) - null means active. Kept
   # in the database and still visible in the list rather than deleted, since
   # the sale/serial history matters even for a dead unit. See

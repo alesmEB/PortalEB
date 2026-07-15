@@ -25,6 +25,11 @@ type CableType = ListEbCableTypesData['ebCableTypes'][number]
 const inputClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
 
+function todayDateString() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function CableTypePicker({
   cableTypes,
   selected,
@@ -159,6 +164,7 @@ function ProductForm({
         purchasedAt: purchasedAt || undefined,
         observations: observations.trim() || undefined,
         programFileUrl: product?.programFileUrl ?? undefined,
+        soldToEndUserAt: product?.soldToEndUserAt ?? undefined,
         cableTypeIds: [...selectedCables],
       }
       if (product) {
@@ -265,6 +271,7 @@ function TransferToEndClientPanel({
   onTransferred: () => void
 }) {
   const [endClientId, setEndClientId] = useState('')
+  const [soldToEndUserAt, setSoldToEndUserAt] = useState(todayDateString())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -281,6 +288,7 @@ function TransferToEndClientPanel({
         purchasedAt: product.purchasedAt ?? undefined,
         observations: product.observations ?? undefined,
         programFileUrl: product.programFileUrl ?? undefined,
+        soldToEndUserAt: soldToEndUserAt || undefined,
         cableTypeIds: product.cables.map((c) => c.cableType.id),
       })
       onTransferred()
@@ -309,6 +317,15 @@ function TransferToEndClientPanel({
           </option>
         ))}
       </select>
+      <label className="mt-2 block text-xs font-medium text-slate-500">
+        Fecha de venta al cliente final
+        <input
+          type="date"
+          value={soldToEndUserAt}
+          onChange={(e) => setSoldToEndUserAt(e.target.value)}
+          className={`mt-1 ${inputClass}`}
+        />
+      </label>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       <div className="mt-2 flex gap-2">
         <button
@@ -525,6 +542,7 @@ export function EbProductsTab() {
                     )}
                     <p className="text-[11px] text-slate-400">
                       {product.purchasedAt ? `Comprado: ${product.purchasedAt}` : 'Sin fecha de compra'}
+                      {product.soldToEndUserAt && ` · Vendido a cliente final: ${product.soldToEndUserAt}`}
                     </p>
                     {product.observations && (
                       <p className="mt-1 text-xs text-slate-500">{product.observations}</p>

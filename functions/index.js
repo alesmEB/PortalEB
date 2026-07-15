@@ -2299,6 +2299,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
     $purchasedAt: Date
     $programFileUrl: String
     $observations: String
+    $soldToEndUserAt: Date
   ) {
     ebClientProduct_update(
       id: $id
@@ -2309,6 +2310,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
         observations: $observations
+        soldToEndUserAt: $soldToEndUserAt
       }
     )
   }
@@ -2504,6 +2506,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     purchasedAt,
     programFileUrl,
     observations,
+    soldToEndUserAt,
     cableTypeIds,
   } = request.data ?? {}
   if (
@@ -2524,6 +2527,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
       observations: observations || null,
+      soldToEndUserAt: soldToEndUserAt || null,
     },
   })
 

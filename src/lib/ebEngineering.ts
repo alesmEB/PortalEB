@@ -67,6 +67,8 @@ interface EbClientProductInput {
   purchasedAt?: string
   programFileUrl?: string
   observations?: string
+  /** "YYYY-MM-DD", optional - set when a distributor resells the unit to this client. */
+  soldToEndUserAt?: string
   cableTypeIds?: string[]
 }
 

@@ -411,6 +411,7 @@ query ListEbClientProducts @auth(level: USER) {
     programFileUrl
     purchasedAt
     observations
+    soldToEndUserAt
     retiredAt
     createdAt
     client {
