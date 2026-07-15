@@ -247,6 +247,88 @@ function ProductForm({
   )
 }
 
+// Shown only for a product currently owned by a client who is itself a
+// distributor for others (see EbClient.distributorId) - lets the admin
+// repoint clientId at one of that distributor's already-created end clients
+// when they report reselling the unit, without touching anything else on
+// the record (serial/hardware/purchasedAt/cables/observations all resent
+// unchanged - see ebUpdateClientProduct).
+function TransferToEndClientPanel({
+  product,
+  downstreamClients,
+  onCancel,
+  onTransferred,
+}: {
+  product: ProductRow
+  downstreamClients: ClientRow[]
+  onCancel: () => void
+  onTransferred: () => void
+}) {
+  const [endClientId, setEndClientId] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleConfirm() {
+    if (!endClientId) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await ebUpdateClientProduct({
+        productId: product.id,
+        clientId: endClientId,
+        serialNumber: product.serialNumber,
+        hardwareNumber: product.hardwareNumber,
+        purchasedAt: product.purchasedAt ?? undefined,
+        observations: product.observations ?? undefined,
+        programFileUrl: product.programFileUrl ?? undefined,
+        cableTypeIds: product.cables.map((c) => c.cableType.id),
+      })
+      onTransferred()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo transferir la venta.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-eb-teal/30 bg-eb-teal/5 p-3">
+      <p className="text-xs text-slate-600">
+        Este cliente es distribuidor. Elige a cuál de sus clientes finales le ha revendido esta unidad -
+        el resto de datos (serie, hardware, fecha de venta, cables) se conserva.
+      </p>
+      <select
+        value={endClientId}
+        onChange={(e) => setEndClientId(e.target.value)}
+        className={`mt-2 ${inputClass}`}
+      >
+        <option value="">Selecciona un cliente final</option>
+        {downstreamClients.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.companyName} ({c.country})
+          </option>
+        ))}
+      </select>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 rounded-lg border border-slate-300 py-1.5 text-sm text-slate-600"
+        >
+          Cancelar
+        </button>
+        <button
+          disabled={!endClientId || submitting}
+          onClick={handleConfirm}
+          className="flex-1 rounded-lg bg-eb-teal py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {submitting ? 'Transfiriendo...' : 'Confirmar venta'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function EbProductsTab() {
   const [products, setProducts] = useState<ProductRow[] | null>(null)
   const [clients, setClients] = useState<ClientRow[]>([])
@@ -255,6 +337,7 @@ export function EbProductsTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [retiringId, setRetiringId] = useState<string | null>(null)
+  const [transferringId, setTransferringId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [countryFilter, setCountryFilter] = useState('')
   const [fromDate, setFromDate] = useState('')
@@ -293,6 +376,20 @@ export function EbProductsTab() {
     () => [...new Set(clients.map((c) => c.country))].sort(),
     [clients],
   )
+
+  // Clients grouped by their distributor (see EbClient.distributorId) - lets
+  // a product currently owned by a distributor offer "sell to end client",
+  // limited to that distributor's already-created downstream clients.
+  const downstreamClientsByDealerId = useMemo(() => {
+    const map = new Map<string, ClientRow[]>()
+    for (const client of clients) {
+      if (!client.distributorId) continue
+      const list = map.get(client.distributorId) ?? []
+      list.push(client)
+      map.set(client.distributorId, list)
+    }
+    return map
+  }, [clients])
 
   // Global "número de EBcontroller" and per-country sale order, both oldest
   // first - computed from the full, unfiltered list so the numbers stay
@@ -387,6 +484,7 @@ export function EbProductsTab() {
         {filteredProducts?.map((product) => {
           const ranks = ranksByProductId.get(product.id)
           const retired = !!product.retiredAt
+          const downstreamClients = downstreamClientsByDealerId.get(product.client.id) ?? []
           return (
             <div
               key={product.id}
@@ -449,8 +547,25 @@ export function EbProductsTab() {
                   >
                     {retired ? 'Reactivar' : 'Dar de baja'}
                   </button>
+                  {downstreamClients.length > 0 && (
+                    <button
+                      onClick={() => setTransferringId(transferringId === product.id ? null : product.id)}
+                      className="whitespace-nowrap text-xs text-eb-teal-dark underline"
+                    >
+                      Vender a cliente final
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {transferringId === product.id && (
+                <TransferToEndClientPanel
+                  product={product}
+                  downstreamClients={downstreamClients}
+                  onCancel={() => setTransferringId(null)}
+                  onTransferred={() => { setTransferringId(null); refresh() }}
+                />
+              )}
 
               {confirmingDeleteId === product.id && (
                 <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
