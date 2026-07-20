@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Cable, ChevronDown } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  listCableChecks,
   listEbCableTypes,
   listEbClientProducts,
   listEbClients,
-  type ListCableChecksData,
   type ListEbCableTypesData,
   type ListEbClientProductsData,
   type ListEbClientsData,
@@ -20,6 +17,7 @@ import {
   ebSetClientProductRetired,
   ebUpdateClientProduct,
 } from '../../lib/ebEngineering'
+import { EbCableChecksTab } from './EbCableChecksTab'
 
 type ProductRow = ListEbClientProductsData['ebClientProducts'][number]
 type ClientRow = ListEbClientsData['ebClients'][number]
@@ -349,66 +347,54 @@ function TransferToEndClientPanel({
   )
 }
 
-// Read-only log of continuity checks reported by the shop's ESP32 cable
-// tester (see functions/index.js's esp32RegisterCableCheck) - collapsed by
-// default like OrderDetailPage's "Archivos del chat", fetched eagerly so the
-// badge count shows even collapsed. Assigning a specific checked cable to an
-// EbClientProduct is a later step - view only for now.
-function CableChecksSection() {
-  const [open, setOpen] = useState(false)
-  const [checks, setChecks] = useState<ListCableChecksData['cableChecks'] | null>(null)
+function ProductTypeTabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-lg border px-3 py-2 text-sm ${
+        active ? 'border-eb-blue bg-eb-blue text-white' : 'border-slate-300 text-slate-600'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
 
-  useEffect(() => {
-    listCableChecks(FRESH).then((res) => setChecks(res.data.cableChecks))
-  }, [])
+type ProductType = 'controller' | 'cables'
+
+// Second-level menu under "Productos": which kind of product to view - more
+// may be added later, kept separate (not one big page) so each stays simple.
+export function EbProductsTab() {
+  const [productType, setProductType] = useState<ProductType>('controller')
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-200 bg-white/90 backdrop-blur-sm">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between p-4"
-      >
-        <span className="flex items-center gap-2 text-sm font-semibold text-eb-blue-dark">
-          <Cable className="h-4 w-4" />
-          Cables registrados
-          {checks && checks.length > 0 && (
-            <span className="rounded-full bg-eb-blue px-2 py-0.5 text-xs text-white">
-              {checks.length}
-            </span>
-          )}
-        </span>
-        <ChevronDown
-          className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
+    <div>
+      <div className="flex flex-wrap gap-2">
+        <ProductTypeTabButton active={productType === 'controller'} onClick={() => setProductType('controller')}>
+          EBcontroller
+        </ProductTypeTabButton>
+        <ProductTypeTabButton active={productType === 'cables'} onClick={() => setProductType('cables')}>
+          Cables
+        </ProductTypeTabButton>
+      </div>
 
-      {open && (
-        <div className="space-y-2 border-t border-slate-200 p-4">
-          {checks === null && <p className="text-sm text-slate-500">Cargando...</p>}
-          {checks?.length === 0 && (
-            <p className="text-xs text-slate-400">Todavía no se ha registrado ningún cable.</p>
-          )}
-          {checks?.map((check) => (
-            <div key={check.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-eb-blue-dark">#{check.sequenceNumber}</p>
-                <p className="text-xs text-slate-400">
-                  {new Date(check.checkedAt).toLocaleString('es-ES')}
-                </p>
-              </div>
-              <p className="text-sm text-slate-700">
-                {check.cableType.name} ({check.cableType.code})
-              </p>
-              <p className="text-xs text-slate-500">Comprobado por {check.checkedBy.displayName}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="mt-4">
+        {productType === 'controller' && <EbControllerProductsTab />}
+        {productType === 'cables' && <EbCableChecksTab />}
+      </div>
     </div>
   )
 }
 
-export function EbProductsTab() {
+function EbControllerProductsTab() {
   const [products, setProducts] = useState<ProductRow[] | null>(null)
   const [clients, setClients] = useState<ClientRow[]>([])
   const [cableTypes, setCableTypes] = useState<CableType[]>([])
@@ -512,8 +498,6 @@ export function EbProductsTab() {
           {creating ? 'Cancelar' : '+ Registrar venta'}
         </button>
       </div>
-
-      <CableChecksSection />
 
       <div className="mt-3 space-y-2">
         <SearchInput
