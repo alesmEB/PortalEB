@@ -512,3 +512,23 @@ query ListInterventions @auth(level: USER) {
     }
   }
 }
+
+# Cable tester (ESP32 device) log - read-only list for now (see
+# EbProductsTab.tsx's "Cables registrados" section); assigning a specific
+# checked cable to an EbClientProduct is a later step. Capped at the most
+# recent 200 so this stays bounded as the device logs more checks over time.
+query ListCableChecks @auth(level: USER) {
+  cableChecks(orderBy: { sequenceNumber: DESC }, limit: 200) {
+    id
+    sequenceNumber
+    checkedAt
+    cableType {
+      id
+      code
+      name
+    }
+    checkedBy {
+      displayName
+    }
+  }
+}

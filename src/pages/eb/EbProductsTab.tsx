@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Cable, ChevronDown } from 'lucide-react'
 import {
+  listCableChecks,
   listEbCableTypes,
   listEbClientProducts,
   listEbClients,
+  type ListCableChecksData,
   type ListEbCableTypesData,
   type ListEbClientProductsData,
   type ListEbClientsData,
@@ -346,6 +349,65 @@ function TransferToEndClientPanel({
   )
 }
 
+// Read-only log of continuity checks reported by the shop's ESP32 cable
+// tester (see functions/index.js's esp32RegisterCableCheck) - collapsed by
+// default like OrderDetailPage's "Archivos del chat", fetched eagerly so the
+// badge count shows even collapsed. Assigning a specific checked cable to an
+// EbClientProduct is a later step - view only for now.
+function CableChecksSection() {
+  const [open, setOpen] = useState(false)
+  const [checks, setChecks] = useState<ListCableChecksData['cableChecks'] | null>(null)
+
+  useEffect(() => {
+    listCableChecks(FRESH).then((res) => setChecks(res.data.cableChecks))
+  }, [])
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-white/90 backdrop-blur-sm">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between p-4"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-eb-blue-dark">
+          <Cable className="h-4 w-4" />
+          Cables registrados
+          {checks && checks.length > 0 && (
+            <span className="rounded-full bg-eb-blue px-2 py-0.5 text-xs text-white">
+              {checks.length}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div className="space-y-2 border-t border-slate-200 p-4">
+          {checks === null && <p className="text-sm text-slate-500">Cargando...</p>}
+          {checks?.length === 0 && (
+            <p className="text-xs text-slate-400">Todavía no se ha registrado ningún cable.</p>
+          )}
+          {checks?.map((check) => (
+            <div key={check.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-eb-blue-dark">#{check.sequenceNumber}</p>
+                <p className="text-xs text-slate-400">
+                  {new Date(check.checkedAt).toLocaleString('es-ES')}
+                </p>
+              </div>
+              <p className="text-sm text-slate-700">
+                {check.cableType.name} ({check.cableType.code})
+              </p>
+              <p className="text-xs text-slate-500">Comprobado por {check.checkedBy.displayName}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function EbProductsTab() {
   const [products, setProducts] = useState<ProductRow[] | null>(null)
   const [clients, setClients] = useState<ClientRow[]>([])
@@ -450,6 +512,8 @@ export function EbProductsTab() {
           {creating ? 'Cancelar' : '+ Registrar venta'}
         </button>
       </div>
+
+      <CableChecksSection />
 
       <div className="mt-3 space-y-2">
         <SearchInput
