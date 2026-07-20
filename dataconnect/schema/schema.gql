@@ -463,3 +463,25 @@ type Intervention @table(name: "interventions") {
   consentSignedAt: Timestamp!
   createdAt: Timestamp! @default(expr: "request.time")
 }
+
+# ---------------------------------------------------------------------------
+# Cable tester (ESP32 device)
+# ---------------------------------------------------------------------------
+
+# One row per cable continuity check performed by the shop's ESP32-based
+# tester - written directly from the device via a couple of plain HTTP Cloud
+# Functions (esp32GetLastCableCheck/esp32RegisterCableCheck in
+# functions/index.js), not through the app's normal authenticated client
+# flow, since the device can't do interactive sign-in. sequenceNumber is a
+# human-friendly autoincrementing counter (same
+# Firestore-transaction-backed reservation pattern as WorkOrder/Intervention
+# - see reserveCableCheckSequenceNumber), separate from the UUID id.
+type CableCheck @table(name: "cable_checks") {
+  id: UUID! @default(expr: "uuidV4()")
+  sequenceNumber: Int! @unique
+  cableTypeId: UUID!
+  cableType: EbCableType! @ref(fields: ["cableTypeId"])
+  checkedById: String!
+  checkedBy: User! @ref(fields: ["checkedById"])
+  checkedAt: Timestamp! @default(expr: "request.time")
+}

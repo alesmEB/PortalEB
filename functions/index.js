@@ -1,7 +1,8 @@
 const { randomUUID } = require('crypto')
-const { onCall, HttpsError } = require('firebase-functions/v2/https')
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onDocumentCreated } = require('firebase-functions/v2/firestore')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
+const { defineSecret } = require('firebase-functions/params')
 const { getDataConnect } = require('firebase-admin/data-connect')
 const admin = require('firebase-admin')
 const sanitizeHtml = require('sanitize-html')
@@ -2657,4 +2658,127 @@ exports.ebDeleteFaqItem = onCall(async (request) => {
 
   await dataConnect.executeGraphql(DELETE_EB_FAQ_ITEM_MUTATION, { variables: { id: faqId } })
   return { success: true }
+})
+
+// --- Cable tester (ESP32 device) --------------------------------------------
+// The tester has no interactive sign-in, so it can't use the normal
+// onCall + Firebase-Auth-ID-token flow every other write in this file goes
+// through. These are plain HTTP endpoints instead, gated by a shared secret
+// (set via `firebase functions:secrets:set CABLE_CHECK_DEVICE_SECRET` -
+// see the deploy guide) sent as the `x-device-secret` header. Everything
+// else (looking up the cable/user, reserving the sequence number, writing
+// the row) still goes through Data Connect via the Admin SDK, same as the
+// rest of this file.
+
+const CABLE_CHECK_DEVICE_SECRET = defineSecret('CABLE_CHECK_DEVICE_SECRET')
+
+const GET_MAX_CABLE_CHECK_SEQUENCE_QUERY = `
+  query GetMaxCableCheckSequenceAdmin {
+    cableChecks(orderBy: { sequenceNumber: DESC }, limit: 1) {
+      sequenceNumber
+    }
+  }
+`
+const GET_CABLE_TYPE_BY_CODE_QUERY = `
+  query GetCableTypeByCodeAdmin($code: String!) {
+    ebCableTypes(where: { code: { eq: $code } }, limit: 1) {
+      id
+    }
+  }
+`
+const GET_USER_FOR_CABLE_CHECK_QUERY = `
+  query GetUserForCableCheckAdmin($id: String!) {
+    user(id: $id) {
+      id
+      isActive
+    }
+  }
+`
+const CREATE_CABLE_CHECK_MUTATION = `
+  mutation CreateCableCheckAdmin($sequenceNumber: Int!, $cableTypeId: UUID!, $checkedById: String!) {
+    cableCheck_insert(
+      data: { sequenceNumber: $sequenceNumber, cableTypeId: $cableTypeId, checkedById: $checkedById }
+    )
+  }
+`
+
+// Same bootstrap-from-max-then-Firestore-transaction shape as
+// reserveOrderSequenceNumber/reserveInterventionSequenceNumber above - one
+// global counter, no per-cable-type split.
+async function reserveCableCheckSequenceNumber() {
+  const ref = admin.firestore().collection('cableCheckSequenceCounters').doc('global')
+  return admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    let current = snap.data()?.lastNumber
+    if (current == null) {
+      const res = await dataConnect.executeGraphqlRead(GET_MAX_CABLE_CHECK_SEQUENCE_QUERY, {})
+      current = res.data.cableChecks[0]?.sequenceNumber ?? 0
+    }
+    const next = current + 1
+    tx.set(ref, { lastNumber: next }, { merge: true })
+    return next
+  })
+}
+
+function checkDeviceSecret(req, res) {
+  const provided = req.get('x-device-secret')
+  if (!provided || provided !== CABLE_CHECK_DEVICE_SECRET.value()) {
+    res.status(401).json({ error: 'unauthorized' })
+    return false
+  }
+  return true
+}
+
+// GET, header `x-device-secret` - returns the sequence number of the most
+// recently registered check (0 if there isn't one yet), so the device can
+// display/log "next will be N+1" without having to track it itself.
+exports.esp32GetLastCableCheck = onRequest({ secrets: [CABLE_CHECK_DEVICE_SECRET] }, async (req, res) => {
+  if (!checkDeviceSecret(req, res)) return
+  const res1 = await dataConnect.executeGraphqlRead(GET_MAX_CABLE_CHECK_SEQUENCE_QUERY, {})
+  res.status(200).json({ lastSequenceNumber: res1.data.cableChecks[0]?.sequenceNumber ?? 0 })
+})
+
+// POST, header `x-device-secret`, JSON body { cableCode, userEmail } - e.g.
+// { "cableCode": "EBEN-180100", "userEmail": "tecnico@eliasblanco.com" }.
+// userEmail (not a raw uid) so whoever sets up the device firmware can use
+// something they actually know - resolved to the matching User row here.
+exports.esp32RegisterCableCheck = onRequest({ secrets: [CABLE_CHECK_DEVICE_SECRET] }, async (req, res) => {
+  if (!checkDeviceSecret(req, res)) return
+
+  const { cableCode, userEmail } = req.body ?? {}
+  if (typeof cableCode !== 'string' || !cableCode.trim() || typeof userEmail !== 'string' || !userEmail.trim()) {
+    res.status(400).json({ error: 'cableCode y userEmail son obligatorios.' })
+    return
+  }
+
+  const cableRes = await dataConnect.executeGraphqlRead(GET_CABLE_TYPE_BY_CODE_QUERY, {
+    variables: { code: cableCode.trim() },
+  })
+  const cableTypeId = cableRes.data.ebCableTypes[0]?.id
+  if (!cableTypeId) {
+    res.status(404).json({ error: `No existe ningún cable con el código "${cableCode}".` })
+    return
+  }
+
+  let userId
+  try {
+    userId = (await admin.auth().getUserByEmail(userEmail.trim())).uid
+  } catch {
+    res.status(404).json({ error: `No existe ningún usuario con el email "${userEmail}".` })
+    return
+  }
+  const userRes = await dataConnect.executeGraphqlRead(GET_USER_FOR_CABLE_CHECK_QUERY, {
+    variables: { id: userId },
+  })
+  if (!userRes.data.user?.isActive) {
+    res.status(403).json({ error: 'El usuario no existe o está desactivado.' })
+    return
+  }
+
+  const sequenceNumber = await reserveCableCheckSequenceNumber()
+  const insertRes = await dataConnect.executeGraphql(CREATE_CABLE_CHECK_MUTATION, {
+    variables: { sequenceNumber, cableTypeId, checkedById: userId },
+  })
+
+  res.status(200).json({ id: insertRes.data.cableCheck_insert.id, sequenceNumber })
 })
