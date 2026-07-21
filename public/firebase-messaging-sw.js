@@ -34,8 +34,8 @@ messaging.onBackgroundMessage((payload) => {
   // one per message.
   self.registration.showNotification(title ?? 'PortalEB', {
     body,
-    icon: icon ?? '/pwa-192x192.png',
-    badge: '/pwa-64x64.png',
+    icon: icon ?? '/pwa-192x192.webp',
+    badge: '/pwa-64x64.webp',
     tag,
     data: payload.data,
   })

@@ -17,7 +17,7 @@ export default defineConfig({
       // a reload the moment a new version is available - see the comment
       // there for why registerType: 'autoUpdate' alone isn't enough.
       injectRegister: false,
-      includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon-180x180.png'],
+      includeAssets: ['favicon.ico', 'favicon.webp', 'apple-touch-icon-180x180.png'],
       manifest: {
         id: '/',
         name: 'PortalEB - Gestión de Órdenes de Trabajo',
@@ -33,20 +33,20 @@ export default defineConfig({
         lang: 'es',
         categories: ['business', 'productivity'],
         icons: [
-          { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'pwa-64x64.webp', sizes: '64x64', type: 'image/webp' },
+          { src: 'pwa-192x192.webp', sizes: '192x192', type: 'image/webp' },
+          { src: 'pwa-512x512.webp', sizes: '512x512', type: 'image/webp' },
           {
-            src: 'maskable-icon-512x512.png',
+            src: 'maskable-icon-512x512.webp',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/webp',
             purpose: 'maskable',
           },
         ],
       },
       workbox: {
         navigateFallback: '/index.html',
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,webp}'],
         // registerType: 'autoUpdate' only auto-reloads (see registerServiceWorker.ts)
         // once the new SW reaches "activated" on its own - without these, it
         // waits for all tabs to close first, same as the default "prompt" flow.
