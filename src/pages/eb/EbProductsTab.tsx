@@ -93,7 +93,7 @@ function CableTypePicker({
       {addingType && (
         <div className="mt-2 flex flex-wrap gap-2">
           <input
-            placeholder="Código (p.ej. EBEN-180100)"
+            placeholder="Código (p.ej. EBEN180100)"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             className={`${inputClass} flex-1 basis-32`}

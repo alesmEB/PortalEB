@@ -2739,7 +2739,7 @@ exports.esp32GetLastCableCheck = onRequest({ secrets: [CABLE_CHECK_DEVICE_SECRET
 })
 
 // POST, header `x-device-secret`, JSON body { cableCode, userEmail } - e.g.
-// { "cableCode": "EBEN-180100", "userEmail": "tecnico@eliasblanco.com" }.
+// { "cableCode": "EBEN180100", "userEmail": "tecnico@eliasblanco.com" }.
 // userEmail (not a raw uid) so whoever sets up the device firmware can use
 // something they actually know - resolved to the matching User row here.
 exports.esp32RegisterCableCheck = onRequest({ secrets: [CABLE_CHECK_DEVICE_SECRET] }, async (req, res) => {

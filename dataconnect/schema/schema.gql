@@ -354,7 +354,7 @@ type EbClient @table(name: "eb_clients") {
 # A cable that can be included with an EbClientProduct purchase - its own
 # small catalog (rather than a fixed enum) so admins can add new cable
 # types later without a schema change. `code` is the human-facing
-# identifier (e.g. "EBEN-180100"), not the surrogate `id`.
+# identifier (e.g. "EBEN180100"), not the surrogate `id`.
 type EbCableType @table(name: "eb_cable_types") {
   id: UUID! @default(expr: "uuidV4()")
   code: String! @unique
