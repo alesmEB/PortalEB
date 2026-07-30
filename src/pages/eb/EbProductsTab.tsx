@@ -3,9 +3,11 @@ import {
   listEbCableTypes,
   listEbClientProducts,
   listEbClients,
+  listUnassignedCableChecks,
   type ListEbCableTypesData,
   type ListEbClientProductsData,
   type ListEbClientsData,
+  type ListUnassignedCableChecksData,
 } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
 import { countryFlag } from '../../lib/countryFlag'
@@ -22,6 +24,7 @@ import { EbCableChecksTab } from './EbCableChecksTab'
 type ProductRow = ListEbClientProductsData['ebClientProducts'][number]
 type ClientRow = ListEbClientsData['ebClients'][number]
 type CableType = ListEbCableTypesData['ebCableTypes'][number]
+type UnassignedCableCheck = ListUnassignedCableChecksData['cableChecks'][number]
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
@@ -117,10 +120,71 @@ function CableTypePicker({
   )
 }
 
+// Lets a sale point at a specific ESP32-tested cable unit (see CableCheck in
+// schema.gql) instead of just the generic type checkboxes above - only
+// really populated going forward, so it's additive: `options` is the
+// unassigned pool plus (when editing) whatever this product already has, and
+// picking one just marks it as "used on this sale" rather than replacing the
+// type checkboxes.
+function CableCheckPicker({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: { id: string; sequenceNumber: number; cableType: { code: string; name: string } }[]
+  selected: Set<string>
+  onToggle: (id: string) => void
+}) {
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  const filtered = options.filter((c) => {
+    if (!query) return true
+    return `${c.sequenceNumber} ${c.cableType.code} ${c.cableType.name}`.toLowerCase().includes(query)
+  })
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-500">Cables registrados (opcional)</p>
+      <input
+        placeholder="Buscar por número o tipo..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={`${inputClass} mt-1`}
+      />
+      <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+        {filtered.length === 0 && (
+          <p className="text-xs text-slate-400">No hay cables registrados disponibles.</p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {filtered.map((c) => (
+            <label
+              key={c.id}
+              className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs ${
+                selected.has(c.id)
+                  ? 'border-eb-teal bg-eb-teal text-white'
+                  : 'border-slate-300 text-slate-600'
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="hidden"
+                checked={selected.has(c.id)}
+                onChange={() => onToggle(c.id)}
+              />
+              #{c.sequenceNumber} · {c.cableType.name} ({c.cableType.code})
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ProductForm({
   product,
   clients,
   cableTypes,
+  unassignedCableChecks,
   onSaved,
   onCancel,
   onCableTypesChanged,
@@ -128,6 +192,7 @@ function ProductForm({
   product?: ProductRow
   clients: ClientRow[]
   cableTypes: CableType[]
+  unassignedCableChecks: UnassignedCableCheck[]
   onSaved: () => void
   onCancel: () => void
   onCableTypesChanged: () => void
@@ -140,13 +205,37 @@ function ProductForm({
   const [selectedCables, setSelectedCables] = useState<Set<string>>(
     new Set(product?.cables.map((c) => c.cableType.id) ?? []),
   )
+  const [selectedCableChecks, setSelectedCableChecks] = useState<Set<string>>(
+    new Set(product?.registeredCables.map((c) => c.id) ?? []),
+  )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const canSubmit = clientId && serialNumber.trim() && hardwareNumber.trim()
 
+  // Already-assigned checks won't show up in the unassigned pool (their
+  // productId is set), so they're merged in here to stay visible/toggleable
+  // while editing this product.
+  const cableCheckOptions = useMemo(() => {
+    const assignedElsewhere = new Set(unassignedCableChecks.map((c) => c.id))
+    const merged = [...unassignedCableChecks]
+    for (const c of product?.registeredCables ?? []) {
+      if (!assignedElsewhere.has(c.id)) merged.push(c)
+    }
+    return merged
+  }, [unassignedCableChecks, product])
+
   function toggleCable(id: string) {
     setSelectedCables((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleCableCheck(id: string) {
+    setSelectedCableChecks((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -167,6 +256,7 @@ function ProductForm({
         programFileUrl: product?.programFileUrl ?? undefined,
         soldToEndUserAt: product?.soldToEndUserAt ?? undefined,
         cableTypeIds: [...selectedCables],
+        cableCheckIds: [...selectedCableChecks],
       }
       if (product) {
         await ebUpdateClientProduct({ productId: product.id, ...input })
@@ -224,6 +314,11 @@ function ProductForm({
         selected={selectedCables}
         onToggle={toggleCable}
         onCreated={onCableTypesChanged}
+      />
+      <CableCheckPicker
+        options={cableCheckOptions}
+        selected={selectedCableChecks}
+        onToggle={toggleCableCheck}
       />
       <label className="block text-xs font-medium text-slate-500">
         Observaciones (opcional)
@@ -398,6 +493,7 @@ function EbControllerProductsTab() {
   const [products, setProducts] = useState<ProductRow[] | null>(null)
   const [clients, setClients] = useState<ClientRow[]>([])
   const [cableTypes, setCableTypes] = useState<CableType[]>([])
+  const [unassignedCableChecks, setUnassignedCableChecks] = useState<UnassignedCableCheck[]>([])
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
@@ -409,14 +505,16 @@ function EbControllerProductsTab() {
   const [toDate, setToDate] = useState('')
 
   async function refresh() {
-    const [productsRes, clientsRes, cablesRes] = await Promise.all([
+    const [productsRes, clientsRes, cablesRes, unassignedRes] = await Promise.all([
       listEbClientProducts(FRESH),
       listEbClients(FRESH),
       listEbCableTypes(FRESH),
+      listUnassignedCableChecks(FRESH),
     ])
     setProducts(productsRes.data.ebClientProducts)
     setClients(clientsRes.data.ebClients)
     setCableTypes(cablesRes.data.ebCableTypes)
+    setUnassignedCableChecks(unassignedRes.data.cableChecks)
   }
 
   function refreshCableTypes() {
@@ -539,6 +637,7 @@ function EbControllerProductsTab() {
         <ProductForm
           clients={clients}
           cableTypes={cableTypes}
+          unassignedCableChecks={unassignedCableChecks}
           onSaved={() => { setCreating(false); refresh() }}
           onCancel={() => setCreating(false)}
           onCableTypesChanged={refreshCableTypes}
@@ -586,6 +685,12 @@ function EbControllerProductsTab() {
                     {product.cables.length > 0 && (
                       <p className="text-xs text-slate-400">
                         Cables: {product.cables.map((c) => c.cableType.name).join(', ')}
+                      </p>
+                    )}
+                    {product.registeredCables.length > 0 && (
+                      <p className="text-xs text-slate-400">
+                        Cables registrados:{' '}
+                        {product.registeredCables.map((c) => `#${c.sequenceNumber}`).join(', ')}
                       </p>
                     )}
                     <p className="text-[11px] text-slate-400">
@@ -665,6 +770,7 @@ function EbControllerProductsTab() {
                   product={product}
                   clients={clients}
                   cableTypes={cableTypes}
+                  unassignedCableChecks={unassignedCableChecks}
                   onSaved={() => { setEditingId(null); refresh() }}
                   onCancel={() => setEditingId(null)}
                   onCableTypesChanged={refreshCableTypes}

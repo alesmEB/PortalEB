@@ -2343,6 +2343,23 @@ const DELETE_EB_CLIENT_PRODUCT_CABLES_MUTATION = `
     ebClientProductCable_deleteMany(where: { productId: { eq: $productId } })
   }
 `
+// Registered-cable assignment (a specific ESP32-tested CableCheck row, as
+// opposed to the generic EbCableType checkboxes above) - a plain field
+// update rather than a join table, since CableCheck.productId is nullable
+// and a check must stay a single row either way (it's a real test event log,
+// not a link row to delete/recreate).
+const GET_ASSIGNED_CABLE_CHECKS_QUERY = `
+  query GetAssignedCableChecksAdmin($productId: UUID!) {
+    cableChecks(where: { productId: { eq: $productId } }) {
+      id
+    }
+  }
+`
+const SET_CABLE_CHECK_PRODUCT_MUTATION = `
+  mutation SetCableCheckProductAdmin($id: UUID!, $productId: UUID) {
+    cableCheck_update(id: $id, data: { productId: $productId })
+  }
+`
 const CREATE_EB_NEWS_POST_MUTATION = `
   mutation CreateEbNewsPostAdmin($title: String!, $body: String!, $authorId: String!) {
     ebNewsPost_insert(data: { title: $title, body: $body, authorId: $authorId })
@@ -2459,8 +2476,16 @@ exports.ebCreateCableType = onCall(async (request) => {
 exports.ebAddClientProduct = onCall(async (request) => {
   requireAdminOrLab(request)
 
-  const { clientId, serialNumber, hardwareNumber, purchasedAt, programFileUrl, observations, cableTypeIds } =
-    request.data ?? {}
+  const {
+    clientId,
+    serialNumber,
+    hardwareNumber,
+    purchasedAt,
+    programFileUrl,
+    observations,
+    cableTypeIds,
+    cableCheckIds,
+  } = request.data ?? {}
   if (
     typeof clientId !== 'string' ||
     typeof serialNumber !== 'string' || !serialNumber.trim() ||
@@ -2487,6 +2512,11 @@ exports.ebAddClientProduct = onCall(async (request) => {
       variables: { productId, cableTypeId },
     })
   }
+  for (const cableCheckId of Array.isArray(cableCheckIds) ? cableCheckIds : []) {
+    await dataConnect.executeGraphql(SET_CABLE_CHECK_PRODUCT_MUTATION, {
+      variables: { id: cableCheckId, productId },
+    })
+  }
 
   return { productId }
 })
@@ -2509,6 +2539,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     observations,
     soldToEndUserAt,
     cableTypeIds,
+    cableCheckIds,
   } = request.data ?? {}
   if (
     typeof productId !== 'string' ||
@@ -2538,6 +2569,28 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
       await dataConnect.executeGraphql(ADD_EB_CLIENT_PRODUCT_CABLE_MUTATION, {
         variables: { productId, cableTypeId },
       })
+    }
+  }
+
+  if (Array.isArray(cableCheckIds)) {
+    const assignedRes = await dataConnect.executeGraphql(GET_ASSIGNED_CABLE_CHECKS_QUERY, {
+      variables: { productId },
+    })
+    const currentIds = assignedRes.data.cableChecks.map((c) => c.id)
+    const nextIds = new Set(cableCheckIds)
+    for (const id of currentIds) {
+      if (!nextIds.has(id)) {
+        await dataConnect.executeGraphql(SET_CABLE_CHECK_PRODUCT_MUTATION, {
+          variables: { id, productId: null },
+        })
+      }
+    }
+    for (const id of cableCheckIds) {
+      if (!currentIds.includes(id)) {
+        await dataConnect.executeGraphql(SET_CABLE_CHECK_PRODUCT_MUTATION, {
+          variables: { id, productId },
+        })
+      }
     }
   }
 

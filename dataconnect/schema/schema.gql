@@ -484,4 +484,11 @@ type CableCheck @table(name: "cable_checks") {
   checkedById: String!
   checkedBy: User! @ref(fields: ["checkedById"])
   checkedAt: Timestamp! @default(expr: "request.time")
+  # Set when this specific tested cable unit is included in an
+  # EbClientProduct sale, so the sale can point at a real registered cable
+  # instead of just a generic type (EbClientProductCable/EbCableType above -
+  # kept as the only option for the many older sales that predate the ESP32
+  # tester and have no registered cable to point at).
+  productId: UUID
+  product: EbClientProduct @ref(fields: ["productId"])
 }

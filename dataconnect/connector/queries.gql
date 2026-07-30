@@ -426,6 +426,15 @@ query ListEbClientProducts @auth(level: USER) {
         name
       }
     }
+    registeredCables: cableChecks_on_product {
+      id
+      sequenceNumber
+      cableType {
+        id
+        code
+        name
+      }
+    }
   }
 }
 
@@ -513,15 +522,15 @@ query ListInterventions @auth(level: USER) {
   }
 }
 
-# Cable tester (ESP32 device) log - read-only list for now (see
-# EbProductsTab.tsx's "Cables registrados" section); assigning a specific
-# checked cable to an EbClientProduct is a later step. Capped at the most
-# recent 200 so this stays bounded as the device logs more checks over time.
+# Cable tester (ESP32 device) log - read-only list (see EbCableChecksTab.tsx).
+# Capped at the most recent 200 so this stays bounded as the device logs more
+# checks over time.
 query ListCableChecks @auth(level: USER) {
   cableChecks(orderBy: { sequenceNumber: DESC }, limit: 200) {
     id
     sequenceNumber
     checkedAt
+    productId
     cableType {
       id
       code
@@ -529,6 +538,22 @@ query ListCableChecks @auth(level: USER) {
     }
     checkedBy {
       displayName
+    }
+  }
+}
+
+# Picker source for "assign a registered cable" on an EbClientProduct sale
+# (see CableCheckPicker in EbProductsTab.tsx) - only cables not already
+# claimed by another sale, oldest first since they're physical stock to work
+# through in order. Capped at 200 for the same reason as ListCableChecks.
+query ListUnassignedCableChecks @auth(level: USER) {
+  cableChecks(where: { productId: { isNull: true } }, orderBy: { sequenceNumber: ASC }, limit: 200) {
+    id
+    sequenceNumber
+    cableType {
+      id
+      code
+      name
     }
   }
 }

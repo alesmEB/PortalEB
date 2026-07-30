@@ -70,6 +70,8 @@ interface EbClientProductInput {
   /** "YYYY-MM-DD", optional - set when a distributor resells the unit to this client. */
   soldToEndUserAt?: string
   cableTypeIds?: string[]
+  /** IDs of specific ESP32-tested CableCheck rows to attach to this sale (see CableCheckPicker). */
+  cableCheckIds?: string[]
 }
 
 const callEbAddClientProduct = httpsCallable<EbClientProductInput, { productId: string }>(
