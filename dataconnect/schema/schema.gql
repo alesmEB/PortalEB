@@ -78,6 +78,9 @@ enum OrderEventType {
   REPORT_GENERATED
   TIME_LOG_EDITED
   TIME_LOG_DELETED
+  ORDER_ADJUSTED
+  SERVICE_PROTOCOL_RECORDED
+  ORDER_INVOICED
 }
 
 # ---------------------------------------------------------------------------
@@ -195,6 +198,16 @@ type WorkOrder @table(name: "work_orders") {
   updatedAt: Timestamp @default(expr: "request.time")
   completedAt: Timestamp
   cancelledAt: Timestamp
+  # Post-completion admin-only bookkeeping (Ajustada -> Protocolo de servicio
+  # -> Facturada) - a separate process from `status`, which stays COMPLETED
+  # throughout. Gated behind the "orders:closing" permission so clients and
+  # technicians never see any of it (see OrderDetailPage.tsx) - without that
+  # permission the order just reads as "Completada" as it always did.
+  adjustedAt: Timestamp
+  # null = not yet decided; true = realizado; false = no procedía.
+  serviceProtocolDone: Boolean
+  serviceProtocolAt: Timestamp
+  invoicedAt: Timestamp
 }
 
 # The list of jobs to perform, captured at order creation.

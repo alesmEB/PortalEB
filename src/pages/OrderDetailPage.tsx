@@ -28,10 +28,13 @@ import {
   acceptQuote,
   addOrderNote,
   addQuote,
+  adjustOrder,
   adminDeleteTimeLog,
   adminUpdateTimeLog,
   assignTechnicians,
   completeOrder,
+  invoiceOrder,
+  recordServiceProtocol,
   reportIncident,
   startOrder,
   startWorking,
@@ -776,6 +779,68 @@ function ChatFilesSection({ orderId }: { orderId: string }) {
   )
 }
 
+interface AdminStepAction {
+  label: string
+  variant?: 'primary' | 'secondary'
+  onClick: () => Promise<void>
+}
+
+/** Shared confirm dialog for the three "Gestión administrativa" steps below -
+ * one action button for a plain yes/no step (Ajustada, Facturada), two for
+ * the protocolo de servicio's realizado/no-procedía choice. */
+function AdminStepModal({
+  title,
+  description,
+  actions,
+  onClose,
+}: {
+  title: string
+  description: string
+  actions: AdminStepAction[]
+  onClose: () => void
+}) {
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleClick(action: AdminStepAction) {
+    setSubmitting(true)
+    try {
+      await action.onClick()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">{title}</h2>
+        <p className="mt-1 text-xs text-slate-500">{description}</p>
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              disabled={submitting}
+              onClick={() => handleClick(action)}
+              className={`flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-50 ${
+                action.variant === 'secondary' ? 'bg-slate-500' : 'bg-eb-blue'
+              }`}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
@@ -787,6 +852,7 @@ export function OrderDetailPage() {
   const canUploadQuotes = usePermission('quotes:upload')
   const canApproveQuotes = usePermission('quotes:approve')
   const canViewQuotes = canUploadQuotes || canApproveQuotes
+  const canViewAdminProcess = usePermission('orders:closing')
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
@@ -794,6 +860,7 @@ export function OrderDetailPage() {
   const [editingTimeLog, setEditingTimeLog] = useState<TimeLogRow | null>(null)
   const [startingOrder, setStartingOrder] = useState(false)
   const [completingOrder, setCompletingOrder] = useState(false)
+  const [adminStepModal, setAdminStepModal] = useState<'adjust' | 'protocol' | 'invoice' | null>(null)
   const [busy, setBusy] = useState(false)
   const quoteFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -980,10 +1047,19 @@ export function OrderDetailPage() {
     if (entry) entry.shifts.push(log)
     else shiftsByTechnician.set(log.technicianId, { name: log.technician.displayName, shifts: [log] })
   }
+  // The admin-only process events (Ajustada/Protocolo/Facturada) are hidden
+  // from the historial for anyone without "orders:closing", same as this
+  // whole feature is invisible to clients/technicians everywhere else.
+  const adminOnlyEventTypes = new Set<OrderEventType>([
+    OrderEventType.ORDER_ADJUSTED,
+    OrderEventType.SERVICE_PROTOCOL_RECORDED,
+    OrderEventType.ORDER_INVOICED,
+  ])
   const visibleTracking = order.tracking.filter(
     (event) =>
       event.eventType !== OrderEventType.WORK_STARTED &&
-      event.eventType !== OrderEventType.WORK_STOPPED,
+      event.eventType !== OrderEventType.WORK_STOPPED &&
+      (!adminOnlyEventTypes.has(event.eventType) || canViewAdminProcess),
   )
 
   return (
@@ -1332,6 +1408,60 @@ export function OrderDetailPage() {
         <OrderDocumentsViewer documents={documentOptions} />
       </section>
 
+      {canViewAdminProcess && order.status === WorkOrderStatus.COMPLETED && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+          <h2 className="text-sm font-semibold text-eb-teal-dark">Gestión administrativa</h2>
+          <ul className="mt-2 space-y-2">
+            <li className="flex items-center justify-between gap-2 text-sm text-slate-700">
+              <span>
+                Ajustada
+                {order.adjustedAt && ` · ${new Date(order.adjustedAt).toLocaleString('es-ES')}`}
+              </span>
+              {!order.adjustedAt && (
+                <button
+                  onClick={() => setAdminStepModal('adjust')}
+                  className="shrink-0 rounded-lg bg-eb-blue px-3 py-1 text-xs font-semibold text-white"
+                >
+                  Marcar
+                </button>
+              )}
+            </li>
+            <li className="flex items-center justify-between gap-2 text-sm text-slate-700">
+              <span>
+                Protocolo de servicio ·{' '}
+                {order.serviceProtocolAt
+                  ? `${order.serviceProtocolDone ? 'Realizado' : 'No procedía'} (${new Date(
+                      order.serviceProtocolAt,
+                    ).toLocaleString('es-ES')})`
+                  : 'Pendiente'}
+              </span>
+              {order.adjustedAt && !order.serviceProtocolAt && (
+                <button
+                  onClick={() => setAdminStepModal('protocol')}
+                  className="shrink-0 rounded-lg bg-eb-blue px-3 py-1 text-xs font-semibold text-white"
+                >
+                  Marcar
+                </button>
+              )}
+            </li>
+            <li className="flex items-center justify-between gap-2 text-sm text-slate-700">
+              <span>
+                Facturada
+                {order.invoicedAt && ` · ${new Date(order.invoicedAt).toLocaleString('es-ES')}`}
+              </span>
+              {order.serviceProtocolAt && !order.invoicedAt && (
+                <button
+                  onClick={() => setAdminStepModal('invoice')}
+                  className="shrink-0 rounded-lg bg-eb-blue px-3 py-1 text-xs font-semibold text-white"
+                >
+                  Marcar
+                </button>
+              )}
+            </li>
+          </ul>
+        </section>
+      )}
+
       {assigning && (
         <TechnicianAssignModal
           order={order}
@@ -1379,6 +1509,69 @@ export function OrderDetailPage() {
           stage={PhotoStage.FINAL}
           onClose={() => setCompletingOrder(false)}
           onConfirm={handleCompleteOrder}
+        />
+      )}
+
+      {adminStepModal === 'adjust' && (
+        <AdminStepModal
+          title="Marcar como ajustada"
+          description="¿Confirmas que la orden ha sido ajustada por administración?"
+          onClose={() => setAdminStepModal(null)}
+          actions={[
+            {
+              label: 'Confirmar',
+              onClick: async () => {
+                await adjustOrder(order.id)
+                setAdminStepModal(null)
+                await loadOrder()
+              },
+            },
+          ]}
+        />
+      )}
+
+      {adminStepModal === 'protocol' && (
+        <AdminStepModal
+          title="Protocolo de servicio"
+          description="¿Se ha realizado el protocolo de servicio para esta orden?"
+          onClose={() => setAdminStepModal(null)}
+          actions={[
+            {
+              label: 'Sí, realizado',
+              onClick: async () => {
+                await recordServiceProtocol(order.id, true)
+                setAdminStepModal(null)
+                await loadOrder()
+              },
+            },
+            {
+              label: 'No procedía',
+              variant: 'secondary',
+              onClick: async () => {
+                await recordServiceProtocol(order.id, false)
+                setAdminStepModal(null)
+                await loadOrder()
+              },
+            },
+          ]}
+        />
+      )}
+
+      {adminStepModal === 'invoice' && (
+        <AdminStepModal
+          title="Marcar como facturada"
+          description="¿Confirmas que esta orden ya ha sido facturada al cliente?"
+          onClose={() => setAdminStepModal(null)}
+          actions={[
+            {
+              label: 'Confirmar',
+              onClick: async () => {
+                await invoiceOrder(order.id)
+                setAdminStepModal(null)
+                await loadOrder()
+              },
+            },
+          ]}
         />
       )}
     </div>

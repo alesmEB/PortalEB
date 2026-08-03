@@ -1300,6 +1300,139 @@ exports.completeOrder = onCall(async (request) => {
   return { success: true }
 })
 
+// ---------------------------------------------------------------------------
+// Post-completion admin process (Ajustada -> Protocolo de servicio ->
+// Facturada) - entirely separate from `status`, which stays COMPLETED
+// throughout. Gated behind the dedicated "orders:closing" permission (not
+// role/assignment) so it can be granted to whoever actually does this
+// bookkeeping without also handing them every other admin capability; the
+// client hides all of it (including past tracking entries) from anyone
+// without that permission - see OrderDetailPage.tsx.
+// ---------------------------------------------------------------------------
+
+const GET_WORK_ORDER_PROCESS_QUERY = `
+  query GetWorkOrderProcessAdmin($id: UUID!) {
+    workOrder(id: $id) {
+      status
+      adjustedAt
+      serviceProtocolAt
+      invoicedAt
+    }
+  }
+`
+const ADJUST_WORK_ORDER_MUTATION = `
+  mutation AdjustWorkOrderAdmin($id: UUID!, $adjustedAt: Timestamp!) {
+    workOrder_update(id: $id, data: { adjustedAt: $adjustedAt })
+  }
+`
+const RECORD_SERVICE_PROTOCOL_MUTATION = `
+  mutation RecordServiceProtocolAdmin(
+    $id: UUID!
+    $serviceProtocolDone: Boolean!
+    $serviceProtocolAt: Timestamp!
+  ) {
+    workOrder_update(
+      id: $id
+      data: { serviceProtocolDone: $serviceProtocolDone, serviceProtocolAt: $serviceProtocolAt }
+    )
+  }
+`
+const INVOICE_WORK_ORDER_MUTATION = `
+  mutation InvoiceWorkOrderAdmin($id: UUID!, $invoicedAt: Timestamp!) {
+    workOrder_update(id: $id, data: { invoicedAt: $invoicedAt })
+  }
+`
+
+exports.adjustOrder = onCall(async (request) => {
+  requirePermission(request, 'orders:closing')
+
+  const { workOrderId } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  }
+
+  const res = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_PROCESS_QUERY, {
+    variables: { id: workOrderId },
+  })
+  const wo = res.data.workOrder
+  if (!wo || wo.status !== 'COMPLETED') {
+    throw new HttpsError('failed-precondition', 'La orden debe estar completada.')
+  }
+  if (wo.adjustedAt) {
+    throw new HttpsError('failed-precondition', 'La orden ya está marcada como ajustada.')
+  }
+
+  const now = new Date().toISOString()
+  await dataConnect.executeGraphql(ADJUST_WORK_ORDER_MUTATION, {
+    variables: { id: workOrderId, adjustedAt: now },
+  })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: { workOrderId, actorId: request.auth.uid, eventType: 'ORDER_ADJUSTED' },
+  })
+
+  return { success: true }
+})
+
+exports.recordServiceProtocol = onCall(async (request) => {
+  requirePermission(request, 'orders:closing')
+
+  const { workOrderId, done } = request.data ?? {}
+  if (typeof workOrderId !== 'string' || typeof done !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const res = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_PROCESS_QUERY, {
+    variables: { id: workOrderId },
+  })
+  const wo = res.data.workOrder
+  if (!wo || !wo.adjustedAt) {
+    throw new HttpsError('failed-precondition', 'La orden debe estar ajustada primero.')
+  }
+  if (wo.serviceProtocolAt) {
+    throw new HttpsError('failed-precondition', 'El protocolo de servicio ya está registrado.')
+  }
+
+  const now = new Date().toISOString()
+  await dataConnect.executeGraphql(RECORD_SERVICE_PROTOCOL_MUTATION, {
+    variables: { id: workOrderId, serviceProtocolDone: done, serviceProtocolAt: now },
+  })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: { workOrderId, actorId: request.auth.uid, eventType: 'SERVICE_PROTOCOL_RECORDED', metadata: { done } },
+  })
+
+  return { success: true }
+})
+
+exports.invoiceOrder = onCall(async (request) => {
+  requirePermission(request, 'orders:closing')
+
+  const { workOrderId } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  }
+
+  const res = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_PROCESS_QUERY, {
+    variables: { id: workOrderId },
+  })
+  const wo = res.data.workOrder
+  if (!wo || !wo.serviceProtocolAt) {
+    throw new HttpsError('failed-precondition', 'El protocolo de servicio debe estar registrado primero.')
+  }
+  if (wo.invoicedAt) {
+    throw new HttpsError('failed-precondition', 'La orden ya está marcada como facturada.')
+  }
+
+  const now = new Date().toISOString()
+  await dataConnect.executeGraphql(INVOICE_WORK_ORDER_MUTATION, {
+    variables: { id: workOrderId, invoicedAt: now },
+  })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: { workOrderId, actorId: request.auth.uid, eventType: 'ORDER_INVOICED' },
+  })
+
+  return { success: true }
+})
+
 // Requires any active (non-unassigned) assignment - matches the client's
 // `!!myAssignment` check (technicians without isAllowed/isLead can still
 // report incidents, just not start/complete the order).

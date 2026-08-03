@@ -289,6 +289,10 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     description
     quoteAttempts
     finalReportUrl
+    adjustedAt
+    serviceProtocolDone
+    serviceProtocolAt
+    invoicedAt
     customer {
       name
       contactName

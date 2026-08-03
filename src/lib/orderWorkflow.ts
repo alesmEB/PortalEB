@@ -94,6 +94,39 @@ export async function addOrderNote(input: AddOrderNoteInput) {
   return res.data
 }
 
+const callAdjustOrder = httpsCallable<{ workOrderId: string }, { success: boolean }>(
+  functions,
+  'adjustOrder',
+)
+
+/** Requires "orders:closing" and the order being COMPLETED. */
+export async function adjustOrder(workOrderId: string) {
+  const res = await callAdjustOrder({ workOrderId })
+  return res.data
+}
+
+const callRecordServiceProtocol = httpsCallable<
+  { workOrderId: string; done: boolean },
+  { success: boolean }
+>(functions, 'recordServiceProtocol')
+
+/** Requires "orders:closing" and the order already being adjusted. */
+export async function recordServiceProtocol(workOrderId: string, done: boolean) {
+  const res = await callRecordServiceProtocol({ workOrderId, done })
+  return res.data
+}
+
+const callInvoiceOrder = httpsCallable<{ workOrderId: string }, { success: boolean }>(
+  functions,
+  'invoiceOrder',
+)
+
+/** Requires "orders:closing" and the service protocol already being recorded. */
+export async function invoiceOrder(workOrderId: string) {
+  const res = await callInvoiceOrder({ workOrderId })
+  return res.data
+}
+
 const callToggleWorkOrderTask = httpsCallable<
   { taskId: string; isCompleted: boolean },
   { success: boolean }

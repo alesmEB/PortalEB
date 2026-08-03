@@ -17,4 +17,7 @@ export const orderEventTypeLabel: Record<OrderEventType, string> = {
   [OrderEventType.REPORT_GENERATED]: 'Generó el informe',
   [OrderEventType.TIME_LOG_EDITED]: 'Corrigió un turno',
   [OrderEventType.TIME_LOG_DELETED]: 'Eliminó un turno',
+  [OrderEventType.ORDER_ADJUSTED]: 'Marcó la orden como ajustada',
+  [OrderEventType.SERVICE_PROTOCOL_RECORDED]: 'Registró el protocolo de servicio',
+  [OrderEventType.ORDER_INVOICED]: 'Marcó la orden como facturada',
 }
