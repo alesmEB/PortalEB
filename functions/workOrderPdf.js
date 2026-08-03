@@ -1,13 +1,43 @@
 // Server-side twin of src/lib/pdf/WorkOrderPdf.tsx. Kept as a separate,
 // plain-JS (no JSX) file since functions/ has no build step to transpile
 // TSX - React.createElement calls mirror that file's JSX 1:1.
+const fs = require('fs')
+const path = require('path')
 const React = require('react')
-const { Document, Page, Text, View, StyleSheet, renderToBuffer } = require('@react-pdf/renderer')
+const { Document, Page, Text, View, Image, StyleSheet, renderToBuffer } = require('@react-pdf/renderer')
+
+// Bundled alongside this file (see functions/assets/) so they're included in
+// the deployed function - read once as buffers rather than passed as file
+// paths, which sidesteps any cwd-relative path surprises at runtime.
+const ELIAS_BLANCO_LOGO = fs.readFileSync(path.join(__dirname, 'assets', 'logo-elias.png'))
+const BUREAU_VERITAS_LOGO = fs.readFileSync(path.join(__dirname, 'assets', 'bureau-veritas.png'))
+const EB_ENGINEERING_LOGO = fs.readFileSync(path.join(__dirname, 'assets', 'logo-eb.png'))
 
 const styles = StyleSheet.create({
-  page: { padding: 32, fontSize: 10, fontFamily: 'Helvetica', color: '#0f172a' },
+  page: { paddingTop: 32, paddingHorizontal: 32, paddingBottom: 84, fontSize: 10, fontFamily: 'Helvetica', color: '#0f172a' },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  headerLogo: { height: 27, width: 81 },
+  footer: {
+    position: 'absolute',
+    bottom: 24,
+    left: 32,
+    right: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingTop: 10,
+  },
+  footerLogo: { height: 30, width: 75 },
+  footerCertification: { height: 38, width: 75 },
   title: { fontSize: 18, fontWeight: 700, color: '#002f54', marginBottom: 2 },
-  subtitle: { fontSize: 10, color: '#475569', marginBottom: 16 },
+  subtitle: { fontSize: 10, color: '#475569' },
   section: { marginBottom: 14 },
   sectionTitle: {
     fontSize: 11,
@@ -62,11 +92,20 @@ function buildWorkOrderDocument(data) {
     React.createElement(
       Page,
       { size: 'A4', style: styles.page },
-      React.createElement(Text, { style: styles.title }, `Orden de trabajo ${data.code}`),
       React.createElement(
-        Text,
-        { style: styles.subtitle },
-        `${data.locationLabel} · ${data.createdAt.toLocaleDateString('es-ES')}`,
+        View,
+        { style: styles.headerRow },
+        React.createElement(
+          View,
+          null,
+          React.createElement(Text, { style: styles.title }, `Orden de trabajo ${data.code}`),
+          React.createElement(
+            Text,
+            { style: styles.subtitle },
+            `${data.locationLabel} · ${data.createdAt.toLocaleDateString('es-ES')}`,
+          ),
+        ),
+        React.createElement(Image, { style: styles.headerLogo, src: EB_ENGINEERING_LOGO }),
       ),
       React.createElement(
         View,
@@ -115,6 +154,15 @@ function buildWorkOrderDocument(data) {
             React.createElement(Text, null, data.comments),
           )
         : null,
+      // `fixed` repeats this on every page instead of only where it's placed
+      // in the tree; page.paddingBottom above keeps body content from
+      // running underneath it.
+      React.createElement(
+        View,
+        { style: styles.footer, fixed: true },
+        React.createElement(Image, { style: styles.footerLogo, src: ELIAS_BLANCO_LOGO }),
+        React.createElement(Image, { style: styles.footerCertification, src: BUREAU_VERITAS_LOGO }),
+      ),
     ),
   )
 }
