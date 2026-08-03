@@ -1113,27 +1113,31 @@ export function OrderDetailPage() {
       <ChatFilesSection orderId={order.id} />
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-eb-teal-dark">Cliente</h2>
-        <p className="mt-2 text-sm text-slate-700">{order.customer.name}</p>
-        <p className="text-sm text-slate-500">
-          {order.customer.contactName} · {order.customer.phone}
-        </p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <h2 className="text-sm font-semibold text-eb-teal-dark">Cliente</h2>
+            <p className="mt-2 text-sm text-slate-700">{order.customer.name}</p>
+            <p className="text-sm text-slate-500">
+              {order.customer.contactName} · {order.customer.phone}
+            </p>
+          </div>
 
-        <h2 className="mt-4 border-t border-slate-100 pt-4 text-sm font-semibold text-eb-teal-dark">
-          Embarcación / máquina
-        </h2>
-        <p className="mt-2 text-sm text-slate-700">{order.boat.name}</p>
-        {order.boat.registrationNumber && (
-          <p className="text-sm text-slate-500">Matrícula: {order.boat.registrationNumber}</p>
-        )}
-        <ul className="mt-2 space-y-1">
-          {order.boat.engines.map((engine, i) => (
-            <li key={i} className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
-              {engine.engineType} · chasis {engine.chassisNumber} · propulsor{' '}
-              {engine.propellerSerialNumber}
-            </li>
-          ))}
-        </ul>
+          <div className="border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+            <h2 className="text-sm font-semibold text-eb-teal-dark">Embarcación / máquina</h2>
+            <p className="mt-2 text-sm text-slate-700">{order.boat.name}</p>
+            {order.boat.registrationNumber && (
+              <p className="text-sm text-slate-500">Matrícula: {order.boat.registrationNumber}</p>
+            )}
+            <ul className="mt-2 space-y-1">
+              {order.boat.engines.map((engine, i) => (
+                <li key={i} className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
+                  {engine.engineType} · chasis {engine.chassisNumber} · propulsor{' '}
+                  {engine.propellerSerialNumber}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
