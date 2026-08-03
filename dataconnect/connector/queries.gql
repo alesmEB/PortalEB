@@ -308,6 +308,14 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       description
       isCompleted
     }
+    notes: orderNotes_on_workOrder(orderBy: { createdAt: ASC }) {
+      id
+      body
+      createdAt
+      author {
+        displayName
+      }
+    }
     quotes: quotes_on_workOrder(orderBy: { attemptNumber: ASC }) {
       id
       attemptNumber

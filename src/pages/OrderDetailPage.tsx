@@ -16,7 +16,7 @@ import {
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
 import { HasPermission } from '../components/HasPermission'
-import { PdfViewer } from '../components/PdfViewer'
+import { OrderDocumentsViewer, type DocumentOption } from '../components/OrderDocumentsViewer'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { subscribeToMessages, type ChatKind, type ChatMessage } from '../lib/chat'
@@ -26,6 +26,7 @@ import { orderLocationLabel } from '../lib/orderCode'
 import { orderEventTypeLabel } from '../lib/orderEvent'
 import {
   acceptQuote,
+  addOrderNote,
   addQuote,
   adminDeleteTimeLog,
   adminUpdateTimeLog,
@@ -340,6 +341,71 @@ function MediaPicker({
         </ul>
       )}
     </div>
+  )
+}
+
+// Gated behind the "orders:notes" permission at the call site - both
+// viewing and adding share that one gate, same as quotes' PdfViewer being
+// gated behind canViewQuotes. Indexed (#1, #2...) in the order they were
+// added (oldest first) rather than newest-first, so the index stays stable
+// as more notes get added instead of shifting every time.
+function NotesSection({
+  notes,
+  workOrderId,
+  onAdded,
+}: {
+  notes: WorkOrder['notes']
+  workOrderId: string
+  onAdded: () => void
+}) {
+  const [body, setBody] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleAdd() {
+    if (!body.trim()) return
+    setSubmitting(true)
+    try {
+      await addOrderNote({ workOrderId, body: body.trim() })
+      setBody('')
+      onAdded()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+      <h2 className="text-sm font-semibold text-eb-teal-dark">Notas</h2>
+      {notes.length > 0 && (
+        <ul className="mt-2 space-y-2">
+          {notes.map((note, i) => (
+            <li key={note.id} className="rounded-lg bg-slate-50 p-2 text-sm text-slate-700">
+              <p className="text-xs font-semibold text-slate-400">#{i + 1}</p>
+              <p className="whitespace-pre-wrap">{note.body}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {new Date(note.createdAt).toLocaleString('es-ES')} · {note.author.displayName}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex gap-2">
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={2}
+          placeholder="Añadir una nota..."
+          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+        />
+        <button
+          disabled={!body.trim() || submitting}
+          onClick={handleAdd}
+          className="self-end rounded-lg bg-eb-blue px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          Añadir
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -731,6 +797,21 @@ export function OrderDetailPage() {
   const [busy, setBusy] = useState(false)
   const quoteFileInputRef = useRef<HTMLInputElement>(null)
 
+  // Both the report and, if the viewer can see quote PDFs, every quote
+  // attempt - fed into the single "Documentos" picker instead of each
+  // rendering its own inline PdfViewer.
+  const documentOptions = useMemo<DocumentOption[]>(() => {
+    if (!order) return []
+    const docs: DocumentOption[] = []
+    if (order.finalReportUrl) docs.push({ label: 'Informe', url: order.finalReportUrl })
+    if (canViewQuotes) {
+      for (const quote of order.quotes) {
+        docs.push({ label: `Presupuesto ${quote.attemptNumber}`, url: quote.fileUrl })
+      }
+    }
+    return docs
+  }, [order, canViewQuotes])
+
   const loadOrder = useCallback(async () => {
     if (!id) return
     const res = await getWorkOrderDetail({ id }, FRESH)
@@ -918,6 +999,10 @@ export function OrderDetailPage() {
         {orderLocationLabel[order.locationCode]} · {order.assetLocation}
       </p>
 
+      <HasPermission permission="orders:notes">
+        <NotesSection notes={order.notes} workOrderId={order.id} onAdded={loadOrder} />
+      </HasPermission>
+
       <div className="mt-3 flex flex-wrap gap-2">
         {(order.status === WorkOrderStatus.PENDING_QUOTE ||
           order.status === WorkOrderStatus.QUOTE_REJECTED) && (
@@ -1033,10 +1118,10 @@ export function OrderDetailPage() {
         <p className="text-sm text-slate-500">
           {order.customer.contactName} · {order.customer.phone}
         </p>
-      </section>
 
-      <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-eb-teal-dark">Embarcación / máquina</h2>
+        <h2 className="mt-4 border-t border-slate-100 pt-4 text-sm font-semibold text-eb-teal-dark">
+          Embarcación / máquina
+        </h2>
         <p className="mt-2 text-sm text-slate-700">{order.boat.name}</p>
         {order.boat.registrationNumber && (
           <p className="text-sm text-slate-500">Matrícula: {order.boat.registrationNumber}</p>
@@ -1102,21 +1187,17 @@ export function OrderDetailPage() {
       {order.quotes.length > 0 && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Presupuestos</h2>
-          <ul className="mt-2 space-y-3">
+          <ul className="mt-2 space-y-1">
             {order.quotes.map((quote) => (
-              <li key={quote.id}>
-                <p className="text-sm text-slate-700">
-                  Intento {quote.attemptNumber}: {quote.decision}
-                  {quote.amount != null ? ` · ${quote.amount} €` : ''}
-                </p>
-                {canViewQuotes && (
-                  <div className="mt-2">
-                    <PdfViewer url={quote.fileUrl} />
-                  </div>
-                )}
+              <li key={quote.id} className="text-sm text-slate-700">
+                Intento {quote.attemptNumber}: {quote.decision}
+                {quote.amount != null ? ` · ${quote.amount} €` : ''}
               </li>
             ))}
           </ul>
+          {canViewQuotes && (
+            <p className="mt-2 text-xs text-slate-400">Ver los archivos en "Documentos", más abajo.</p>
+          )}
         </section>
       )}
 
@@ -1243,14 +1324,8 @@ export function OrderDetailPage() {
       </section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-eb-teal-dark">Informe PDF</h2>
-        {order.finalReportUrl ? (
-          <div className="mt-2">
-            <PdfViewer url={order.finalReportUrl} />
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-slate-500">Todavía no hay un informe generado.</p>
-        )}
+        <h2 className="text-sm font-semibold text-eb-teal-dark">Documentos</h2>
+        <OrderDocumentsViewer documents={documentOptions} />
       </section>
 
       {assigning && (

@@ -81,6 +81,19 @@ export async function reportIncident(input: ReportIncidentInput) {
   return res.data
 }
 
+interface AddOrderNoteInput {
+  workOrderId: string
+  body: string
+}
+
+const callAddOrderNote = httpsCallable<AddOrderNoteInput, { noteId: string }>(functions, 'addOrderNote')
+
+/** Requires the "orders:notes" permission. */
+export async function addOrderNote(input: AddOrderNoteInput) {
+  const res = await callAddOrderNote(input)
+  return res.data
+}
+
 const callToggleWorkOrderTask = httpsCallable<
   { taskId: string; isCompleted: boolean },
   { success: boolean }

@@ -285,6 +285,21 @@ type Incident @table(name: "incidents") {
   resolvedAt: Timestamp
 }
 
+# Free-form internal notes on a work order, shown at the very top of the
+# order detail page and indexed in the order they were added (oldest
+# first). Gated by its own "orders:notes" permission rather than tied to
+# role or assignment, since who should see/add internal notes doesn't
+# necessarily match who can manage the order itself.
+type OrderNote @table(name: "order_notes") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  authorId: String!
+  author: User! @ref(fields: ["authorId"])
+  body: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
 type WorkOrderPhoto @table(name: "work_order_photos") {
   id: UUID! @default(expr: "uuidV4()")
   workOrderId: UUID!

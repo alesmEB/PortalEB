@@ -344,6 +344,11 @@ const CREATE_INCIDENT_MUTATION = `
     )
   }
 `
+const CREATE_ORDER_NOTE_MUTATION = `
+  mutation CreateOrderNoteAdmin($workOrderId: UUID!, $authorId: String!, $body: String!) {
+    orderNote_insert(data: { workOrderId: $workOrderId, authorId: $authorId, body: $body })
+  }
+`
 const GET_MY_ACTIVE_TIME_LOG_QUERY = `
   query GetMyActiveTimeLogAdmin($technicianId: String!) {
     timeLogs(where: { technicianId: { eq: $technicianId }, clockOut: { isNull: true } }) {
@@ -1352,6 +1357,23 @@ exports.reportIncident = onCall(async (request) => {
   }
 
   return { incidentId }
+})
+
+// Gated by the "orders:notes" permission (not assignment/role) since these
+// are internal notes about the order, not part of doing the actual work -
+// who should read/write them is a separate concern from who's assigned.
+exports.addOrderNote = onCall(async (request) => {
+  requirePermission(request, 'orders:notes')
+
+  const { workOrderId, body } = request.data ?? {}
+  if (typeof workOrderId !== 'string' || typeof body !== 'string' || !body.trim()) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  const res = await dataConnect.executeGraphql(CREATE_ORDER_NOTE_MUTATION, {
+    variables: { workOrderId, authorId: request.auth.uid, body: body.trim() },
+  })
+  return { noteId: res.data.orderNote_insert.id }
 })
 
 const GET_TASK_FOR_TOGGLE_QUERY = `
