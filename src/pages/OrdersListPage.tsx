@@ -83,7 +83,7 @@ export function OrdersListPage() {
       if (boatQuery && !order.boat.name.toLowerCase().includes(boatQuery)) return false
       if (searchQuery) {
         const haystack =
-          `${order.code} ${order.customer.name} ${order.boat.name} ${order.assetLocation}`.toLowerCase()
+          `${order.code} ${order.externalCode ?? ''} ${order.customer.name} ${order.boat.name} ${order.assetLocation}`.toLowerCase()
         if (!haystack.includes(searchQuery)) return false
       }
       return true
@@ -185,7 +185,7 @@ export function OrdersListPage() {
               <input
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Código, cliente, embarcación, ubicación..."
+                placeholder="Código, nº gestor interno, cliente, embarcación, ubicación..."
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
               />
             </label>
