@@ -26,6 +26,7 @@ export function OrdersListPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const canChat = usePermission('chat:write')
+  const canViewAdminProcess = usePermission('orders:closing')
   const [orders, setOrders] = useState<ListWorkOrdersData['workOrders'] | null>(null)
   const [unreadOrderIds, setUnreadOrderIds] = useState<Set<string>>(new Set())
 
@@ -229,6 +230,26 @@ export function OrdersListPage() {
                     {workOrderStatusLabel[order.status]}
                   </span>
                 </div>
+                {canViewAdminProcess &&
+                  (order.adjustedAt || order.serviceProtocolAt || order.invoicedAt) && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {order.adjustedAt && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                          Ajustada
+                        </span>
+                      )}
+                      {order.serviceProtocolAt && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                          Protocolo {order.serviceProtocolDone ? 'realizado' : 'no procedía'}
+                        </span>
+                      )}
+                      {order.invoicedAt && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                          Facturada
+                        </span>
+                      )}
+                    </div>
+                  )}
                 <p className="mt-1 text-sm text-slate-700">
                   {order.customer.name} · {order.boat.name}
                 </p>

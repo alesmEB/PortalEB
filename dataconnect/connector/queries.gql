@@ -124,6 +124,10 @@ query ListWorkOrders @auth(level: USER) {
     locationCode
     assetLocation
     createdAt
+    adjustedAt
+    serviceProtocolDone
+    serviceProtocolAt
+    invoicedAt
     customer {
       name
     }
