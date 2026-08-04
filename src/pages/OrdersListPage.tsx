@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, ChevronDown, MessageCircle, SlidersHorizontal, Wrench } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -28,7 +28,8 @@ export function OrdersListPage() {
   const canChat = usePermission('chat:write')
   const canViewAdminProcess = usePermission('orders:closing')
   const [orders, setOrders] = useState<ListWorkOrdersData['workOrders'] | null>(null)
-  const [unreadOrderIds, setUnreadOrderIds] = useState<Set<string>>(new Set())
+  const [unreadClientChatIds, setUnreadClientChatIds] = useState<Set<string>>(new Set())
+  const [unreadTechnicianChatIds, setUnreadTechnicianChatIds] = useState<Set<string>>(new Set())
 
   const [locationFilter, setLocationFilter] = useState<LocationFilter>('ALL')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
@@ -68,7 +69,17 @@ export function OrdersListPage() {
       'client',
       orders.map((o) => o.id),
       profile.id,
-      setUnreadOrderIds,
+      setUnreadClientChatIds,
+    )
+  }, [orders, profile, canChat])
+
+  useEffect(() => {
+    if (!orders || !profile || !canChat) return
+    return subscribeToUnreadOrderIds(
+      'technicians',
+      orders.map((o) => o.id),
+      profile.id,
+      setUnreadTechnicianChatIds,
     )
   }, [orders, profile, canChat])
 
@@ -277,7 +288,21 @@ export function OrdersListPage() {
                   title="Chat con el cliente"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  {unreadOrderIds.has(order.id) && (
+                  {unreadClientChatIds.has(order.id) && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                  )}
+                </button>
+              </HasPermission>
+              <HasPermission permission="chat:write">
+                <button
+                  onClick={() =>
+                    navigate(`/chat/technicians/${order.id}`, { state: { from: '/orders' } })
+                  }
+                  className="relative rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue"
+                  title="Chat con técnicos"
+                >
+                  <Wrench className="h-4 w-4" />
+                  {unreadTechnicianChatIds.has(order.id) && (
                     <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
                   )}
                 </button>
