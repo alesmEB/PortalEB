@@ -20,4 +20,5 @@ export const orderEventTypeLabel: Record<OrderEventType, string> = {
   [OrderEventType.ORDER_ADJUSTED]: 'Marcó la orden como ajustada',
   [OrderEventType.SERVICE_PROTOCOL_RECORDED]: 'Registró el protocolo de servicio',
   [OrderEventType.ORDER_INVOICED]: 'Marcó la orden como facturada',
+  [OrderEventType.EXTERNAL_CODE_UPDATED]: 'Actualizó el número del gestor interno',
 }

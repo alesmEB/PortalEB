@@ -1433,6 +1433,39 @@ exports.invoiceOrder = onCall(async (request) => {
   return { success: true }
 })
 
+// The order's number in the company's separate internal management system -
+// free text, filled in (and editable later) by an admin, unlike the process
+// steps above this isn't hidden from anyone; it's just admin-only to write.
+const SET_WORK_ORDER_EXTERNAL_CODE_MUTATION = `
+  mutation SetWorkOrderExternalCodeAdmin($id: UUID!, $externalCode: String) {
+    workOrder_update(id: $id, data: { externalCode: $externalCode })
+  }
+`
+
+exports.setWorkOrderExternalCode = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { workOrderId, externalCode } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  }
+  const trimmed = typeof externalCode === 'string' ? externalCode.trim() : ''
+
+  await dataConnect.executeGraphql(SET_WORK_ORDER_EXTERNAL_CODE_MUTATION, {
+    variables: { id: workOrderId, externalCode: trimmed || null },
+  })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: {
+      workOrderId,
+      actorId: request.auth.uid,
+      eventType: 'EXTERNAL_CODE_UPDATED',
+      metadata: { externalCode: trimmed || null },
+    },
+  })
+
+  return { success: true }
+})
+
 // Requires any active (non-unassigned) assignment - matches the client's
 // `!!myAssignment` check (technicians without isAllowed/isLead can still
 // report incidents, just not start/complete the order).

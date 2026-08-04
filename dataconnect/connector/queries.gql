@@ -119,6 +119,7 @@ query ListWorkOrders @auth(level: USER) {
   workOrders(orderBy: { createdAt: DESC }) {
     id
     code
+    externalCode
     status
     locationCode
     assetLocation
@@ -139,6 +140,7 @@ query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
   workOrders(where: { customerId: { eq: $customerId } }, orderBy: { createdAt: DESC }) {
     id
     code
+    externalCode
     status
     locationCode
     assetLocation
@@ -295,6 +297,7 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     serviceProtocolDone
     serviceProtocolAt
     invoicedAt
+    externalCode
     customer {
       name
       contactName

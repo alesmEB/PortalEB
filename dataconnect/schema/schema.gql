@@ -81,6 +81,7 @@ enum OrderEventType {
   ORDER_ADJUSTED
   SERVICE_PROTOCOL_RECORDED
   ORDER_INVOICED
+  EXTERNAL_CODE_UPDATED
 }
 
 # ---------------------------------------------------------------------------
@@ -208,6 +209,13 @@ type WorkOrder @table(name: "work_orders") {
   serviceProtocolDone: Boolean
   serviceProtocolAt: Timestamp
   invoicedAt: Timestamp
+  # This same job also gets its own order number in the company's separate
+  # internal management system - free text (format like "A026/001": a
+  # consonant for the location, year, sequence number), filled in by an
+  # admin once the order already exists rather than at creation time. Shown
+  # next to our own `code` everywhere it appears, editable later if it needs
+  # correcting - see setWorkOrderExternalCode in functions/index.js.
+  externalCode: String
 }
 
 # The list of jobs to perform, captured at order creation.

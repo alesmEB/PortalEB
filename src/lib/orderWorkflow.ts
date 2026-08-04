@@ -127,6 +127,17 @@ export async function invoiceOrder(workOrderId: string) {
   return res.data
 }
 
+const callSetWorkOrderExternalCode = httpsCallable<
+  { workOrderId: string; externalCode: string },
+  { success: boolean }
+>(functions, 'setWorkOrderExternalCode')
+
+/** Requires ADMIN role (or admin:lab). Pass '' to clear it. */
+export async function setWorkOrderExternalCode(workOrderId: string, externalCode: string) {
+  const res = await callSetWorkOrderExternalCode({ workOrderId, externalCode })
+  return res.data
+}
+
 const callToggleWorkOrderTask = httpsCallable<
   { taskId: string; isCompleted: boolean },
   { success: boolean }

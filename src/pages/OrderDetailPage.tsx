@@ -36,6 +36,7 @@ import {
   invoiceOrder,
   recordServiceProtocol,
   reportIncident,
+  setWorkOrderExternalCode,
   startOrder,
   startWorking,
   stopWorking,
@@ -344,6 +345,82 @@ function MediaPicker({
         </ul>
       )}
     </div>
+  )
+}
+
+// The order's number in the company's separate internal management system -
+// visible to everyone who can see the order (unlike the Notas/Gestión
+// administrativa sections, there's no reason to hide it), but only an admin
+// can set/change it. Free text - format is a convention ("A026/001": a
+// consonant for the location, year, sequence), not something worth
+// hard-validating since it's filled in by hand.
+function ExternalCodeBox({
+  workOrder,
+  canEdit,
+  onSaved,
+}: {
+  workOrder: WorkOrder
+  canEdit: boolean
+  onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(workOrder.externalCode ?? '')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSave() {
+    setSubmitting(true)
+    try {
+      await setWorkOrderExternalCode(workOrder.id, value.trim())
+      setEditing(false)
+      onSaved()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+      <h2 className="text-sm font-semibold text-eb-teal-dark">Número de orden (gestor interno)</h2>
+      {!editing ? (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <p className="text-sm text-slate-700">{workOrder.externalCode || 'Sin asignar'}</p>
+          {canEdit && (
+            <button
+              onClick={() => {
+                setValue(workOrder.externalCode ?? '')
+                setEditing(true)
+              }}
+              className="shrink-0 text-xs font-semibold text-eb-blue underline"
+            >
+              {workOrder.externalCode ? 'Editar' : 'Asignar'}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Ej. A026/001"
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+          />
+          <button
+            onClick={() => setEditing(false)}
+            disabled={submitting}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={submitting}
+            className="rounded-lg bg-eb-blue px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {submitting ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -853,6 +930,8 @@ export function OrderDetailPage() {
   const canApproveQuotes = usePermission('quotes:approve')
   const canViewQuotes = canUploadQuotes || canApproveQuotes
   const canViewAdminProcess = usePermission('orders:closing')
+  const isLab = usePermission('admin:lab')
+  const canEditExternalCode = profile?.role === UserRole.ADMIN || isLab
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
@@ -1074,6 +1153,8 @@ export function OrderDetailPage() {
       <p className="text-sm text-slate-500">
         {orderLocationLabel[order.locationCode]} · {order.assetLocation}
       </p>
+
+      <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />
 
       <HasPermission permission="orders:notes">
         <NotesSection notes={order.notes} workOrderId={order.id} onAdded={loadOrder} />

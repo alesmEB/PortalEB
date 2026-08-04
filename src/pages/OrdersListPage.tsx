@@ -215,7 +215,14 @@ export function OrdersListPage() {
                 className="flex-1 text-left"
               >
                 <div className="flex items-center justify-between">
-                  <p className="font-mono text-sm font-semibold text-eb-blue-dark">{order.code}</p>
+                  <p className="font-mono text-sm font-semibold text-eb-blue-dark">
+                    {order.code}
+                    {order.externalCode && (
+                      <span className="ml-1.5 font-sans font-normal text-slate-400">
+                        · {order.externalCode}
+                      </span>
+                    )}
+                  </p>
                   <span
                     className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}
                   >
