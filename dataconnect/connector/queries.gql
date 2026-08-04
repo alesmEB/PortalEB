@@ -243,6 +243,7 @@ query ListAssignedWorkOrders @auth(level: USER) {
       date
     }
     tasks: workOrderTasks_on_workOrder {
+      description
       isCompleted
     }
   }
@@ -272,6 +273,7 @@ query ListWorkOrderScheduledDates @auth(level: USER) {
         }
       }
       tasks: workOrderTasks_on_workOrder {
+        description
         isCompleted
       }
     }

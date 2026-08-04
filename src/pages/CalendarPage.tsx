@@ -38,6 +38,29 @@ function taskProgressLabel(tasks: { isCompleted: boolean }[]) {
   return `${done}/${tasks.length} tareas`
 }
 
+/** Small task checklist shown directly on a calendar card/entry - compact
+ * enough for the month view's tighter cells, reused as-is in the week view. */
+function TaskList({ tasks }: { tasks: { description: string; isCompleted: boolean }[] }) {
+  if (tasks.length === 0) return null
+  return (
+    <ul className="mt-1 space-y-0.5">
+      {tasks.map((task, i) => (
+        <li
+          key={i}
+          className={`truncate text-[10px] ${task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-600'}`}
+        >
+          {task.description}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function isWeekend(date: Date) {
+  const day = date.getDay()
+  return day === 0 || day === 6
+}
+
 export function CalendarPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -52,9 +75,16 @@ export function CalendarPage() {
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()))
   const [view, setView] = useState<'week' | 'month'>('week')
   const [savingKey, setSavingKey] = useState<string | null>(null)
+  // Hidden by default - the workshop doesn't normally schedule weekend work.
+  const [showWeekends, setShowWeekends] = useState(false)
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
+  const visibleDays = showWeekends ? days : days.filter((d) => !isWeekend(d))
   const monthDays = useMemo(() => monthGridDays(monthCursor), [monthCursor])
+  const visibleMonthDays = showWeekends ? monthDays : monthDays.filter((d) => !isWeekend(d))
+  const visibleWeekdayLabels = showWeekends ? weekdayLabels : weekdayLabels.slice(0, 5)
+  const gridColsClass = showWeekends ? 'lg:grid-cols-7' : 'lg:grid-cols-5'
+  const monthGridColsClass = showWeekends ? 'grid-cols-7' : 'grid-cols-5'
   const todayKey = toDateKey(new Date())
 
   function load() {
@@ -175,21 +205,35 @@ export function CalendarPage() {
         </div>
       </div>
 
+      <label className="mt-2 flex w-fit cursor-pointer items-center gap-1.5 text-xs text-slate-500">
+        <input
+          type="checkbox"
+          className="h-3 w-3 rounded border-slate-300"
+          checked={showWeekends}
+          onChange={(e) => setShowWeekends(e.target.checked)}
+        />
+        Mostrar fines de semana
+      </label>
+
       {(assignedOrders === null || scheduledEntries === null) && (
         <p className="mt-4 text-sm text-slate-500">Cargando...</p>
       )}
 
       {assignedOrders !== null && scheduledEntries !== null && view === 'month' && (
         <div className="mt-4">
-          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-t-xl border border-slate-200 bg-slate-200 text-center text-[11px] font-semibold text-slate-500">
-            {weekdayLabels.map((label) => (
+          <div
+            className={`grid ${monthGridColsClass} gap-px overflow-hidden rounded-t-xl border border-slate-200 bg-slate-200 text-center text-[11px] font-semibold text-slate-500`}
+          >
+            {visibleWeekdayLabels.map((label) => (
               <div key={label} className="bg-white/90 py-1">
                 {label}
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-xl border border-t-0 border-slate-200 bg-slate-200">
-            {monthDays.map((day) => {
+          <div
+            className={`grid ${monthGridColsClass} gap-px overflow-hidden rounded-b-xl border border-t-0 border-slate-200 bg-slate-200`}
+          >
+            {visibleMonthDays.map((day) => {
               const key = toDateKey(day)
               const isToday = key === todayKey
               const inMonth = day.getMonth() === monthCursor.getMonth()
@@ -208,17 +252,25 @@ export function CalendarPage() {
                   >
                     {day.getDate()}
                   </p>
-                  <div className="mt-1 flex flex-wrap gap-0.5">
-                    {dayEntries.map((entry) => (
-                      <button
-                        key={entry.workOrder.id}
-                        onClick={() => navigate(`/orders/${entry.workOrder.id}`)}
-                        title={`${entry.workOrder.code} · ${entry.workOrder.customer.name}`}
-                        className={`rounded px-1 py-0.5 font-mono text-[9px] ${workOrderStatusColor[entry.workOrder.status]}`}
-                      >
-                        {entry.workOrder.code}
-                      </button>
-                    ))}
+                  <div className="mt-1 space-y-1">
+                    {dayEntries.map((entry) => {
+                      const completed = entry.workOrder.status === WorkOrderStatus.COMPLETED
+                      return (
+                        <button
+                          key={entry.workOrder.id}
+                          onClick={() => navigate(`/orders/${entry.workOrder.id}`)}
+                          title={`${entry.workOrder.code} · ${entry.workOrder.customer.name}`}
+                          className={`block w-full rounded px-1 py-0.5 text-left text-[9px] ${
+                            completed
+                              ? 'bg-green-500/15 text-green-800'
+                              : workOrderStatusColor[entry.workOrder.status]
+                          }`}
+                        >
+                          <p className="truncate font-semibold">{entry.workOrder.boat.name}</p>
+                          <TaskList tasks={entry.workOrder.tasks} />
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               )
@@ -229,8 +281,8 @@ export function CalendarPage() {
 
       {assignedOrders !== null && scheduledEntries !== null && view === 'week' && (
         <>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
-            {days.map((day) => {
+          <div className={`mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 ${gridColsClass}`}>
+            {visibleDays.map((day) => {
               const key = toDateKey(day)
               const isToday = key === todayKey
               const dayEntries = entriesByDate.get(key) ?? []
@@ -251,23 +303,26 @@ export function CalendarPage() {
                   <div className="mt-2 space-y-2">
                     {dayEntries.map((entry) => {
                       const order = entry.workOrder
-                      const editable = order.status !== WorkOrderStatus.COMPLETED
+                      const completed = order.status === WorkOrderStatus.COMPLETED
+                      const editable = !completed
                       const saving = savingKey === `${order.id}-${key}`
                       return (
                         <div
                           key={order.id}
-                          className="rounded-lg border border-slate-200 p-2 text-left"
+                          className={`rounded-lg border p-2 text-left ${
+                            completed ? 'border-green-200 bg-green-500/10' : 'border-slate-200'
+                          }`}
                         >
                           <div className="flex items-start justify-between gap-1">
                             <button
                               onClick={() => navigate(`/orders/${order.id}`)}
                               className="flex-1 text-left"
                             >
-                              <p className="font-mono text-xs font-semibold text-eb-blue-dark">
-                                {order.code}
+                              <p className="text-xs font-semibold text-eb-blue-dark">
+                                {order.boat.name}
                               </p>
                               <p className="text-xs text-slate-600">
-                                {order.customer.name} · {order.boat.name}
+                                {order.customer.name} · <span className="font-mono">{order.code}</span>
                               </p>
                             </button>
                             {canManage && editable && (
@@ -291,11 +346,7 @@ export function CalendarPage() {
                               {order.assignments.map((a) => a.technician.displayName).join(', ')}
                             </p>
                           )}
-                          {taskProgressLabel(order.tasks) && (
-                            <p className="mt-1 text-[11px] text-slate-400">
-                              {taskProgressLabel(order.tasks)}
-                            </p>
-                          )}
+                          <TaskList tasks={order.tasks} />
                         </div>
                       )
                     })}
@@ -340,7 +391,7 @@ export function CalendarPage() {
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {days.map((day) => {
+                      {visibleDays.map((day) => {
                         const dayKey = toDateKey(day)
                         const checked = scheduledSet.has(dayKey)
                         const saving = savingKey === `${order.id}-${dayKey}`
