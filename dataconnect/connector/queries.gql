@@ -134,6 +134,9 @@ query ListWorkOrders @auth(level: USER) {
     boat {
       name
     }
+    incidents: incidents_on_workOrder {
+      id
+    }
   }
 }
 

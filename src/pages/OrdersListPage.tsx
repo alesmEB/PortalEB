@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, ChevronDown, MessageCircle, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -57,7 +57,7 @@ export function OrdersListPage() {
         return
       }
       listWorkOrdersForCustomer({ customerId }, FRESH).then((res2) =>
-        setOrders(res2.data.workOrders),
+        setOrders(res2.data.workOrders.map((order) => ({ ...order, incidents: [] }))),
       )
     })
   }, [profile])
@@ -224,11 +224,22 @@ export function OrdersListPage() {
                       </span>
                     )}
                   </p>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}
-                  >
-                    {workOrderStatusLabel[order.status]}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {order.incidents.length > 0 && (
+                      <span
+                        className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700"
+                        title="Incidencias reportadas"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {order.incidents.length}
+                      </span>
+                    )}
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}
+                    >
+                      {workOrderStatusLabel[order.status]}
+                    </span>
+                  </div>
                 </div>
                 {canViewAdminProcess &&
                   (order.adjustedAt || order.serviceProtocolAt || order.invoicedAt) && (

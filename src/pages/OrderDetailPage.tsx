@@ -19,7 +19,12 @@ import { HasPermission } from '../components/HasPermission'
 import { OrderDocumentsViewer, type DocumentOption } from '../components/OrderDocumentsViewer'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
-import { subscribeToMessages, type ChatKind, type ChatMessage } from '../lib/chat'
+import {
+  subscribeToMessages,
+  subscribeToUnreadOrderIds,
+  type ChatKind,
+  type ChatMessage,
+} from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { mediaTypeOf, validateMediaFile } from '../lib/media'
 import { orderLocationLabel } from '../lib/orderCode'
@@ -932,7 +937,10 @@ export function OrderDetailPage() {
   const canViewAdminProcess = usePermission('orders:closing')
   const isLab = usePermission('admin:lab')
   const canEditExternalCode = profile?.role === UserRole.ADMIN || isLab
+  const canChat = usePermission('chat:write')
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
+  const [unreadClientIds, setUnreadClientIds] = useState<Set<string>>(new Set())
+  const [unreadTechnicianIds, setUnreadTechnicianIds] = useState<Set<string>>(new Set())
   const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
   const [assigning, setAssigning] = useState(false)
   const [reportingIncident, setReportingIncident] = useState(false)
@@ -973,6 +981,16 @@ export function OrderDetailPage() {
     loadOrder()
     loadMyActiveLog()
   }, [loadOrder, loadMyActiveLog])
+
+  useEffect(() => {
+    if (!order || !profile || !canChat) return
+    return subscribeToUnreadOrderIds('client', [order.id], profile.id, setUnreadClientIds)
+  }, [order, profile, canChat])
+
+  useEffect(() => {
+    if (!order || !profile || !canChat) return
+    return subscribeToUnreadOrderIds('technicians', [order.id], profile.id, setUnreadTechnicianIds)
+  }, [order, profile, canChat])
 
   // Lab "quick test order" shortcut on the dashboard drops straight into
   // this modal instead of making QA click "Asignar técnicos" separately.
@@ -1250,9 +1268,12 @@ export function OrderDetailPage() {
         <HasPermission permission="chat:write">
           <button
             onClick={() => navigate(`/chat/client/${order.id}`, { state: { from: `/orders/${order.id}` } })}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+            className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
           >
             Chat con cliente
+            {unreadClientIds.has(order.id) && (
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+            )}
           </button>
         </HasPermission>
         <HasPermission permission="chat:write">
@@ -1260,9 +1281,12 @@ export function OrderDetailPage() {
             onClick={() =>
               navigate(`/chat/technicians/${order.id}`, { state: { from: `/orders/${order.id}` } })
             }
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+            className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
           >
             Chat con técnicos
+            {unreadTechnicianIds.has(order.id) && (
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+            )}
           </button>
         </HasPermission>
       </div>
