@@ -504,7 +504,7 @@ const STALE_TOKEN_ERRORS = new Set([
   'messaging/invalid-registration-token',
 ])
 
-async function sendToUsers(userIds, { notification, data }) {
+async function sendToUsers(userIds, { title, body, data = {} }) {
   const firestore = admin.firestore()
   const tokenDocs = []
   for (const idsChunk of chunk(userIds, 10)) {
@@ -513,14 +513,22 @@ async function sendToUsers(userIds, { notification, data }) {
   }
   if (tokenDocs.length === 0) return { sent: 0, failed: 0 }
 
+  // Data-only payload - no top-level `notification` field. When one's
+  // present, browsers auto-display their own system notification from it *in
+  // addition* to the one firebase-messaging-sw.js's onBackgroundMessage
+  // builds, doubling every single push. Keeping everything under `data`
+  // (values must be strings) leaves display entirely up to our handler.
+  const payloadData = { ...data }
+  if (title) payloadData.title = title
+  if (body) payloadData.body = body
+
   const response = await admin.messaging().sendEachForMulticast({
     // Pre-migration docs (keyed by the token itself, no `token` field of
     // their own) still work via this fallback until they're naturally
     // replaced by a fresh doc.id-keyed registration - see
     // getOrCreateDeviceId in src/lib/pushNotifications.ts.
     tokens: tokenDocs.map((doc) => doc.data().token ?? doc.id),
-    notification,
-    data,
+    data: payloadData,
   })
 
   await Promise.all(
@@ -554,7 +562,8 @@ exports.sendPushNotification = onCall(async (request) => {
   }
 
   return sendToUsers(userIds, {
-    notification: { title: title.trim(), body: body.trim() },
+    title: title.trim(),
+    body: body.trim(),
     data: orderId ? { orderId } : {},
   })
 })
@@ -621,10 +630,8 @@ async function notifyNewChatMessage(event, kind) {
   if (recipientIds.length === 0) return
 
   const result = await sendToUsers(recipientIds, {
-    notification: {
-      title: message.senderName || 'Nuevo mensaje',
-      body: message.text,
-    },
+    title: message.senderName || 'Nuevo mensaje',
+    body: message.text,
     data: { orderId, kind, tag: `chat-${kind}-${orderId}` },
   })
   console.log(`[chat-notify] ${kind}/${orderId}: sent=${result.sent} failed=${result.failed}`)
@@ -1172,7 +1179,8 @@ exports.assignTechnicians = onCall(async (request) => {
     await sendToUsers(
       newlyAssigned.map((a) => a.technicianId),
       {
-        notification: { title: 'Nueva asignación', body: `Has sido asignado a la orden ${code}` },
+        title: 'Nueva asignación',
+        body: `Has sido asignado a la orden ${code}`,
         data: { orderId: workOrderId },
       },
     )
@@ -1644,7 +1652,8 @@ exports.startWorking = onCall(async (request) => {
   const code = orderRes.data.workOrder?.code
   if (code) {
     await sendToUsers([callerUid], {
-      notification: { title: 'Turno activo', body: `Estás trabajando en la orden ${code}` },
+      title: 'Turno activo',
+      body: `Estás trabajando en la orden ${code}`,
       data: { orderId: workOrderId, tag: activeShiftTag(callerUid) },
     }).catch(() => {})
   }
@@ -1916,10 +1925,8 @@ exports.notifyActiveShifts = onSchedule(
     await Promise.all(
       res.data.timeLogs.map((log) =>
         sendToUsers([log.technicianId], {
-          notification: {
-            title: 'Turno activo',
-            body: `Sigues trabajando en la orden ${log.workOrder.code}`,
-          },
+          title: 'Turno activo',
+          body: `Sigues trabajando en la orden ${log.workOrder.code}`,
           data: { orderId: log.workOrder.id, tag: activeShiftTag(log.technicianId) },
         }).catch(() => {}),
       ),

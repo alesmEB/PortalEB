@@ -20,21 +20,20 @@ const messaging = firebase.messaging()
 messaging.onBackgroundMessage((payload) => {
   const tag = payload.data?.tag
 
-  // Data-only "close" message (see stopWorking in functions/index.js) - no
-  // `notification` payload of its own, just closes whatever's still shown
-  // under this tag instead of showing anything new.
+  // "close" message (see stopWorking in functions/index.js) - just closes
+  // whatever's still shown under this tag instead of showing anything new.
   if (payload.data?.action === 'close' && tag) {
     self.registration.getNotifications({ tag }).then((list) => list.forEach((n) => n.close()))
     return
   }
 
-  const { title, body, icon } = payload.notification ?? {}
+  const { title, body } = payload.data ?? {}
   // `tag` (chat notifications, and the active-shift reminder) replaces any
   // still-unread notification with the same tag instead of stacking a new
   // one per message.
   self.registration.showNotification(title ?? 'PortalEB', {
     body,
-    icon: icon ?? '/pwa-192x192.webp',
+    icon: '/pwa-192x192.webp',
     badge: '/pwa-64x64.webp',
     tag,
     data: payload.data,
