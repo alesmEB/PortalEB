@@ -412,6 +412,7 @@ type EbClientProduct @table(name: "eb_client_products") {
   productName: String! @default(value: "EBcontroller")
   serialNumber: String!
   hardwareNumber: String!
+  softwareVersion: String
   programFileUrl: String
   purchasedAt: Date
   observations: String

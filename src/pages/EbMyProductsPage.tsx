@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getMyEbClient, listMyEbClientProducts, type ListMyEbClientProductsData } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { EbAssignedCablesSection, EbControllerProductCard } from '../components/EbControllerProductCard'
 import { FRESH } from '../lib/dataConnectOptions'
 
 type ProductRow = ListMyEbClientProductsData['ebClientProducts'][number]
@@ -43,25 +44,24 @@ export function EbMyProductsPage() {
             <p className="text-sm text-slate-400">Todavía no tienes productos registrados.</p>
           )}
           {products.map((product) => (
-            <div key={product.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
-              <p className="text-sm font-semibold text-eb-blue-dark">{product.productName}</p>
-              <p className="text-xs text-slate-500">
-                Nº de serie: {product.serialNumber} · Nº de hardware: {product.hardwareNumber}
-              </p>
-              {product.cables.length > 0 && (
-                <p className="text-xs text-slate-500">
-                  Cables: {product.cables.map((c) => c.cableType.name).join(', ')}
-                </p>
-              )}
-              {product.purchasedAt && (
-                <p className="text-xs text-slate-400">Comprado: {product.purchasedAt}</p>
-              )}
+            <div key={product.id} className="space-y-2">
+              <EbControllerProductCard
+                productName={product.productName}
+                purchasedAt={product.purchasedAt}
+                hardwareNumber={product.hardwareNumber}
+                serialNumber={product.serialNumber}
+                softwareVersion={product.softwareVersion}
+              />
+              <EbAssignedCablesSection
+                cables={product.cables}
+                registeredCables={product.registeredCables}
+              />
               {product.programFileUrl && (
                 <a
                   href={product.programFileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-block text-xs font-medium text-eb-blue underline"
+                  className="inline-block text-xs font-medium text-eb-blue underline"
                 >
                   Descargar programa personalizado
                 </a>

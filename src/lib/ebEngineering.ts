@@ -63,6 +63,7 @@ interface EbClientProductInput {
   clientId: string
   serialNumber: string
   hardwareNumber: string
+  softwareVersion?: string
   /** "YYYY-MM-DD", optional. */
   purchasedAt?: string
   programFileUrl?: string

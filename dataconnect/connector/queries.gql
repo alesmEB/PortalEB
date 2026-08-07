@@ -432,6 +432,7 @@ query ListEbClientProducts @auth(level: USER) {
     productName
     serialNumber
     hardwareNumber
+    softwareVersion
     programFileUrl
     purchasedAt
     observations
@@ -478,9 +479,19 @@ query ListMyEbClientProducts($clientId: UUID!) @auth(level: USER) {
     productName
     serialNumber
     hardwareNumber
+    softwareVersion
     programFileUrl
     purchasedAt
     cables: ebClientProductCables_on_product {
+      cableType {
+        id
+        code
+        name
+      }
+    }
+    registeredCables: cableChecks_on_product {
+      id
+      sequenceNumber
       cableType {
         id
         code

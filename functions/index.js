@@ -2468,6 +2468,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
     $clientId: UUID!
     $serialNumber: String!
     $hardwareNumber: String!
+    $softwareVersion: String
     $purchasedAt: Date
     $programFileUrl: String
     $observations: String
@@ -2478,6 +2479,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
         clientId: $clientId
         serialNumber: $serialNumber
         hardwareNumber: $hardwareNumber
+        softwareVersion: $softwareVersion
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
         observations: $observations
@@ -2492,6 +2494,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
     $clientId: UUID!
     $serialNumber: String!
     $hardwareNumber: String!
+    $softwareVersion: String
     $purchasedAt: Date
     $programFileUrl: String
     $observations: String
@@ -2503,6 +2506,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
         clientId: $clientId
         serialNumber: $serialNumber
         hardwareNumber: $hardwareNumber
+        softwareVersion: $softwareVersion
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
         observations: $observations
@@ -2675,6 +2679,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
     clientId,
     serialNumber,
     hardwareNumber,
+    softwareVersion,
     purchasedAt,
     programFileUrl,
     observations,
@@ -2694,6 +2699,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
       clientId,
       serialNumber: serialNumber.trim(),
       hardwareNumber: hardwareNumber.trim(),
+      softwareVersion: softwareVersion?.trim() || null,
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
       observations: observations || null,
@@ -2729,6 +2735,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     clientId,
     serialNumber,
     hardwareNumber,
+    softwareVersion,
     purchasedAt,
     programFileUrl,
     observations,
@@ -2751,6 +2758,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
       clientId,
       serialNumber: serialNumber.trim(),
       hardwareNumber: hardwareNumber.trim(),
+      softwareVersion: softwareVersion?.trim() || null,
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
       observations: observations || null,

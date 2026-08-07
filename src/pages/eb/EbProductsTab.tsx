@@ -9,6 +9,7 @@ import {
   type ListEbClientsData,
   type ListUnassignedCableChecksData,
 } from '@dataconnect/generated'
+import { EbAssignedCablesSection, EbControllerProductCard } from '../../components/EbControllerProductCard'
 import { SearchInput } from '../../components/SearchInput'
 import { countryFlag } from '../../lib/countryFlag'
 import { FRESH } from '../../lib/dataConnectOptions'
@@ -200,6 +201,7 @@ function ProductForm({
   const [clientId, setClientId] = useState(product?.client.id ?? '')
   const [serialNumber, setSerialNumber] = useState(product?.serialNumber ?? '')
   const [hardwareNumber, setHardwareNumber] = useState(product?.hardwareNumber ?? '')
+  const [softwareVersion, setSoftwareVersion] = useState(product?.softwareVersion ?? '')
   const [purchasedAt, setPurchasedAt] = useState(product?.purchasedAt ?? '')
   const [observations, setObservations] = useState(product?.observations ?? '')
   const [selectedCables, setSelectedCables] = useState<Set<string>>(
@@ -251,6 +253,7 @@ function ProductForm({
         clientId,
         serialNumber: serialNumber.trim(),
         hardwareNumber: hardwareNumber.trim(),
+        softwareVersion: softwareVersion.trim() || undefined,
         purchasedAt: purchasedAt || undefined,
         observations: observations.trim() || undefined,
         programFileUrl: product?.programFileUrl ?? undefined,
@@ -298,6 +301,12 @@ function ProductForm({
         placeholder="Número de hardware"
         value={hardwareNumber}
         onChange={(e) => setHardwareNumber(e.target.value)}
+        className={inputClass}
+      />
+      <input
+        placeholder="Versión de software (opcional)"
+        value={softwareVersion}
+        onChange={(e) => setSoftwareVersion(e.target.value)}
         className={inputClass}
       />
       <label className="block text-xs font-medium text-slate-500">
@@ -381,6 +390,7 @@ function TransferToEndClientPanel({
         clientId: endClientId,
         serialNumber: product.serialNumber,
         hardwareNumber: product.hardwareNumber,
+        softwareVersion: product.softwareVersion ?? undefined,
         purchasedAt: product.purchasedAt ?? undefined,
         observations: product.observations ?? undefined,
         programFileUrl: product.programFileUrl ?? undefined,
@@ -463,7 +473,7 @@ function ProductTypeTabButton({
   )
 }
 
-type ProductType = 'controller' | 'cables'
+type ProductType = 'controller' | 'cables' | 'clientView'
 
 // Second-level menu under "Productos": which kind of product to view - more
 // may be added later, kept separate (not one big page) so each stays simple.
@@ -479,12 +489,54 @@ export function EbProductsTab() {
         <ProductTypeTabButton active={productType === 'cables'} onClick={() => setProductType('cables')}>
           Cables
         </ProductTypeTabButton>
+        <ProductTypeTabButton active={productType === 'clientView'} onClick={() => setProductType('clientView')}>
+          Vista cliente
+        </ProductTypeTabButton>
       </div>
 
       <div className="mt-4">
         {productType === 'controller' && <EbControllerProductsTab />}
         {productType === 'cables' && <EbCableChecksTab />}
+        {productType === 'clientView' && <EbClientPreviewTab />}
       </div>
+    </div>
+  )
+}
+
+// Test-only preview of every sale rendered exactly as its owner sees it on
+// "Mis productos" (EbMyProductsPage) - lets an admin check the label/photo
+// layout without needing a client login. Not filtered per-client on purpose:
+// this is a design check across the whole catalog, not a real client view.
+function EbClientPreviewTab() {
+  const [products, setProducts] = useState<ProductRow[] | null>(null)
+
+  useEffect(() => {
+    listEbClientProducts(FRESH).then((res) => setProducts(res.data.ebClientProducts))
+  }, [])
+
+  if (products === null) {
+    return <p className="text-xs text-slate-400">Cargando...</p>
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-slate-500">
+        Así ve cada cliente su unidad en "Mis productos" - {products.length} unidades.
+      </p>
+      {products.map((product) => (
+        <div key={product.id} className="space-y-2">
+          <p className="text-xs font-medium text-slate-400">{product.client.companyName}</p>
+          <EbControllerProductCard
+            productName={product.productName}
+            purchasedAt={product.purchasedAt}
+            hardwareNumber={product.hardwareNumber}
+            serialNumber={product.serialNumber}
+            softwareVersion={product.softwareVersion}
+          />
+          <EbAssignedCablesSection cables={product.cables} registeredCables={product.registeredCables} />
+        </div>
+      ))}
+      {products.length === 0 && <p className="text-xs text-slate-400">Ninguna venta registrada todavía.</p>}
     </div>
   )
 }
@@ -680,7 +732,9 @@ function EbControllerProductsTab() {
                       )}
                     </p>
                     <p className="text-xs text-slate-500">
-                      Serie {product.serialNumber} · HW {product.hardwareNumber} · {product.client.country}
+                      Serie {product.serialNumber} · HW {product.hardwareNumber}
+                      {product.softwareVersion && ` · SW ${product.softwareVersion}`} ·{' '}
+                      {product.client.country}
                     </p>
                     {product.cables.length > 0 && (
                       <p className="text-xs text-slate-400">
