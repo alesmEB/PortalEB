@@ -6,6 +6,7 @@ const { defineSecret } = require('firebase-functions/params')
 const { getDataConnect } = require('firebase-admin/data-connect')
 const admin = require('firebase-admin')
 const sanitizeHtml = require('sanitize-html')
+const { GoogleGenAI, Type } = require('@google/genai')
 const { renderWorkOrderPdfBuffer } = require('./workOrderPdf')
 
 admin.initializeApp()
@@ -2579,6 +2580,34 @@ const DELETE_EB_FAQ_ITEM_MUTATION = `
     ebFaqItem_delete(id: $id)
   }
 `
+const GET_EB_NEWS_POST_FOR_TRANSLATION_QUERY = `
+  query GetEbNewsPostForTranslation($id: UUID!) {
+    ebNewsPost(id: $id) {
+      title
+      body
+      translations
+    }
+  }
+`
+const SET_EB_NEWS_POST_TRANSLATIONS_MUTATION = `
+  mutation SetEbNewsPostTranslations($id: UUID!, $translations: Any) {
+    ebNewsPost_update(id: $id, data: { translations: $translations })
+  }
+`
+const GET_EB_FAQ_ITEM_FOR_TRANSLATION_QUERY = `
+  query GetEbFaqItemForTranslation($id: UUID!) {
+    ebFaqItem(id: $id) {
+      question
+      answer
+      translations
+    }
+  }
+`
+const SET_EB_FAQ_ITEM_TRANSLATIONS_MUTATION = `
+  mutation SetEbFaqItemTranslations($id: UUID!, $translations: Any) {
+    ebFaqItem_update(id: $id, data: { translations: $translations })
+  }
+`
 
 exports.ebCreateClient = onCall(async (request) => {
   requireAdminOrLab(request)
@@ -2914,6 +2943,115 @@ exports.ebDeleteFaqItem = onCall(async (request) => {
 
   await dataConnect.executeGraphql(DELETE_EB_FAQ_ITEM_MUTATION, { variables: { id: faqId } })
   return { success: true }
+})
+
+// Matches EbLang in src/lib/ebI18n.tsx (minus "es", the language everything
+// is authored in - nothing to translate for that one).
+const EB_LANGUAGE_NAMES = {
+  en: 'English',
+  fr: 'French',
+  it: 'Italian',
+  tr: 'Turkish',
+  sv: 'Swedish',
+  bg: 'Bulgarian',
+  hr: 'Croatian',
+  el: 'Greek',
+  nl: 'Dutch',
+  no: 'Norwegian',
+  de: 'German',
+  sr: 'Serbian',
+  pt: 'Portuguese',
+  ja: 'Japanese',
+}
+
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY')
+
+async function translateFields(fields, targetLanguageName) {
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY.value() })
+  const keys = Object.keys(fields)
+  const properties = {}
+  for (const key of keys) properties[key] = { type: Type.STRING }
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.5-flash-lite',
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text:
+              `Translate the string values of this JSON object from Spanish into ${targetLanguageName}. ` +
+              'Preserve any HTML tags and attributes exactly as-is, translating only the visible text ' +
+              'between them. Do not translate the product/brand names "EBcontroller", "EB Engineering" ' +
+              `or "Elías Blanco". Return a JSON object with exactly the same keys.\n\n${JSON.stringify(fields)}`,
+          },
+        ],
+      },
+    ],
+    config: {
+      responseMimeType: 'application/json',
+      responseSchema: { type: Type.OBJECT, properties, required: keys },
+    },
+  })
+
+  return JSON.parse(response.text)
+}
+
+// Lazily translates a news post or FAQ item into `lang` via Gemini and
+// caches the result on the row itself (EbNewsPost/EbFaqItem.translations,
+// keyed by language code) so it's only ever translated once per language -
+// see the `lang` prop on EbNewsTab/EbFaqTab. Any signed-in user can call
+// this (not just admins) since EB Engineering clients are the ones actually
+// switching languages on "Mis productos".
+exports.ebTranslateEbContent = onCall({ secrets: [GEMINI_API_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+
+  const { kind, id, lang } = request.data ?? {}
+  const languageName = EB_LANGUAGE_NAMES[lang]
+  if (!languageName) {
+    throw new HttpsError('invalid-argument', 'Idioma no soportado.')
+  }
+  if (typeof id !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador.')
+  }
+
+  if (kind === 'news') {
+    const res = await dataConnect.executeGraphqlRead(GET_EB_NEWS_POST_FOR_TRANSLATION_QUERY, {
+      variables: { id },
+    })
+    const post = res.data.ebNewsPost
+    if (!post) throw new HttpsError('not-found', 'Noticia no encontrada.')
+
+    const cached = post.translations?.[lang]
+    if (cached) return cached
+
+    const translated = await translateFields({ title: post.title, body: post.body }, languageName)
+    await dataConnect.executeGraphql(SET_EB_NEWS_POST_TRANSLATIONS_MUTATION, {
+      variables: { id, translations: { ...(post.translations ?? {}), [lang]: translated } },
+    })
+    return translated
+  }
+
+  if (kind === 'faq') {
+    const res = await dataConnect.executeGraphqlRead(GET_EB_FAQ_ITEM_FOR_TRANSLATION_QUERY, {
+      variables: { id },
+    })
+    const item = res.data.ebFaqItem
+    if (!item) throw new HttpsError('not-found', 'Pregunta no encontrada.')
+
+    const cached = item.translations?.[lang]
+    if (cached) return cached
+
+    const translated = await translateFields({ question: item.question, answer: item.answer }, languageName)
+    await dataConnect.executeGraphql(SET_EB_FAQ_ITEM_TRANSLATIONS_MUTATION, {
+      variables: { id, translations: { ...(item.translations ?? {}), [lang]: translated } },
+    })
+    return translated
+  }
+
+  throw new HttpsError('invalid-argument', 'Tipo de contenido no soportado.')
 })
 
 // --- Cable tester (ESP32 device) --------------------------------------------

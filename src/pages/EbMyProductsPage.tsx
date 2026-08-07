@@ -143,13 +143,13 @@ export function EbMyProductsPage() {
 
       {tab === 'news' && (
         <div className="mt-4">
-          <EbNewsTab readOnly />
+          <EbNewsTab readOnly lang={lang} />
         </div>
       )}
 
       {tab === 'faq' && (
         <div className="mt-4">
-          <EbFaqTab readOnly />
+          <EbFaqTab readOnly lang={lang} />
         </div>
       )}
     </div>

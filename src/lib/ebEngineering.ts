@@ -170,3 +170,38 @@ export async function ebDeleteFaqItem(faqId: string) {
   const res = await callEbDeleteFaqItem({ faqId })
   return res.data
 }
+
+interface EbTranslateNewsInput {
+  kind: 'news'
+  id: string
+  lang: string
+}
+interface EbTranslateFaqInput {
+  kind: 'faq'
+  id: string
+  lang: string
+}
+
+const callEbTranslateEbNewsContent = httpsCallable<EbTranslateNewsInput, { title: string; body: string }>(
+  functions,
+  'ebTranslateEbContent',
+)
+const callEbTranslateEbFaqContent = httpsCallable<
+  EbTranslateFaqInput,
+  { question: string; answer: string }
+>(functions, 'ebTranslateEbContent')
+
+/** Translates a news post's title/body into `lang` via Gemini - cached
+ * server-side after the first call for that language (see
+ * ebTranslateEbContent in functions/index.js), so this is cheap to call
+ * again for the same post/language. */
+export async function ebTranslateNewsPost(id: string, lang: string) {
+  const res = await callEbTranslateEbNewsContent({ kind: 'news', id, lang })
+  return res.data
+}
+
+/** Same as ebTranslateNewsPost but for a FAQ item's question/answer. */
+export async function ebTranslateFaqItem(id: string, lang: string) {
+  const res = await callEbTranslateEbFaqContent({ kind: 'faq', id, lang })
+  return res.data
+}

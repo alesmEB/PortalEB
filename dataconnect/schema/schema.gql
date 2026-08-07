@@ -447,6 +447,12 @@ type EbNewsPost @table(name: "eb_news_posts") {
   authorId: String!
   author: User! @ref(fields: ["authorId"])
   createdAt: Timestamp! @default(expr: "request.time")
+  # Cache of Gemini-translated {title, body} per EbLang code (see
+  # ebI18n.tsx), keyed by language code - e.g. {"en": {"title": "...",
+  # "body": "<p>...</p>"}}. Populated lazily by ebTranslateEbContent the
+  # first time anyone views this post in a given language, not translated
+  # up front for every language on publish.
+  translations: Any
 }
 
 type EbFaqItem @table(name: "eb_faq_items") {
@@ -456,6 +462,9 @@ type EbFaqItem @table(name: "eb_faq_items") {
   createdById: String!
   createdBy: User! @ref(fields: ["createdById"])
   createdAt: Timestamp! @default(expr: "request.time")
+  # Same lazy translation cache as EbNewsPost.translations, keyed by EbLang
+  # code, storing {question, answer} per language.
+  translations: Any
 }
 
 # ---------------------------------------------------------------------------

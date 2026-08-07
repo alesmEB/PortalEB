@@ -509,6 +509,7 @@ query ListEbNewsPosts @auth(level: USER) {
     id
     title
     body
+    translations
     createdAt
     author {
       displayName
@@ -521,6 +522,7 @@ query ListEbFaqItems @auth(level: USER) {
     id
     question
     answer
+    translations
   }
 }
 

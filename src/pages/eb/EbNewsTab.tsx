@@ -3,10 +3,12 @@ import DOMPurify from 'dompurify'
 import { listEbNewsPosts, type ListEbNewsPostsData } from '@dataconnect/generated'
 import { RichTextEditor } from '../../components/RichTextEditor'
 import { FRESH } from '../../lib/dataConnectOptions'
-import { ebCreateNewsPost, ebDeleteNewsPost } from '../../lib/ebEngineering'
+import { ebCreateNewsPost, ebDeleteNewsPost, ebTranslateNewsPost } from '../../lib/ebEngineering'
 import { uploadEbNewsImage } from '../../lib/ebNewsStorage'
+import type { EbLang } from '../../lib/ebI18n'
 
 type NewsPost = ListEbNewsPostsData['ebNewsPosts'][number]
+type NewsTranslation = { title: string; body: string }
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
@@ -69,10 +71,14 @@ function NewPostForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () 
 
 /** `readOnly` hides the create/delete controls - used for EB Engineering
  * clients viewing news on "Mis productos" (see EbMyProductsPage), who can
- * read but not manage posts. */
-export function EbNewsTab({ readOnly = false }: { readOnly?: boolean } = {}) {
+ * read but not manage posts. `lang` (default "es", the language everything
+ * is authored in) translates title/body via Gemini - see ebTranslateEbContent
+ * in functions/index.js - reusing the cache already on each post's
+ * `translations` field when present instead of re-requesting it. */
+export function EbNewsTab({ readOnly = false, lang = 'es' }: { readOnly?: boolean; lang?: EbLang } = {}) {
   const [posts, setPosts] = useState<NewsPost[] | null>(null)
   const [creating, setCreating] = useState(false)
+  const [translations, setTranslations] = useState<Record<string, NewsTranslation>>({})
 
   function refresh() {
     listEbNewsPosts(FRESH).then((res) => setPosts(res.data.ebNewsPosts))
@@ -81,6 +87,25 @@ export function EbNewsTab({ readOnly = false }: { readOnly?: boolean } = {}) {
   useEffect(() => {
     refresh()
   }, [])
+
+  useEffect(() => {
+    if (lang === 'es' || !posts) return
+    for (const post of posts) {
+      const key = `${post.id}:${lang}`
+      if (translations[key]) continue
+      const cached = (post.translations as Record<string, NewsTranslation> | null | undefined)?.[lang]
+      if (cached) {
+        setTranslations((prev) => ({ ...prev, [key]: cached }))
+        continue
+      }
+      // Best-effort: falls back to the original Spanish text (see the
+      // render below) if translation isn't available for some reason.
+      ebTranslateNewsPost(post.id, lang)
+        .then((result) => setTranslations((prev) => ({ ...prev, [key]: result })))
+        .catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, posts])
 
   return (
     <div>
@@ -101,31 +126,34 @@ export function EbNewsTab({ readOnly = false }: { readOnly?: boolean } = {}) {
       )}
 
       <div className="mt-4 space-y-2">
-        {posts?.map((post) => (
-          <div key={post.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold text-eb-blue-dark">{post.title}</p>
-                <p className="text-xs text-slate-400">
-                  {post.author.displayName} · {new Date(post.createdAt).toLocaleDateString('es-ES')}
-                </p>
+        {posts?.map((post) => {
+          const translation = translations[`${post.id}:${lang}`]
+          return (
+            <div key={post.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-eb-blue-dark">{translation?.title ?? post.title}</p>
+                  <p className="text-xs text-slate-400">
+                    {post.author.displayName} · {new Date(post.createdAt).toLocaleDateString('es-ES')}
+                  </p>
+                </div>
+                {!readOnly && (
+                  <button
+                    onClick={() => ebDeleteNewsPost(post.id).then(refresh)}
+                    className="text-slate-400 hover:text-red-600"
+                    title="Eliminar noticia"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
-              {!readOnly && (
-                <button
-                  onClick={() => ebDeleteNewsPost(post.id).then(refresh)}
-                  className="text-slate-400 hover:text-red-600"
-                  title="Eliminar noticia"
-                >
-                  ✕
-                </button>
-              )}
+              <div
+                className="eb-rich-content mt-2 text-sm text-slate-600"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(translation?.body ?? post.body) }}
+              />
             </div>
-            <div
-              className="eb-rich-content mt-2 text-sm text-slate-600"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.body) }}
-            />
-          </div>
-        ))}
+          )
+        })}
         {posts?.length === 0 && <p className="text-xs text-slate-400">Ninguna noticia todavía.</p>}
       </div>
     </div>
