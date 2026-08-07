@@ -13,6 +13,7 @@ import { EbAssignedCablesSection, EbControllerProductCard } from '../../componen
 import { SearchInput } from '../../components/SearchInput'
 import { countryFlag } from '../../lib/countryFlag'
 import { FRESH } from '../../lib/dataConnectOptions'
+import { EB_LANGUAGES, EB_LANGUAGE_LABEL, useEbLanguage } from '../../lib/ebI18n'
 import {
   ebAddClientProduct,
   ebCreateCableType,
@@ -511,6 +512,7 @@ export function EbProductsTab() {
 // stays a faithful preview of what a client actually sees.
 function EbClientPreviewTab() {
   const [products, setProducts] = useState<ProductRow[] | null>(null)
+  const [lang, setLang] = useEbLanguage()
 
   useEffect(() => {
     listEbClientProducts(FRESH).then((res) => setProducts(res.data.ebClientProducts))
@@ -524,10 +526,23 @@ function EbClientPreviewTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-slate-500">
-        Así ve cada cliente su unidad en "Mis productos" - {visibleProducts.length} unidades
-        (excluye dadas de baja).
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 flex-1 text-xs text-slate-500">
+          Así ve cada cliente su unidad en "Mis productos" - {visibleProducts.length} unidades
+          (excluye dadas de baja).
+        </p>
+        <select
+          value={lang}
+          onChange={(e) => setLang(e.target.value as typeof lang)}
+          className="shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none focus:border-eb-blue"
+        >
+          {EB_LANGUAGES.map((code) => (
+            <option key={code} value={code}>
+              {EB_LANGUAGE_LABEL[code]}
+            </option>
+          ))}
+        </select>
+      </div>
       {visibleProducts.map((product) => (
         <div key={product.id} className="space-y-2">
           <p className="text-xs font-medium text-slate-400">{product.client.companyName}</p>
@@ -537,8 +552,13 @@ function EbClientPreviewTab() {
             hardwareNumber={product.hardwareNumber}
             serialNumber={product.serialNumber}
             softwareVersion={product.softwareVersion}
+            lang={lang}
           />
-          <EbAssignedCablesSection cables={product.cables} registeredCables={product.registeredCables} />
+          <EbAssignedCablesSection
+            cables={product.cables}
+            registeredCables={product.registeredCables}
+            lang={lang}
+          />
         </div>
       ))}
       {visibleProducts.length === 0 && (

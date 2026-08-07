@@ -1,13 +1,14 @@
 import ebControllerPhoto from '../assets/eb/ebcontroller.webp'
+import { ebT, type EbLang } from '../lib/ebI18n'
 
-type FieldRow = { es: string; en: string; value: string }
+type FieldRow = { key: string; label: string; value: string }
 
 /**
- * Renders one EbClientProduct exactly like the physical purchase label EB
- * Engineering hands out with each unit (teal header + bilingual field rows +
- * product photo) - this is what a client sees on "Mis productos" for every
- * unit they own, and what admins preview under Productos > Vista cliente
- * without needing to log in as the client.
+ * Renders one EbClientProduct like the physical purchase label EB
+ * Engineering hands out with each unit (teal header + field rows + product
+ * photo), translated to `lang` - this is what a client sees on "Mis
+ * productos" for every unit they own, and what admins preview under
+ * Productos > Vista cliente without needing to log in as the client.
  */
 export function EbControllerProductCard({
   productName,
@@ -15,18 +16,20 @@ export function EbControllerProductCard({
   hardwareNumber,
   serialNumber,
   softwareVersion,
+  lang,
 }: {
   productName: string
   purchasedAt?: string | null
   hardwareNumber: string
   serialNumber: string
   softwareVersion?: string | null
+  lang: EbLang
 }) {
   const rows: FieldRow[] = [
-    { es: 'Fecha de compra:', en: 'Date of Invoice:', value: purchasedAt ?? '-' },
-    { es: 'Versión de Hardware:', en: 'Hardware Version:', value: hardwareNumber },
-    { es: 'Número de serie:', en: 'Serial Number:', value: serialNumber },
-    { es: 'Versión de Software:', en: 'Software Version:', value: softwareVersion ?? '-' },
+    { key: 'purchasedAt', label: ebT(lang, 'fieldPurchaseDate'), value: purchasedAt ?? '-' },
+    { key: 'hardwareNumber', label: ebT(lang, 'fieldHardwareVersion'), value: hardwareNumber },
+    { key: 'serialNumber', label: ebT(lang, 'fieldSerialNumber'), value: serialNumber },
+    { key: 'softwareVersion', label: ebT(lang, 'fieldSoftwareVersion'), value: softwareVersion ?? '-' },
   ]
 
   return (
@@ -37,12 +40,8 @@ export function EbControllerProductCard({
       <div className="flex items-center gap-4 p-4">
         <div className="flex-1 space-y-3">
           {rows.map((row) => (
-            <div key={row.es} className="flex items-center justify-between gap-4">
-              <p className="text-xs leading-tight text-slate-500">
-                {row.es}
-                <br />
-                {row.en}
-              </p>
+            <div key={row.key} className="flex items-center justify-between gap-4">
+              <p className="text-xs leading-tight text-slate-500">{row.label}</p>
               <p className="whitespace-nowrap text-sm text-slate-700">{row.value}</p>
             </div>
           ))}
@@ -70,16 +69,18 @@ type RegisteredCableRef = {
 export function EbAssignedCablesSection({
   cables,
   registeredCables,
+  lang,
 }: {
   cables: CableTypeRef[]
   registeredCables: RegisteredCableRef[]
+  lang: EbLang
 }) {
   const hasAny = cables.length > 0 || registeredCables.length > 0
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white/90 p-4">
-      <p className="text-sm font-semibold text-eb-blue-dark">Cables asignados</p>
-      {!hasAny && <p className="mt-1 text-xs text-slate-400">Sin cables asignados.</p>}
+      <p className="text-sm font-semibold text-eb-blue-dark">{ebT(lang, 'cablesTitle')}</p>
+      {!hasAny && <p className="mt-1 text-xs text-slate-400">{ebT(lang, 'noCables')}</p>}
       {registeredCables.length > 0 && (
         <ul className="mt-2 space-y-1">
           {registeredCables.map((c) => (
