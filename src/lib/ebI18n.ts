@@ -4,7 +4,11 @@ import { useEffect, useState } from 'react'
 // EbClientsTab) - this covers the languages of the bulk of them. Scoped to
 // just the client-facing "Mis productos" page/components, not the rest of
 // the app (which the naval-workshop Customer/CLIENT role uses instead).
-export const EB_LANGUAGES = ['es', 'en', 'fr', 'it', 'tr', 'sv', 'bg'] as const
+// No separate "Austrian" entry: Austria's official language is German, so
+// the "de" option below covers it - there's no distinct Austrian language.
+export const EB_LANGUAGES = [
+  'es', 'en', 'fr', 'it', 'tr', 'sv', 'bg', 'hr', 'el', 'nl', 'no', 'de', 'sr', 'pt', 'ja',
+] as const
 export type EbLang = (typeof EB_LANGUAGES)[number]
 
 export const EB_LANGUAGE_LABEL: Record<EbLang, string> = {
@@ -15,6 +19,14 @@ export const EB_LANGUAGE_LABEL: Record<EbLang, string> = {
   tr: '🇹🇷 Türkçe',
   sv: '🇸🇪 Svenska',
   bg: '🇧🇬 Български',
+  hr: '🇭🇷 Hrvatski',
+  el: '🇬🇷 Ελληνικά',
+  nl: '🇳🇱 Nederlands',
+  no: '🇳🇴 Norsk',
+  de: '🇩🇪 Deutsch',
+  sr: '🇷🇸 Srpski',
+  pt: '🇵🇹 Português',
+  ja: '🇯🇵 日本語',
 }
 
 const STORAGE_KEY = 'portaleb-eb-lang'
@@ -123,6 +135,110 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Версия на софтуера:',
     cablesTitle: 'Присвоени кабели',
     noCables: 'Няма присвоени кабели.',
+  },
+  hr: {
+    pageTitle: 'Moji proizvodi',
+    loading: 'Učitavanje...',
+    noLinkedClient: 'Vaš korisnik nije povezan ni s jednim EB Engineering klijentom.',
+    noProducts: 'Još nemate registriranih proizvoda.',
+    downloadProgram: 'Preuzmi prilagođeni program',
+    fieldPurchaseDate: 'Datum kupnje:',
+    fieldHardwareVersion: 'Verzija hardvera:',
+    fieldSerialNumber: 'Serijski broj:',
+    fieldSoftwareVersion: 'Verzija softvera:',
+    cablesTitle: 'Dodijeljeni kabeli',
+    noCables: 'Nema dodijeljenih kabela.',
+  },
+  el: {
+    pageTitle: 'Τα προϊόντα μου',
+    loading: 'Φόρτωση...',
+    noLinkedClient: 'Ο χρήστης σας δεν είναι συνδεδεμένος με κανέναν πελάτη της EB Engineering.',
+    noProducts: 'Δεν έχετε ακόμη καταχωρημένα προϊόντα.',
+    downloadProgram: 'Λήψη προσαρμοσμένου προγράμματος',
+    fieldPurchaseDate: 'Ημερομηνία αγοράς:',
+    fieldHardwareVersion: 'Έκδοση Υλικού:',
+    fieldSerialNumber: 'Σειριακός Αριθμός:',
+    fieldSoftwareVersion: 'Έκδοση Λογισμικού:',
+    cablesTitle: 'Ανατεθειμένα καλώδια',
+    noCables: 'Δεν έχουν ανατεθεί καλώδια.',
+  },
+  nl: {
+    pageTitle: 'Mijn producten',
+    loading: 'Laden...',
+    noLinkedClient: 'Uw gebruiker is niet gekoppeld aan een EB Engineering-klant.',
+    noProducts: 'U heeft nog geen geregistreerde producten.',
+    downloadProgram: 'Aangepast programma downloaden',
+    fieldPurchaseDate: 'Aankoopdatum:',
+    fieldHardwareVersion: 'Hardwareversie:',
+    fieldSerialNumber: 'Serienummer:',
+    fieldSoftwareVersion: 'Softwareversie:',
+    cablesTitle: 'Toegewezen kabels',
+    noCables: 'Geen kabels toegewezen.',
+  },
+  no: {
+    pageTitle: 'Mine produkter',
+    loading: 'Laster...',
+    noLinkedClient: 'Brukeren din er ikke koblet til noen EB Engineering-kunde.',
+    noProducts: 'Du har ingen registrerte produkter ennå.',
+    downloadProgram: 'Last ned tilpasset program',
+    fieldPurchaseDate: 'Kjøpsdato:',
+    fieldHardwareVersion: 'Maskinvareversjon:',
+    fieldSerialNumber: 'Serienummer:',
+    fieldSoftwareVersion: 'Programvareversjon:',
+    cablesTitle: 'Tildelte kabler',
+    noCables: 'Ingen kabler tildelt.',
+  },
+  de: {
+    pageTitle: 'Meine Produkte',
+    loading: 'Wird geladen...',
+    noLinkedClient: 'Ihr Benutzer ist mit keinem EB Engineering-Kunden verknüpft.',
+    noProducts: 'Sie haben noch keine registrierten Produkte.',
+    downloadProgram: 'Individuelles Programm herunterladen',
+    fieldPurchaseDate: 'Kaufdatum:',
+    fieldHardwareVersion: 'Hardware-Version:',
+    fieldSerialNumber: 'Seriennummer:',
+    fieldSoftwareVersion: 'Software-Version:',
+    cablesTitle: 'Zugewiesene Kabel',
+    noCables: 'Keine Kabel zugewiesen.',
+  },
+  sr: {
+    pageTitle: 'Moji proizvodi',
+    loading: 'Učitavanje...',
+    noLinkedClient: 'Vaš korisnik nije povezan ni sa jednim EB Engineering klijentom.',
+    noProducts: 'Još uvek nemate registrovanih proizvoda.',
+    downloadProgram: 'Preuzmi prilagođeni program',
+    fieldPurchaseDate: 'Datum kupovine:',
+    fieldHardwareVersion: 'Verzija hardvera:',
+    fieldSerialNumber: 'Serijski broj:',
+    fieldSoftwareVersion: 'Verzija softvera:',
+    cablesTitle: 'Dodeljeni kablovi',
+    noCables: 'Nema dodeljenih kablova.',
+  },
+  pt: {
+    pageTitle: 'Meus produtos',
+    loading: 'A carregar...',
+    noLinkedClient: 'O seu utilizador não está associado a nenhum cliente EB Engineering.',
+    noProducts: 'Ainda não tem produtos registados.',
+    downloadProgram: 'Descarregar programa personalizado',
+    fieldPurchaseDate: 'Data de compra:',
+    fieldHardwareVersion: 'Versão de Hardware:',
+    fieldSerialNumber: 'Número de série:',
+    fieldSoftwareVersion: 'Versão de Software:',
+    cablesTitle: 'Cabos atribuídos',
+    noCables: 'Nenhum cabo atribuído.',
+  },
+  ja: {
+    pageTitle: 'マイ製品',
+    loading: '読み込み中...',
+    noLinkedClient: 'お客様のユーザーはEB Engineeringのクライアントに関連付けられていません。',
+    noProducts: '登録された製品はまだありません。',
+    downloadProgram: 'カスタムプログラムをダウンロード',
+    fieldPurchaseDate: '購入日:',
+    fieldHardwareVersion: 'ハードウェアバージョン:',
+    fieldSerialNumber: 'シリアル番号:',
+    fieldSoftwareVersion: 'ソフトウェアバージョン:',
+    cablesTitle: '割り当てられたケーブル',
+    noCables: '割り当てられたケーブルはありません。',
   },
 }
 
