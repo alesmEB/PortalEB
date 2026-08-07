@@ -474,7 +474,10 @@ query GetMyEbClient @auth(level: USER) {
 }
 
 query ListMyEbClientProducts($clientId: UUID!) @auth(level: USER) {
-  ebClientProducts(where: { clientId: { eq: $clientId } }, orderBy: { purchasedAt: DESC }) {
+  ebClientProducts(
+    where: { clientId: { eq: $clientId }, retiredAt: { isNull: true } }
+    orderBy: { purchasedAt: DESC }
+  ) {
     id
     productName
     serialNumber

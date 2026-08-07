@@ -1,4 +1,4 @@
-import { Cpu } from 'lucide-react'
+import ebControllerPhoto from '../assets/eb/ebcontroller.webp'
 
 type FieldRow = { es: string; en: string; value: string }
 
@@ -47,13 +47,11 @@ export function EbControllerProductCard({
             </div>
           ))}
         </div>
-        {/* Placeholder until EB Engineering provides the real product photo asset. */}
-        <div
-          className="flex h-24 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50"
-          title="Foto del producto pendiente de configurar"
-        >
-          <Cpu className="h-8 w-8 text-slate-300" />
-        </div>
+        <img
+          src={ebControllerPhoto}
+          alt={productName}
+          className="h-20 w-32 shrink-0 object-contain"
+        />
       </div>
     </div>
   )

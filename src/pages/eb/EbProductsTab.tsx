@@ -507,6 +507,8 @@ export function EbProductsTab() {
 // "Mis productos" (EbMyProductsPage) - lets an admin check the label/photo
 // layout without needing a client login. Not filtered per-client on purpose:
 // this is a design check across the whole catalog, not a real client view.
+// Retired units ARE filtered out, same as ListMyEbClientProducts, so this
+// stays a faithful preview of what a client actually sees.
 function EbClientPreviewTab() {
   const [products, setProducts] = useState<ProductRow[] | null>(null)
 
@@ -518,12 +520,15 @@ function EbClientPreviewTab() {
     return <p className="text-xs text-slate-400">Cargando...</p>
   }
 
+  const visibleProducts = products.filter((product) => !product.retiredAt)
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-slate-500">
-        Así ve cada cliente su unidad en "Mis productos" - {products.length} unidades.
+        Así ve cada cliente su unidad en "Mis productos" - {visibleProducts.length} unidades
+        (excluye dadas de baja).
       </p>
-      {products.map((product) => (
+      {visibleProducts.map((product) => (
         <div key={product.id} className="space-y-2">
           <p className="text-xs font-medium text-slate-400">{product.client.companyName}</p>
           <EbControllerProductCard
@@ -536,7 +541,9 @@ function EbClientPreviewTab() {
           <EbAssignedCablesSection cables={product.cables} registeredCables={product.registeredCables} />
         </div>
       ))}
-      {products.length === 0 && <p className="text-xs text-slate-400">Ninguna venta registrada todavía.</p>}
+      {visibleProducts.length === 0 && (
+        <p className="text-xs text-slate-400">Ninguna venta visible para clientes todavía.</p>
+      )}
     </div>
   )
 }
