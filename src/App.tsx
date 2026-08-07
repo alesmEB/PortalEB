@@ -4,6 +4,7 @@ import { AppBackground } from './components/AppBackground'
 import { Footer } from './components/Footer'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { UserBar } from './components/UserBar'
+import { EbLanguageProvider } from './lib/ebI18n'
 import { AdminPage } from './pages/AdminPage'
 import { AssignmentsPage } from './pages/AssignmentsPage'
 import { CalendarPage } from './pages/CalendarPage'
@@ -21,123 +22,125 @@ import { SendNotificationPage } from './pages/SendNotificationPage'
 
 function App() {
   return (
-    <div className="flex min-h-svh flex-col">
-      <AppBackground />
-      <UserBar />
+    <EbLanguageProvider>
+      <div className="flex min-h-svh flex-col">
+        <AppBackground />
+        <UserBar />
 
-      <div className="flex flex-1 flex-col">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/orders/new"
-            element={
-              <ProtectedRoute>
-                <NewOrderPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/orders/:id"
-            element={
-              <ProtectedRoute>
-                <OrderDetailPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/orders"
-            element={
-              <ProtectedRoute>
-                <OrdersListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/assignments"
-            element={
-              <ProtectedRoute>
-                <AssignmentsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/calendar"
-            element={
-              <ProtectedRoute>
-                <CalendarPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/chat/:kind/:orderId"
-            element={
-              <ProtectedRoute>
-                <ChatPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/notifications/send"
-            element={
-              <ProtectedRoute>
-                <SendNotificationPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute>
-                <AdminPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/ebengineering"
-            element={
-              <ProtectedRoute>
-                <EbEngineeringPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/ebengineering/my-products"
-            element={
-              <ProtectedRoute>
-                <EbMyProductsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/intervention/new"
-            element={
-              <ProtectedRoute>
-                <InterventionPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/interventions"
-            element={
-              <ProtectedRoute>
-                <InterventionsListPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <div className="flex flex-1 flex-col">
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/orders/new"
+              element={
+                <ProtectedRoute>
+                  <NewOrderPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/orders/:id"
+              element={
+                <ProtectedRoute>
+                  <OrderDetailPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/orders"
+              element={
+                <ProtectedRoute>
+                  <OrdersListPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/assignments"
+              element={
+                <ProtectedRoute>
+                  <AssignmentsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/calendar"
+              element={
+                <ProtectedRoute>
+                  <CalendarPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/chat/:kind/:orderId"
+              element={
+                <ProtectedRoute>
+                  <ChatPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/notifications/send"
+              element={
+                <ProtectedRoute>
+                  <SendNotificationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/ebengineering"
+              element={
+                <ProtectedRoute>
+                  <EbEngineeringPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/ebengineering/my-products"
+              element={
+                <ProtectedRoute>
+                  <EbMyProductsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/intervention/new"
+              element={
+                <ProtectedRoute>
+                  <InterventionPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/interventions"
+              element={
+                <ProtectedRoute>
+                  <InterventionsListPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </div>
+
+        <ActiveShiftBanner />
+        <Footer />
       </div>
-
-      <ActiveShiftBanner />
-      <Footer />
-    </div>
+    </EbLanguageProvider>
   )
 }
 

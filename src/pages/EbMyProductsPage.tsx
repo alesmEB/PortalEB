@@ -28,7 +28,7 @@ export function EbMyProductsPage() {
 
   return (
     <div className="flex-1 p-4">
-      <BackButton to="/" />
+      <BackButton to="/" label={ebT(lang, 'back')} />
       <div className="flex items-start justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold text-eb-blue-dark">{ebT(lang, 'pageTitle')}</h1>

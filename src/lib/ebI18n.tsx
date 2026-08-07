@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 // EB Engineering clients (EbClient) are spread across many countries (see
 // EbClientsTab) - this covers the languages of the bulk of them. Scoped to
-// just the client-facing "Mis productos" page/components, not the rest of
-// the app (which the naval-workshop Customer/CLIENT role uses instead).
+// just the client-facing "Mis productos" page (and the surrounding app
+// chrome - UserBar/Footer - while ON that page only, see EbLanguageProvider
+// below), not the rest of the app (which the naval-workshop Customer/CLIENT
+// role uses instead, always in Spanish).
 // No separate "Austrian" entry: Austria's official language is German, so
 // the "de" option below covers it - there's no distinct Austrian language.
 export const EB_LANGUAGES = [
@@ -43,6 +45,9 @@ type TranslationKey =
   | 'fieldSoftwareVersion'
   | 'cablesTitle'
   | 'noCables'
+  | 'back'
+  | 'allRightsReserved'
+  | 'roleClient'
 
 const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
   es: {
@@ -57,6 +62,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Versión de Software:',
     cablesTitle: 'Cables asignados',
     noCables: 'Sin cables asignados.',
+    back: 'Volver',
+    allRightsReserved: 'Todos los derechos reservados.',
+    roleClient: 'Cliente',
   },
   en: {
     pageTitle: 'My products',
@@ -70,6 +78,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Software Version:',
     cablesTitle: 'Assigned cables',
     noCables: 'No cables assigned.',
+    back: 'Back',
+    allRightsReserved: 'All rights reserved.',
+    roleClient: 'Client',
   },
   fr: {
     pageTitle: 'Mes produits',
@@ -83,6 +94,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Version du logiciel :',
     cablesTitle: 'Câbles attribués',
     noCables: 'Aucun câble attribué.',
+    back: 'Retour',
+    allRightsReserved: 'Tous droits réservés.',
+    roleClient: 'Client',
   },
   it: {
     pageTitle: 'I miei prodotti',
@@ -96,6 +110,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Versione Software:',
     cablesTitle: 'Cavi assegnati',
     noCables: 'Nessun cavo assegnato.',
+    back: 'Indietro',
+    allRightsReserved: 'Tutti i diritti riservati.',
+    roleClient: 'Cliente',
   },
   tr: {
     pageTitle: 'Ürünlerim',
@@ -109,6 +126,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Yazılım Sürümü:',
     cablesTitle: 'Atanan kablolar',
     noCables: 'Atanmış kablo yok.',
+    back: 'Geri',
+    allRightsReserved: 'Tüm hakları saklıdır.',
+    roleClient: 'Müşteri',
   },
   sv: {
     pageTitle: 'Mina produkter',
@@ -122,6 +142,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Mjukvaruversion:',
     cablesTitle: 'Tilldelade kablar',
     noCables: 'Inga kablar tilldelade.',
+    back: 'Tillbaka',
+    allRightsReserved: 'Alla rättigheter förbehållna.',
+    roleClient: 'Kund',
   },
   bg: {
     pageTitle: 'Моите продукти',
@@ -135,6 +158,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Версия на софтуера:',
     cablesTitle: 'Присвоени кабели',
     noCables: 'Няма присвоени кабели.',
+    back: 'Назад',
+    allRightsReserved: 'Всички права запазени.',
+    roleClient: 'Клиент',
   },
   hr: {
     pageTitle: 'Moji proizvodi',
@@ -148,6 +174,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Verzija softvera:',
     cablesTitle: 'Dodijeljeni kabeli',
     noCables: 'Nema dodijeljenih kabela.',
+    back: 'Natrag',
+    allRightsReserved: 'Sva prava pridržana.',
+    roleClient: 'Klijent',
   },
   el: {
     pageTitle: 'Τα προϊόντα μου',
@@ -161,6 +190,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Έκδοση Λογισμικού:',
     cablesTitle: 'Ανατεθειμένα καλώδια',
     noCables: 'Δεν έχουν ανατεθεί καλώδια.',
+    back: 'Πίσω',
+    allRightsReserved: 'Με την επιφύλαξη παντός δικαιώματος.',
+    roleClient: 'Πελάτης',
   },
   nl: {
     pageTitle: 'Mijn producten',
@@ -174,6 +206,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Softwareversie:',
     cablesTitle: 'Toegewezen kabels',
     noCables: 'Geen kabels toegewezen.',
+    back: 'Terug',
+    allRightsReserved: 'Alle rechten voorbehouden.',
+    roleClient: 'Klant',
   },
   no: {
     pageTitle: 'Mine produkter',
@@ -187,6 +222,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Programvareversjon:',
     cablesTitle: 'Tildelte kabler',
     noCables: 'Ingen kabler tildelt.',
+    back: 'Tilbake',
+    allRightsReserved: 'Med enerett.',
+    roleClient: 'Kunde',
   },
   de: {
     pageTitle: 'Meine Produkte',
@@ -200,6 +238,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Software-Version:',
     cablesTitle: 'Zugewiesene Kabel',
     noCables: 'Keine Kabel zugewiesen.',
+    back: 'Zurück',
+    allRightsReserved: 'Alle Rechte vorbehalten.',
+    roleClient: 'Kunde',
   },
   sr: {
     pageTitle: 'Moji proizvodi',
@@ -213,6 +254,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Verzija softvera:',
     cablesTitle: 'Dodeljeni kablovi',
     noCables: 'Nema dodeljenih kablova.',
+    back: 'Nazad',
+    allRightsReserved: 'Sva prava zadržana.',
+    roleClient: 'Klijent',
   },
   pt: {
     pageTitle: 'Meus produtos',
@@ -226,6 +270,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Versão de Software:',
     cablesTitle: 'Cabos atribuídos',
     noCables: 'Nenhum cabo atribuído.',
+    back: 'Voltar',
+    allRightsReserved: 'Todos os direitos reservados.',
+    roleClient: 'Cliente',
   },
   ja: {
     pageTitle: 'マイ製品',
@@ -239,6 +286,9 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'ソフトウェアバージョン:',
     cablesTitle: '割り当てられたケーブル',
     noCables: '割り当てられたケーブルはありません。',
+    back: '戻る',
+    allRightsReserved: '全著作権所有。',
+    roleClient: 'クライアント',
   },
 }
 
@@ -250,10 +300,22 @@ function isEbLang(value: string | null): value is EbLang {
   return !!value && (EB_LANGUAGES as readonly string[]).includes(value)
 }
 
-/** Persists the chosen language in localStorage so a returning client keeps
- * their pick (same pattern as getOrCreateDeviceId in pushNotifications.ts). */
-export function useEbLanguage(): [EbLang, (lang: EbLang) => void] {
-  const [lang, setLangState] = useState<EbLang>(() => {
+interface EbLanguageContextValue {
+  lang: EbLang
+  setLang: (lang: EbLang) => void
+}
+
+const EbLanguageContext = createContext<EbLanguageContextValue | null>(null)
+
+/**
+ * Wraps the whole app (see App.tsx) so the chosen language is shared - not
+ * just by the "Mis productos" page/cards, but also by UserBar and Footer
+ * while a client is actually on that page (see the `isEbClientRoute` check
+ * in each), so the entire page translates instead of just the product
+ * details. Persisted in localStorage so a returning client keeps their pick.
+ */
+export function EbLanguageProvider({ children }: { children: ReactNode }) {
+  const [lang, setLang] = useState<EbLang>(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
     return isEbLang(stored) ? stored : 'es'
   })
@@ -262,5 +324,13 @@ export function useEbLanguage(): [EbLang, (lang: EbLang) => void] {
     localStorage.setItem(STORAGE_KEY, lang)
   }, [lang])
 
-  return [lang, setLangState]
+  return (
+    <EbLanguageContext.Provider value={{ lang, setLang }}>{children}</EbLanguageContext.Provider>
+  )
+}
+
+export function useEbLanguage(): [EbLang, (lang: EbLang) => void] {
+  const context = useContext(EbLanguageContext)
+  if (!context) throw new Error('useEbLanguage must be used within an EbLanguageProvider')
+  return [context.lang, context.setLang]
 }
