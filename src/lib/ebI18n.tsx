@@ -45,9 +45,12 @@ type TranslationKey =
   | 'fieldSoftwareVersion'
   | 'cablesTitle'
   | 'noCables'
-  | 'back'
   | 'allRightsReserved'
   | 'roleClient'
+  | 'tabProducts'
+  | 'tabNews'
+  | 'tabFaq'
+  | 'signOut'
 
 const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
   es: {
@@ -62,9 +65,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Versión de Software:',
     cablesTitle: 'Cables asignados',
     noCables: 'Sin cables asignados.',
-    back: 'Volver',
     allRightsReserved: 'Todos los derechos reservados.',
     roleClient: 'Cliente',
+    tabProducts: 'Productos',
+    tabNews: 'Noticias',
+    tabFaq: 'FAQ',
+    signOut: 'Cerrar sesión',
   },
   en: {
     pageTitle: 'My products',
@@ -78,9 +84,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Software Version:',
     cablesTitle: 'Assigned cables',
     noCables: 'No cables assigned.',
-    back: 'Back',
     allRightsReserved: 'All rights reserved.',
     roleClient: 'Client',
+    tabProducts: 'Products',
+    tabNews: 'News',
+    tabFaq: 'FAQ',
+    signOut: 'Sign out',
   },
   fr: {
     pageTitle: 'Mes produits',
@@ -94,9 +103,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Version du logiciel :',
     cablesTitle: 'Câbles attribués',
     noCables: 'Aucun câble attribué.',
-    back: 'Retour',
     allRightsReserved: 'Tous droits réservés.',
     roleClient: 'Client',
+    tabProducts: 'Produits',
+    tabNews: 'Actualités',
+    tabFaq: 'FAQ',
+    signOut: 'Déconnexion',
   },
   it: {
     pageTitle: 'I miei prodotti',
@@ -110,9 +122,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Versione Software:',
     cablesTitle: 'Cavi assegnati',
     noCables: 'Nessun cavo assegnato.',
-    back: 'Indietro',
     allRightsReserved: 'Tutti i diritti riservati.',
     roleClient: 'Cliente',
+    tabProducts: 'Prodotti',
+    tabNews: 'Notizie',
+    tabFaq: 'FAQ',
+    signOut: 'Disconnetti',
   },
   tr: {
     pageTitle: 'Ürünlerim',
@@ -126,9 +141,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Yazılım Sürümü:',
     cablesTitle: 'Atanan kablolar',
     noCables: 'Atanmış kablo yok.',
-    back: 'Geri',
     allRightsReserved: 'Tüm hakları saklıdır.',
     roleClient: 'Müşteri',
+    tabProducts: 'Ürünler',
+    tabNews: 'Haberler',
+    tabFaq: 'FAQ',
+    signOut: 'Çıkış yap',
   },
   sv: {
     pageTitle: 'Mina produkter',
@@ -142,9 +160,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Mjukvaruversion:',
     cablesTitle: 'Tilldelade kablar',
     noCables: 'Inga kablar tilldelade.',
-    back: 'Tillbaka',
     allRightsReserved: 'Alla rättigheter förbehållna.',
     roleClient: 'Kund',
+    tabProducts: 'Produkter',
+    tabNews: 'Nyheter',
+    tabFaq: 'FAQ',
+    signOut: 'Logga ut',
   },
   bg: {
     pageTitle: 'Моите продукти',
@@ -158,9 +179,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Версия на софтуера:',
     cablesTitle: 'Присвоени кабели',
     noCables: 'Няма присвоени кабели.',
-    back: 'Назад',
     allRightsReserved: 'Всички права запазени.',
     roleClient: 'Клиент',
+    tabProducts: 'Продукти',
+    tabNews: 'Новини',
+    tabFaq: 'FAQ',
+    signOut: 'Изход',
   },
   hr: {
     pageTitle: 'Moji proizvodi',
@@ -174,9 +198,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Verzija softvera:',
     cablesTitle: 'Dodijeljeni kabeli',
     noCables: 'Nema dodijeljenih kabela.',
-    back: 'Natrag',
     allRightsReserved: 'Sva prava pridržana.',
     roleClient: 'Klijent',
+    tabProducts: 'Proizvodi',
+    tabNews: 'Novosti',
+    tabFaq: 'FAQ',
+    signOut: 'Odjava',
   },
   el: {
     pageTitle: 'Τα προϊόντα μου',
@@ -190,9 +217,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Έκδοση Λογισμικού:',
     cablesTitle: 'Ανατεθειμένα καλώδια',
     noCables: 'Δεν έχουν ανατεθεί καλώδια.',
-    back: 'Πίσω',
     allRightsReserved: 'Με την επιφύλαξη παντός δικαιώματος.',
     roleClient: 'Πελάτης',
+    tabProducts: 'Προϊόντα',
+    tabNews: 'Νέα',
+    tabFaq: 'FAQ',
+    signOut: 'Αποσύνδεση',
   },
   nl: {
     pageTitle: 'Mijn producten',
@@ -206,9 +236,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Softwareversie:',
     cablesTitle: 'Toegewezen kabels',
     noCables: 'Geen kabels toegewezen.',
-    back: 'Terug',
     allRightsReserved: 'Alle rechten voorbehouden.',
     roleClient: 'Klant',
+    tabProducts: 'Producten',
+    tabNews: 'Nieuws',
+    tabFaq: 'FAQ',
+    signOut: 'Uitloggen',
   },
   no: {
     pageTitle: 'Mine produkter',
@@ -222,9 +255,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Programvareversjon:',
     cablesTitle: 'Tildelte kabler',
     noCables: 'Ingen kabler tildelt.',
-    back: 'Tilbake',
     allRightsReserved: 'Med enerett.',
     roleClient: 'Kunde',
+    tabProducts: 'Produkter',
+    tabNews: 'Nyheter',
+    tabFaq: 'FAQ',
+    signOut: 'Logg ut',
   },
   de: {
     pageTitle: 'Meine Produkte',
@@ -238,9 +274,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Software-Version:',
     cablesTitle: 'Zugewiesene Kabel',
     noCables: 'Keine Kabel zugewiesen.',
-    back: 'Zurück',
     allRightsReserved: 'Alle Rechte vorbehalten.',
     roleClient: 'Kunde',
+    tabProducts: 'Produkte',
+    tabNews: 'Neuigkeiten',
+    tabFaq: 'FAQ',
+    signOut: 'Abmelden',
   },
   sr: {
     pageTitle: 'Moji proizvodi',
@@ -254,9 +293,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Verzija softvera:',
     cablesTitle: 'Dodeljeni kablovi',
     noCables: 'Nema dodeljenih kablova.',
-    back: 'Nazad',
     allRightsReserved: 'Sva prava zadržana.',
     roleClient: 'Klijent',
+    tabProducts: 'Proizvodi',
+    tabNews: 'Vesti',
+    tabFaq: 'FAQ',
+    signOut: 'Odjava',
   },
   pt: {
     pageTitle: 'Meus produtos',
@@ -270,9 +312,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'Versão de Software:',
     cablesTitle: 'Cabos atribuídos',
     noCables: 'Nenhum cabo atribuído.',
-    back: 'Voltar',
     allRightsReserved: 'Todos os direitos reservados.',
     roleClient: 'Cliente',
+    tabProducts: 'Produtos',
+    tabNews: 'Notícias',
+    tabFaq: 'FAQ',
+    signOut: 'Terminar sessão',
   },
   ja: {
     pageTitle: 'マイ製品',
@@ -286,9 +331,12 @@ const TRANSLATIONS: Record<EbLang, Record<TranslationKey, string>> = {
     fieldSoftwareVersion: 'ソフトウェアバージョン:',
     cablesTitle: '割り当てられたケーブル',
     noCables: '割り当てられたケーブルはありません。',
-    back: '戻る',
     allRightsReserved: '全著作権所有。',
     roleClient: 'クライアント',
+    tabProducts: '製品',
+    tabNews: 'ニュース',
+    tabFaq: 'FAQ',
+    signOut: 'ログアウト',
   },
 }
 

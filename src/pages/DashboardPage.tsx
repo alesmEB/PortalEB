@@ -11,12 +11,26 @@ export function DashboardPage() {
   const { profile, permissions, signOut } = useAuth()
   const navigate = useNavigate()
   const [creatingTestOrder, setCreatingTestOrder] = useState(false)
-  const [hasEbClient, setHasEbClient] = useState(false)
+  // Blocks rendering the regular dashboard for CLIENT-role users until we
+  // know whether they're an EB Engineering client - if so, they're sent
+  // straight to their product list instead of ever seeing this page (see
+  // ebT/EbLanguageProvider - "Mis productos" has its own tabs for
+  // Noticias/FAQ, so there's nothing else here for them to reach).
+  const [checkingEbClient, setCheckingEbClient] = useState(profile?.role === UserRole.CLIENT)
 
   useEffect(() => {
-    if (profile?.role !== UserRole.CLIENT) return
-    getMyEbClient(FRESH).then((res) => setHasEbClient(res.data.ebClients.length > 0))
-  }, [profile?.role])
+    if (profile?.role !== UserRole.CLIENT) {
+      setCheckingEbClient(false)
+      return
+    }
+    getMyEbClient(FRESH).then((res) => {
+      if (res.data.ebClients.length > 0) {
+        navigate('/ebengineering/my-products', { replace: true })
+        return
+      }
+      setCheckingEbClient(false)
+    })
+  }, [profile?.role, navigate])
 
   // Lab-only shortcut for QA: creates a throwaway order and drops straight
   // into technician assignment, skipping the quote step entirely.
@@ -41,6 +55,12 @@ export function DashboardPage() {
     } finally {
       setCreatingTestOrder(false)
     }
+  }
+
+  if (checkingEbClient) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-slate-500">Cargando...</div>
+    )
   }
 
   return (
@@ -148,14 +168,6 @@ export function DashboardPage() {
             </button>
           )}
 
-          {hasEbClient && (
-            <button
-              onClick={() => navigate('/ebengineering/my-products')}
-              className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
-            >
-              Mis productos EBcontroller
-            </button>
-          )}
         </div>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">

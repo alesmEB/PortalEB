@@ -57,7 +57,10 @@ function NewFaqForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () =
   )
 }
 
-export function EbFaqTab() {
+/** `readOnly` hides the create/delete controls - used for EB Engineering
+ * clients viewing FAQs on "Mis productos" (see EbMyProductsPage), who can
+ * read but not manage entries. */
+export function EbFaqTab({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [items, setItems] = useState<FaqItem[] | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -73,12 +76,14 @@ export function EbFaqTab() {
     <div>
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">{items?.length ?? 0} preguntas</p>
-        <button
-          onClick={() => setCreating((v) => !v)}
-          className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"
-        >
-          {creating ? 'Cancelar' : '+ Nueva pregunta'}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => setCreating((v) => !v)}
+            className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"
+          >
+            {creating ? 'Cancelar' : '+ Nueva pregunta'}
+          </button>
+        )}
       </div>
 
       {creating && (
@@ -90,13 +95,15 @@ export function EbFaqTab() {
           <div key={item.id} className="rounded-xl border border-slate-200 bg-white/90 p-4">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-semibold text-eb-blue-dark">{item.question}</p>
-              <button
-                onClick={() => ebDeleteFaqItem(item.id).then(refresh)}
-                className="text-slate-400 hover:text-red-600"
-                title="Eliminar pregunta"
-              >
-                ✕
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => ebDeleteFaqItem(item.id).then(refresh)}
+                  className="text-slate-400 hover:text-red-600"
+                  title="Eliminar pregunta"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{item.answer}</p>
           </div>

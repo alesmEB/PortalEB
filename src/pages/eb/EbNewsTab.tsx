@@ -67,7 +67,10 @@ function NewPostForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () 
   )
 }
 
-export function EbNewsTab() {
+/** `readOnly` hides the create/delete controls - used for EB Engineering
+ * clients viewing news on "Mis productos" (see EbMyProductsPage), who can
+ * read but not manage posts. */
+export function EbNewsTab({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [posts, setPosts] = useState<NewsPost[] | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -83,12 +86,14 @@ export function EbNewsTab() {
     <div>
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">{posts?.length ?? 0} noticias</p>
-        <button
-          onClick={() => setCreating((v) => !v)}
-          className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"
-        >
-          {creating ? 'Cancelar' : '+ Nueva noticia'}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => setCreating((v) => !v)}
+            className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"
+          >
+            {creating ? 'Cancelar' : '+ Nueva noticia'}
+          </button>
+        )}
       </div>
 
       {creating && (
@@ -105,13 +110,15 @@ export function EbNewsTab() {
                   {post.author.displayName} · {new Date(post.createdAt).toLocaleDateString('es-ES')}
                 </p>
               </div>
-              <button
-                onClick={() => ebDeleteNewsPost(post.id).then(refresh)}
-                className="text-slate-400 hover:text-red-600"
-                title="Eliminar noticia"
-              >
-                ✕
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => ebDeleteNewsPost(post.id).then(refresh)}
+                  className="text-slate-400 hover:text-red-600"
+                  title="Eliminar noticia"
+                >
+                  ✕
+                </button>
+              )}
             </div>
             <div
               className="eb-rich-content mt-2 text-sm text-slate-600"
