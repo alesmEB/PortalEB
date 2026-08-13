@@ -199,4 +199,4 @@ export const COUNTRIES: { code: string; name: string }[] = [
   { code: 'DJ', name: 'Yibuti' },
   { code: 'ZM', name: 'Zambia' },
   { code: 'ZW', name: 'Zimbabue' },
-].sort((a, b) => a.name.localeCompare(b, 'es'))
+].sort((a, b) => a.name.localeCompare(b.name, 'es'))
