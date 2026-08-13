@@ -771,7 +771,9 @@ function EbControllerProductsTab() {
                     {product.registeredCables.length > 0 && (
                       <p className="text-xs text-slate-400">
                         Cables registrados:{' '}
-                        {product.registeredCables.map((c) => `#${c.sequenceNumber}`).join(', ')}
+                        {product.registeredCables
+                          .map((c) => `#${c.sequenceNumber} · ${c.cableType.name}`)
+                          .join(', ')}
                       </p>
                     )}
                     <p className="text-[11px] text-slate-400">
