@@ -615,8 +615,8 @@ function EbControllerProductsTab() {
   }
 
   const countries = useMemo(
-    () => [...new Set(clients.map((c) => c.country))].sort(),
-    [clients],
+    () => [...new Set((products ?? []).map((p) => p.client.country))].sort(),
+    [products],
   )
 
   // Clients grouped by their distributor (see EbClient.distributorId) - lets
