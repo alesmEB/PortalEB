@@ -7,6 +7,7 @@ import {
   type ListUsersData,
 } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
+import { COUNTRIES } from '../../lib/countries'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { ebCreateClient, ebDeleteClient, ebUpdateClient } from '../../lib/ebEngineering'
 
@@ -97,12 +98,14 @@ function ClientForm({
         onChange={(e) => setPhone(e.target.value)}
         className={inputClass}
       />
-      <input
-        placeholder="País"
-        value={country}
-        onChange={(e) => setCountry(e.target.value)}
-        className={inputClass}
-      />
+      <select value={country} onChange={(e) => setCountry(e.target.value)} className={inputClass}>
+        <option value="">Selecciona un país</option>
+        {COUNTRIES.map((c) => (
+          <option key={c.code} value={c.name}>
+            {c.name}
+          </option>
+        ))}
+      </select>
       <label className="block text-xs font-medium text-slate-500">
         Distribuidor (opcional, si este cliente compra a través de otro)
         <select

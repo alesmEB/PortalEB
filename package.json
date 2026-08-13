@@ -17,6 +17,7 @@
     "@tiptap/pm": "^3.27.3",
     "@tiptap/react": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
+    "country-flag-icons": "^1.6.20",
     "dompurify": "^3.4.12",
     "firebase": "^12.15.0",
     "lucide-react": "^1.23.0",

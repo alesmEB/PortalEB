@@ -9,9 +9,9 @@ import {
   type ListEbClientsData,
   type ListUnassignedCableChecksData,
 } from '@dataconnect/generated'
+import { CountryFlag } from '../../components/CountryFlag'
 import { EbAssignedCablesSection, EbControllerProductCard } from '../../components/EbControllerProductCard'
 import { SearchInput } from '../../components/SearchInput'
-import { countryFlag } from '../../lib/countryFlag'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { EB_LANGUAGES, EB_LANGUAGE_LABEL, useEbLanguage } from '../../lib/ebI18n'
 import {
@@ -742,7 +742,7 @@ function EbControllerProductsTab() {
                       #{ranks?.globalRank}
                     </span>
                     <span className="mt-0.5 flex items-center gap-1 text-xs leading-none text-slate-400">
-                      #{ranks?.countryRank} <span>{countryFlag(product.client.country)}</span>
+                      #{ranks?.countryRank} <CountryFlag country={product.client.country} />
                     </span>
                   </div>
 
