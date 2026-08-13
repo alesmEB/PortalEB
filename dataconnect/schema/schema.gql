@@ -82,6 +82,10 @@ enum OrderEventType {
   SERVICE_PROTOCOL_RECORDED
   ORDER_INVOICED
   EXTERNAL_CODE_UPDATED
+  ORDER_DELETED
+  # Admin skipped the technician-side workflow (photos, clock-out) and marked
+  # the order COMPLETED directly - see forceCompleteOrder in functions/index.js.
+  ORDER_FORCE_COMPLETED
 }
 
 # ---------------------------------------------------------------------------
@@ -216,6 +220,11 @@ type WorkOrder @table(name: "work_orders") {
   # next to our own `code` everywhere it appears, editable later if it needs
   # correcting - see setWorkOrderExternalCode in functions/index.js.
   externalCode: String
+  # Soft-delete: set instead of a real row delete so the order stays
+  # searchable and its history/foreign keys intact (see deleteWorkOrder in
+  # functions/index.js). Hidden from the default orders list unless the
+  # "mostrar eliminadas" filter is on - see OrdersListPage.tsx.
+  deletedAt: Timestamp
 }
 
 # The list of jobs to perform, captured at order creation.

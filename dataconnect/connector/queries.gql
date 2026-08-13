@@ -128,6 +128,7 @@ query ListWorkOrders @auth(level: USER) {
     serviceProtocolDone
     serviceProtocolAt
     invoicedAt
+    deletedAt
     customer {
       name
     }
@@ -152,6 +153,7 @@ query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
     locationCode
     assetLocation
     createdAt
+    deletedAt
     customer {
       name
     }
@@ -305,6 +307,7 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     serviceProtocolAt
     invoicedAt
     externalCode
+    deletedAt
     customer {
       name
       contactName

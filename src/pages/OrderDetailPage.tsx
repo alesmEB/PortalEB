@@ -38,6 +38,7 @@ import {
   adminUpdateTimeLog,
   assignTechnicians,
   completeOrder,
+  forceCompleteOrder,
   invoiceOrder,
   recordServiceProtocol,
   reportIncident,
@@ -1070,6 +1071,22 @@ export function OrderDetailPage() {
     }
   }
 
+  async function handleForceCompleteOrder() {
+    if (!order) return
+    const proceed = confirm(
+      `¿Completar la orden ${order.code} directamente? Se marcará como completada sin fotos ` +
+        'finales ni que los técnicos cierren su turno. Quedará registrado en el historial.',
+    )
+    if (!proceed) return
+    setBusy(true)
+    try {
+      await forceCompleteOrder(order.id)
+      await loadOrder()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // Individual clock in/out isn't logged to OrderTracking - the TimeLog
   // table (see the "Turnos" timeline below) is the authoritative record.
   async function handleStartWorking() {
@@ -1172,6 +1189,12 @@ export function OrderDetailPage() {
         {orderLocationLabel[order.locationCode]} · {order.assetLocation}
       </p>
 
+      {order.deletedAt && (
+        <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
+          Esta orden está eliminada - solo es visible buscándola directamente.
+        </p>
+      )}
+
       <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />
 
       <HasPermission permission="orders:notes">
@@ -1243,6 +1266,18 @@ export function OrderDetailPage() {
           >
             Terminar orden
           </button>
+        )}
+        {(order.status === WorkOrderStatus.ASSIGNED ||
+          order.status === WorkOrderStatus.IN_PROGRESS) && (
+          <HasPermission permission="orders:forcecomplete">
+            <button
+              disabled={busy}
+              onClick={handleForceCompleteOrder}
+              className="rounded-lg border border-eb-blue px-3 py-1.5 text-sm font-semibold text-eb-blue disabled:opacity-50"
+            >
+              Completar directamente
+            </button>
+          </HasPermission>
         )}
         {!!myAssignment &&
           (order.status === WorkOrderStatus.ASSIGNED ||

@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, MessageCircle, SlidersHorizontal, Wrench } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  MessageCircle,
+  SlidersHorizontal,
+  Trash2,
+  Wrench,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -17,6 +24,7 @@ import { usePermission } from '../hooks/usePermission'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
+import { deleteWorkOrder } from '../lib/orderWorkflow'
 import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 
 type LocationFilter = OrderLocation | 'ALL'
@@ -36,14 +44,18 @@ export function OrdersListPage() {
   const [boatFilter, setBoatFilter] = useState('')
   const [searchText, setSearchText] = useState('')
   const [hideCompleted, setHideCompleted] = useState(false)
+  const [showDeleted, setShowDeleted] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const canDelete = usePermission('orders:delete')
 
   const activeFilterCount =
     (locationFilter !== 'ALL' ? 1 : 0) +
     (statusFilter !== 'ALL' ? 1 : 0) +
     (boatFilter.trim() ? 1 : 0) +
     (searchText.trim() ? 1 : 0) +
-    (hideCompleted ? 1 : 0)
+    (hideCompleted ? 1 : 0) +
+    (showDeleted ? 1 : 0)
 
   useEffect(() => {
     if (!profile) return
@@ -89,6 +101,7 @@ export function OrdersListPage() {
     const searchQuery = searchText.trim().toLowerCase()
 
     return orders.filter((order) => {
+      if (!showDeleted && order.deletedAt) return false
       if (hideCompleted && order.status === WorkOrderStatus.COMPLETED) return false
       if (locationFilter !== 'ALL' && order.locationCode !== locationFilter) return false
       if (statusFilter !== 'ALL' && order.status !== statusFilter) return false
@@ -100,7 +113,15 @@ export function OrdersListPage() {
       }
       return true
     })
-  }, [orders, hideCompleted, locationFilter, statusFilter, boatFilter, searchText])
+  }, [orders, hideCompleted, showDeleted, locationFilter, statusFilter, boatFilter, searchText])
+
+  async function handleDelete(orderId: string) {
+    await deleteWorkOrder(orderId)
+    setConfirmingDeleteId(null)
+    setOrders((prev) =>
+      prev ? prev.map((o) => (o.id === orderId ? { ...o, deletedAt: new Date().toISOString() } : o)) : prev,
+    )
+  }
 
   return (
     <div className="flex-1 p-4">
@@ -136,6 +157,17 @@ export function OrdersListPage() {
               />
               Ocultar completadas
             </label>
+
+            {canDelete && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={showDeleted}
+                  onChange={(e) => setShowDeleted(e.target.checked)}
+                />
+                Mostrar eliminadas
+              </label>
+            )}
 
             <div>
               <p className="text-xs font-medium text-slate-500">Localización</p>
@@ -245,6 +277,11 @@ export function OrdersListPage() {
                         {order.incidents.length}
                       </span>
                     )}
+                    {order.deletedAt && (
+                      <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-600">
+                        Eliminada
+                      </span>
+                    )}
                     <span
                       className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}
                     >
@@ -307,7 +344,40 @@ export function OrdersListPage() {
                   )}
                 </button>
               </HasPermission>
+              {canDelete && !order.deletedAt && (
+                <button
+                  onClick={() => setConfirmingDeleteId(order.id)}
+                  className="rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-red-400 hover:text-red-600"
+                  title="Eliminar orden"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
+
+            {confirmingDeleteId === order.id && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-xs text-red-700">
+                  ¿Eliminar la orden {order.code}? Pasará a estar inactiva: seguirá pudiendo
+                  buscarse marcando "Mostrar eliminadas" en los filtros, pero no aparecerá en la
+                  lista por defecto. Queda registrado en el historial de la orden.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => setConfirmingDeleteId(null)}
+                    className="flex-1 rounded-lg border border-slate-300 py-1.5 text-sm text-slate-600"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(order.id)}
+                    className="flex-1 rounded-lg bg-red-600 py-1.5 text-sm font-semibold text-white"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

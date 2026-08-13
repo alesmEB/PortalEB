@@ -65,6 +65,28 @@ export async function completeOrder(workOrderId: string, photos: PhotoInput[]) {
   return res.data
 }
 
+const callForceCompleteOrder = httpsCallable<{ workOrderId: string }, { success: boolean }>(
+  functions,
+  'forceCompleteOrder',
+)
+
+/** Requires "orders:forcecomplete" and the order being ASSIGNED or IN_PROGRESS. */
+export async function forceCompleteOrder(workOrderId: string) {
+  const res = await callForceCompleteOrder({ workOrderId })
+  return res.data
+}
+
+const callDeleteWorkOrder = httpsCallable<{ workOrderId: string }, { success: boolean }>(
+  functions,
+  'deleteWorkOrder',
+)
+
+/** Requires "orders:delete". Soft-delete - the order stays searchable. */
+export async function deleteWorkOrder(workOrderId: string) {
+  const res = await callDeleteWorkOrder({ workOrderId })
+  return res.data
+}
+
 interface ReportIncidentInput {
   workOrderId: string
   description: string

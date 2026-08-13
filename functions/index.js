@@ -338,6 +338,11 @@ const COMPLETE_WORK_ORDER_MUTATION = `
     workOrder_update(id: $id, data: { status: COMPLETED, completedAt: $completedAt })
   }
 `
+const SET_WORK_ORDER_DELETED_MUTATION = `
+  mutation SetWorkOrderDeletedAdmin($id: UUID!, $deletedAt: Timestamp!) {
+    workOrder_update(id: $id, data: { deletedAt: $deletedAt })
+  }
+`
 const CREATE_INCIDENT_MUTATION = `
   mutation CreateIncidentAdmin($workOrderId: UUID!, $reportedById: String!, $description: String!) {
     incident_insert(
@@ -1304,6 +1309,75 @@ exports.completeOrder = onCall(async (request) => {
   })
   await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
     variables: { workOrderId, actorId: callerUid, eventType: 'ORDER_COMPLETED' },
+  })
+
+  return { success: true }
+})
+
+// Admin shortcut: technicians aren't using the app day-to-day, so requiring
+// them to clock in/out and upload final photos before an order can be
+// marked COMPLETED just blocks administración from moving the order along.
+// Same effect as completeOrder's status/time-log side (skips the photo
+// requirement entirely), gated by permission instead of by being the
+// assigned technician.
+const FORCE_COMPLETABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
+exports.forceCompleteOrder = onCall(async (request) => {
+  requirePermission(request, 'orders:forcecomplete')
+
+  const { workOrderId } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  }
+
+  const res = await dataConnect.executeGraphqlRead(GET_ORDER_ASSIGNMENTS_QUERY, {
+    variables: { workOrderId },
+  })
+  if (!FORCE_COMPLETABLE_STATUSES.includes(res.data.workOrder?.status)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'La orden debe tener técnicos asignados para completarla directamente.',
+    )
+  }
+
+  const now = new Date()
+  const activeLogsRes = await dataConnect.executeGraphqlRead(GET_ACTIVE_TIME_LOGS_QUERY, {
+    variables: { workOrderId },
+  })
+  for (const log of activeLogsRes.data.timeLogs) {
+    await dataConnect.executeGraphql(CLOCK_OUT_MUTATION, {
+      variables: {
+        timeLogId: log.id,
+        clockOut: now.toISOString(),
+        durationMinutes: durationMinutesSince(log.clockIn),
+      },
+    })
+  }
+
+  await dataConnect.executeGraphql(COMPLETE_WORK_ORDER_MUTATION, {
+    variables: { id: workOrderId, completedAt: now.toISOString() },
+  })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: { workOrderId, actorId: request.auth.uid, eventType: 'ORDER_FORCE_COMPLETED' },
+  })
+
+  return { success: true }
+})
+
+// Soft-delete (see WorkOrder.deletedAt in schema.gql) - no status
+// restriction, any order can be archived out of the default list.
+exports.deleteWorkOrder = onCall(async (request) => {
+  requirePermission(request, 'orders:delete')
+
+  const { workOrderId } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  }
+
+  await dataConnect.executeGraphql(SET_WORK_ORDER_DELETED_MUTATION, {
+    variables: { id: workOrderId, deletedAt: new Date().toISOString() },
+  })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: { workOrderId, actorId: request.auth.uid, eventType: 'ORDER_DELETED' },
   })
 
   return { success: true }
