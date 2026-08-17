@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react'
-import { listCableChecks, type ListCableChecksData } from '@dataconnect/generated'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  listCableChecks,
+  listEbCableTypes,
+  type ListCableChecksData,
+  type ListEbCableTypesData,
+} from '@dataconnect/generated'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { ebDeleteCableCheck } from '../../lib/ebEngineering'
 
 type CableCheckRow = ListCableChecksData['cableChecks'][number]
+type CableTypeRow = ListEbCableTypesData['ebCableTypes'][number]
 
 // Log of continuity checks reported by the shop's ESP32 cable tester (see
 // functions/index.js's esp32RegisterCableCheck). Assigning a specific
@@ -13,6 +19,7 @@ type CableCheckRow = ListCableChecksData['cableChecks'][number]
 // what was really one cable.
 export function EbCableChecksTab() {
   const [checks, setChecks] = useState<CableCheckRow[] | null>(null)
+  const [cableTypes, setCableTypes] = useState<CableTypeRow[] | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
 
   function refresh() {
@@ -21,6 +28,7 @@ export function EbCableChecksTab() {
 
   useEffect(() => {
     refresh()
+    listEbCableTypes(FRESH).then((res) => setCableTypes(res.data.ebCableTypes))
   }, [])
 
   async function handleDelete(cableCheckId: string) {
@@ -29,8 +37,57 @@ export function EbCableChecksTab() {
     await refresh()
   }
 
+  // Stock = registered cables not yet claimed by a product sale.
+  const stockByTypeId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const check of checks ?? []) {
+      if (check.product) continue
+      map.set(check.cableType.id, (map.get(check.cableType.id) ?? 0) + 1)
+    }
+    return map
+  }, [checks])
+
+  const midpoint = cableTypes ? Math.ceil(cableTypes.length / 2) : 0
+  const stockColumns = cableTypes
+    ? [cableTypes.slice(0, midpoint), cableTypes.slice(midpoint)]
+    : []
+
   return (
     <div>
+      {cableTypes && cableTypes.length > 0 && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+          {stockColumns.map((column, i) =>
+            column.length > 0 ? (
+              <div
+                key={i}
+                className="flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white/90"
+              >
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
+                      <th className="px-4 py-2 font-medium">Referencia</th>
+                      <th className="px-4 py-2 font-medium">Cable</th>
+                      <th className="px-4 py-2 text-right font-medium">En stock</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {column.map((type) => (
+                      <tr key={type.id} className="border-b border-slate-100 last:border-0">
+                        <td className="px-4 py-2 text-slate-500">{type.code}</td>
+                        <td className="px-4 py-2 text-slate-700">{type.name}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-eb-blue-dark">
+                          {stockByTypeId.get(type.id) ?? 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null,
+          )}
+        </div>
+      )}
+
       <p className="text-sm text-slate-500">{checks?.length ?? 0} cables comprobados</p>
 
       <div className="mt-3 space-y-2">
