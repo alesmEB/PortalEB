@@ -59,6 +59,17 @@ export async function ebCreateCableType(code: string, name: string) {
   return res.data
 }
 
+const callEbDeleteCableCheck = httpsCallable<{ cableCheckId: string }, { success: boolean }>(
+  functions,
+  'ebDeleteCableCheck',
+)
+
+/** Fails if the cable is currently assigned to a product. */
+export async function ebDeleteCableCheck(cableCheckId: string) {
+  const res = await callEbDeleteCableCheck({ cableCheckId })
+  return res.data
+}
+
 interface EbClientProductInput {
   clientId: string
   serialNumber: string

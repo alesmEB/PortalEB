@@ -2634,6 +2634,18 @@ const SET_CABLE_CHECK_PRODUCT_MUTATION = `
     cableCheck_update(id: $id, data: { productId: $productId })
   }
 `
+const GET_CABLE_CHECK_PRODUCT_QUERY = `
+  query GetCableCheckProductAdmin($id: UUID!) {
+    cableCheck(id: $id) {
+      productId
+    }
+  }
+`
+const DELETE_CABLE_CHECK_MUTATION = `
+  mutation DeleteCableCheckAdmin($id: UUID!) {
+    cableCheck_delete(id: $id)
+  }
+`
 const CREATE_EB_NEWS_POST_MUTATION = `
   mutation CreateEbNewsPostAdmin($title: String!, $body: String!, $authorId: String!) {
     ebNewsPost_insert(data: { title: $title, body: $body, authorId: $authorId })
@@ -2772,6 +2784,33 @@ exports.ebCreateCableType = onCall(async (request) => {
   await dataConnect.executeGraphql(CREATE_EB_CABLE_TYPE_MUTATION, {
     variables: { code: code.trim(), name: name.trim() },
   })
+  return { success: true }
+})
+
+// The ESP32 tester (see esp32RegisterCableCheck) misfires sometimes and logs
+// several checks for what was really one cable - only lets an admin clean up
+// a check that was never claimed by a sale (productId null), re-verified
+// server-side rather than trusted from the client, so a stale product-picker
+// view can't be used to delete a cable that's actually assigned.
+exports.ebDeleteCableCheck = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { cableCheckId } = request.data ?? {}
+  if (typeof cableCheckId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del cable.')
+  }
+
+  const current = await dataConnect.executeGraphqlRead(GET_CABLE_CHECK_PRODUCT_QUERY, {
+    variables: { id: cableCheckId },
+  })
+  if (current.data.cableCheck?.productId) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Este cable está asignado a un producto - desasígnalo antes de eliminarlo.',
+    )
+  }
+
+  await dataConnect.executeGraphql(DELETE_CABLE_CHECK_MUTATION, { variables: { id: cableCheckId } })
   return { success: true }
 })
 

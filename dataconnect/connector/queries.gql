@@ -582,6 +582,12 @@ query ListCableChecks @auth(level: USER) {
     checkedBy {
       displayName
     }
+    product {
+      serialNumber
+      client {
+        companyName
+      }
+    }
   }
 }
 
