@@ -463,6 +463,12 @@ query ListEbClientProducts @auth(level: USER) {
         name
       }
     }
+    screens: ebScreens_on_product {
+      id
+      reference
+      model
+      serialNumber
+    }
   }
 }
 
@@ -604,5 +610,44 @@ query ListUnassignedCableChecks @auth(level: USER) {
       code
       name
     }
+  }
+}
+
+# Every display unit ever registered, for the Stock tab (see EbScreen).
+query ListEbScreens @auth(level: USER) {
+  ebScreens(orderBy: { createdAt: DESC }, limit: 200) {
+    id
+    reference
+    model
+    serialNumber
+    productId
+    unavailableReason
+    unavailableAt
+    createdAt
+    registeredBy {
+      displayName
+    }
+    product {
+      serialNumber
+      client {
+        companyName
+      }
+    }
+  }
+}
+
+# Picker source for "assign a display to this sale" - in stock means neither
+# claimed by another sale nor marked unavailable. Same additive shape as
+# ListUnassignedCableChecks.
+query ListAvailableEbScreens @auth(level: USER) {
+  ebScreens(
+    where: { productId: { isNull: true }, unavailableAt: { isNull: true } }
+    orderBy: { createdAt: ASC }
+    limit: 200
+  ) {
+    id
+    reference
+    model
+    serialNumber
   }
 }

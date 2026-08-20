@@ -81,6 +81,48 @@ export async function ebRegisterCableCheck(cableTypeId: string) {
   return res.data
 }
 
+interface EbRegisterScreenInput {
+  reference: string
+  model: string
+  serialNumber: string
+}
+
+const callEbRegisterScreen = httpsCallable<EbRegisterScreenInput, { success: boolean }>(
+  functions,
+  'ebRegisterScreen',
+)
+
+/** Adds one display unit (e.g. a PV450) to stock. */
+export async function ebRegisterScreen(input: EbRegisterScreenInput) {
+  const res = await callEbRegisterScreen(input)
+  return res.data
+}
+
+const callEbSetScreenUnavailable = httpsCallable<
+  { screenId: string; reason: string },
+  { success: boolean }
+>(functions, 'ebSetScreenUnavailable')
+
+/**
+ * Takes a display out of stock for something other than a sale; pass an empty
+ * reason to put it back. Fails if it's currently assigned to a sale.
+ */
+export async function ebSetScreenUnavailable(screenId: string, reason: string) {
+  const res = await callEbSetScreenUnavailable({ screenId, reason })
+  return res.data
+}
+
+const callEbDeleteScreen = httpsCallable<{ screenId: string }, { success: boolean }>(
+  functions,
+  'ebDeleteScreen',
+)
+
+/** Fails if the display is currently assigned to a sale. */
+export async function ebDeleteScreen(screenId: string) {
+  const res = await callEbDeleteScreen({ screenId })
+  return res.data
+}
+
 interface EbClientProductInput {
   clientId: string
   serialNumber: string
@@ -95,6 +137,8 @@ interface EbClientProductInput {
   cableTypeIds?: string[]
   /** IDs of specific ESP32-tested CableCheck rows to attach to this sale (see CableCheckPicker). */
   cableCheckIds?: string[]
+  /** IDs of EbScreen rows (displays) to attach to this sale (see ScreenPicker). */
+  screenIds?: string[]
 }
 
 const callEbAddClientProduct = httpsCallable<EbClientProductInput, { productId: string }>(

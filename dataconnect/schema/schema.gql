@@ -449,6 +449,29 @@ type EbClientProductCable
   cableType: EbCableType! @ref(fields: ["cableTypeId"])
 }
 
+# One physical display unit held as stock (e.g. reference "EBEN000000",
+# model "PV450"). Deliberately not an EbCableType/CableCheck - it isn't a
+# cable and each unit carries its own serial number - but tracked the same
+# way: registered on arrival, then taken out of stock either by being
+# included in an EBcontroller sale (productId) or by going somewhere else
+# entirely (unavailableReason, free text since nothing else records where a
+# unit ended up). The two are mutually exclusive: assigning a unit to a sale
+# clears any unavailable marking (see ebRegisterScreen and
+# SET_EB_SCREEN_PRODUCT_MUTATION in functions/index.js).
+type EbScreen @table(name: "eb_screens") {
+  id: UUID! @default(expr: "uuidV4()")
+  reference: String!
+  model: String!
+  serialNumber: String!
+  productId: UUID
+  product: EbClientProduct @ref(fields: ["productId"])
+  unavailableReason: String
+  unavailableAt: Timestamp
+  registeredById: String!
+  registeredBy: User! @ref(fields: ["registeredById"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
 type EbNewsPost @table(name: "eb_news_posts") {
   id: UUID! @default(expr: "uuidV4()")
   title: String!

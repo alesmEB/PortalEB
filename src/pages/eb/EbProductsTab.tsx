@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
+  listAvailableEbScreens,
   listEbCableTypes,
   listEbClientProducts,
   listEbClients,
   listUnassignedCableChecks,
+  type ListAvailableEbScreensData,
   type ListEbCableTypesData,
   type ListEbClientProductsData,
   type ListEbClientsData,
@@ -28,6 +30,7 @@ type ProductRow = ListEbClientProductsData['ebClientProducts'][number]
 type ClientRow = ListEbClientsData['ebClients'][number]
 type CableType = ListEbCableTypesData['ebCableTypes'][number]
 type UnassignedCableCheck = ListUnassignedCableChecksData['cableChecks'][number]
+type AvailableScreen = ListAvailableEbScreensData['ebScreens'][number]
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
@@ -183,11 +186,55 @@ function CableCheckPicker({
   )
 }
 
+// Same additive shape as CableCheckPicker, for the display units tracked in
+// the Stock tab (see EbScreen in schema.gql).
+function ScreenPicker({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: { id: string; reference: string; model: string; serialNumber: string }[]
+  selected: Set<string>
+  onToggle: (id: string) => void
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-500">Pantallas (opcional)</p>
+      <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+        {options.length === 0 && (
+          <p className="text-xs text-slate-400">No hay pantallas en stock.</p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {options.map((s) => (
+            <label
+              key={s.id}
+              className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs ${
+                selected.has(s.id)
+                  ? 'border-eb-teal bg-eb-teal text-white'
+                  : 'border-slate-300 text-slate-600'
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="hidden"
+                checked={selected.has(s.id)}
+                onChange={() => onToggle(s.id)}
+              />
+              {s.model} · {s.serialNumber}
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ProductForm({
   product,
   clients,
   cableTypes,
   unassignedCableChecks,
+  availableScreens,
   onSaved,
   onCancel,
   onCableTypesChanged,
@@ -196,6 +243,7 @@ function ProductForm({
   clients: ClientRow[]
   cableTypes: CableType[]
   unassignedCableChecks: UnassignedCableCheck[]
+  availableScreens: AvailableScreen[]
   onSaved: () => void
   onCancel: () => void
   onCableTypesChanged: () => void
@@ -211,6 +259,9 @@ function ProductForm({
   )
   const [selectedCableChecks, setSelectedCableChecks] = useState<Set<string>>(
     new Set(product?.registeredCables.map((c) => c.id) ?? []),
+  )
+  const [selectedScreens, setSelectedScreens] = useState<Set<string>>(
+    new Set(product?.screens.map((s) => s.id) ?? []),
   )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -229,6 +280,17 @@ function ProductForm({
     return merged
   }, [unassignedCableChecks, product])
 
+  // Same merge as cableCheckOptions: this product's own screens aren't in the
+  // available pool any more, so they're added back to stay toggleable.
+  const screenOptions = useMemo(() => {
+    const available = new Set(availableScreens.map((s) => s.id))
+    const merged = [...availableScreens]
+    for (const s of product?.screens ?? []) {
+      if (!available.has(s.id)) merged.push(s)
+    }
+    return merged
+  }, [availableScreens, product])
+
   function toggleCable(id: string) {
     setSelectedCables((prev) => {
       const next = new Set(prev)
@@ -240,6 +302,15 @@ function ProductForm({
 
   function toggleCableCheck(id: string) {
     setSelectedCableChecks((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleScreen(id: string) {
+    setSelectedScreens((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -262,6 +333,7 @@ function ProductForm({
         soldToEndUserAt: product?.soldToEndUserAt ?? undefined,
         cableTypeIds: [...selectedCables],
         cableCheckIds: [...selectedCableChecks],
+        screenIds: [...selectedScreens],
       }
       if (product) {
         await ebUpdateClientProduct({ productId: product.id, ...input })
@@ -331,6 +403,7 @@ function ProductForm({
         selected={selectedCableChecks}
         onToggle={toggleCableCheck}
       />
+      <ScreenPicker options={screenOptions} selected={selectedScreens} onToggle={toggleScreen} />
       <label className="block text-xs font-medium text-slate-500">
         Observaciones (opcional)
         <textarea
@@ -578,6 +651,7 @@ function EbControllerProductsTab() {
   const [clients, setClients] = useState<ClientRow[]>([])
   const [cableTypes, setCableTypes] = useState<CableType[]>([])
   const [unassignedCableChecks, setUnassignedCableChecks] = useState<UnassignedCableCheck[]>([])
+  const [availableScreens, setAvailableScreens] = useState<AvailableScreen[]>([])
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
@@ -589,16 +663,18 @@ function EbControllerProductsTab() {
   const [toDate, setToDate] = useState('')
 
   async function refresh() {
-    const [productsRes, clientsRes, cablesRes, unassignedRes] = await Promise.all([
+    const [productsRes, clientsRes, cablesRes, unassignedRes, screensRes] = await Promise.all([
       listEbClientProducts(FRESH),
       listEbClients(FRESH),
       listEbCableTypes(FRESH),
       listUnassignedCableChecks(FRESH),
+      listAvailableEbScreens(FRESH),
     ])
     setProducts(productsRes.data.ebClientProducts)
     setClients(clientsRes.data.ebClients)
     setCableTypes(cablesRes.data.ebCableTypes)
     setUnassignedCableChecks(unassignedRes.data.cableChecks)
+    setAvailableScreens(screensRes.data.ebScreens)
   }
 
   function refreshCableTypes() {
@@ -722,6 +798,7 @@ function EbControllerProductsTab() {
           clients={clients}
           cableTypes={cableTypes}
           unassignedCableChecks={unassignedCableChecks}
+          availableScreens={availableScreens}
           onSaved={() => { setCreating(false); refresh() }}
           onCancel={() => setCreating(false)}
           onCableTypesChanged={refreshCableTypes}
@@ -779,6 +856,12 @@ function EbControllerProductsTab() {
                         {product.registeredCables
                           .map((c) => `#${c.sequenceNumber} · ${c.cableType.name}`)
                           .join(', ')}
+                      </p>
+                    )}
+                    {product.screens.length > 0 && (
+                      <p className="text-xs text-slate-400">
+                        Pantallas:{' '}
+                        {product.screens.map((s) => `${s.model} · ${s.serialNumber}`).join(', ')}
                       </p>
                     )}
                     <p className="text-[11px] text-slate-400">
@@ -859,6 +942,7 @@ function EbControllerProductsTab() {
                   clients={clients}
                   cableTypes={cableTypes}
                   unassignedCableChecks={unassignedCableChecks}
+                  availableScreens={availableScreens}
                   onSaved={() => { setEditingId(null); refresh() }}
                   onCancel={() => setEditingId(null)}
                   onCableTypesChanged={refreshCableTypes}

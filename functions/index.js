@@ -2634,6 +2634,61 @@ const SET_CABLE_CHECK_PRODUCT_MUTATION = `
     cableCheck_update(id: $id, data: { productId: $productId })
   }
 `
+const CREATE_EB_SCREEN_MUTATION = `
+  mutation CreateEbScreenAdmin(
+    $reference: String!
+    $model: String!
+    $serialNumber: String!
+    $registeredById: String!
+  ) {
+    ebScreen_insert(
+      data: {
+        reference: $reference
+        model: $model
+        serialNumber: $serialNumber
+        registeredById: $registeredById
+      }
+    )
+  }
+`
+// Assigning to a sale also clears any "went somewhere else" marking - the two
+// are mutually exclusive (see EbScreen in schema.gql), and unassigning puts
+// the unit straight back into stock.
+const SET_EB_SCREEN_PRODUCT_MUTATION = `
+  mutation SetEbScreenProductAdmin($id: UUID!, $productId: UUID) {
+    ebScreen_update(
+      id: $id
+      data: { productId: $productId, unavailableReason: null, unavailableAt: null }
+    )
+  }
+`
+const SET_EB_SCREEN_UNAVAILABLE_MUTATION = `
+  mutation SetEbScreenUnavailableAdmin($id: UUID!, $unavailableReason: String, $unavailableAt: Timestamp) {
+    ebScreen_update(
+      id: $id
+      data: { unavailableReason: $unavailableReason, unavailableAt: $unavailableAt }
+    )
+  }
+`
+const GET_EB_SCREEN_PRODUCT_QUERY = `
+  query GetEbScreenProductAdmin($id: UUID!) {
+    ebScreen(id: $id) {
+      productId
+    }
+  }
+`
+const DELETE_EB_SCREEN_MUTATION = `
+  mutation DeleteEbScreenAdmin($id: UUID!) {
+    ebScreen_delete(id: $id)
+  }
+`
+const GET_ASSIGNED_EB_SCREENS_QUERY = `
+  query GetAssignedEbScreensAdmin($productId: UUID!) {
+    ebScreens(where: { productId: { eq: $productId } }) {
+      id
+    }
+  }
+`
 const GET_CABLE_CHECK_PRODUCT_QUERY = `
   query GetCableCheckProductAdmin($id: UUID!) {
     cableCheck(id: $id) {
@@ -2814,6 +2869,91 @@ exports.ebDeleteCableCheck = onCall(async (request) => {
   return { success: true }
 })
 
+// Display units (PV450 and friends) are stock like cables, but each is
+// individually serial-numbered and isn't a cable - see EbScreen in schema.gql.
+exports.ebRegisterScreen = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { reference, model, serialNumber } = request.data ?? {}
+  if (
+    typeof reference !== 'string' || !reference.trim() ||
+    typeof model !== 'string' || !model.trim() ||
+    typeof serialNumber !== 'string' || !serialNumber.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(CREATE_EB_SCREEN_MUTATION, {
+    variables: {
+      reference: reference.trim(),
+      model: model.trim(),
+      serialNumber: serialNumber.trim(),
+      registeredById: request.auth.uid,
+    },
+  })
+  return { success: true }
+})
+
+// Takes a unit out of stock for something other than an EBcontroller sale
+// (or, with an empty reason, puts it back). A unit already claimed by a sale
+// has to be removed from that sale first - re-checked here rather than
+// trusted from the client, so a stale stock view can't silently detach it.
+exports.ebSetScreenUnavailable = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { screenId, reason } = request.data ?? {}
+  if (typeof screenId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la pantalla.')
+  }
+  const trimmed = typeof reason === 'string' ? reason.trim() : ''
+
+  const current = await dataConnect.executeGraphqlRead(GET_EB_SCREEN_PRODUCT_QUERY, {
+    variables: { id: screenId },
+  })
+  if (current.data.ebScreen?.productId) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Esta pantalla está asignada a una venta - quítala de la venta antes de marcarla como no disponible.',
+    )
+  }
+
+  await dataConnect.executeGraphql(SET_EB_SCREEN_UNAVAILABLE_MUTATION, {
+    variables: {
+      id: screenId,
+      unavailableReason: trimmed || null,
+      unavailableAt: trimmed ? new Date().toISOString() : null,
+    },
+  })
+  return { success: true }
+})
+
+// For fixing a mistyped registration. Same rule as ebDeleteCableCheck: a unit
+// already claimed by a sale has to be removed from that sale first, re-checked
+// here rather than trusted from the client. A unit marked unavailable can be
+// deleted - it's still just a stock record, and the "where it went" note isn't
+// history anything else points at.
+exports.ebDeleteScreen = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { screenId } = request.data ?? {}
+  if (typeof screenId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la pantalla.')
+  }
+
+  const current = await dataConnect.executeGraphqlRead(GET_EB_SCREEN_PRODUCT_QUERY, {
+    variables: { id: screenId },
+  })
+  if (current.data.ebScreen?.productId) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Esta pantalla está asignada a una venta - quítala de la venta antes de eliminarla.',
+    )
+  }
+
+  await dataConnect.executeGraphql(DELETE_EB_SCREEN_MUTATION, { variables: { id: screenId } })
+  return { success: true }
+})
+
 exports.ebAddClientProduct = onCall(async (request) => {
   requireAdminOrLab(request)
 
@@ -2827,6 +2967,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
     observations,
     cableTypeIds,
     cableCheckIds,
+    screenIds,
   } = request.data ?? {}
   if (
     typeof clientId !== 'string' ||
@@ -2860,6 +3001,11 @@ exports.ebAddClientProduct = onCall(async (request) => {
       variables: { id: cableCheckId, productId },
     })
   }
+  for (const screenId of Array.isArray(screenIds) ? screenIds : []) {
+    await dataConnect.executeGraphql(SET_EB_SCREEN_PRODUCT_MUTATION, {
+      variables: { id: screenId, productId },
+    })
+  }
 
   return { productId }
 })
@@ -2884,6 +3030,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     soldToEndUserAt,
     cableTypeIds,
     cableCheckIds,
+    screenIds,
   } = request.data ?? {}
   if (
     typeof productId !== 'string' ||
@@ -2933,6 +3080,28 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     for (const id of cableCheckIds) {
       if (!currentIds.includes(id)) {
         await dataConnect.executeGraphql(SET_CABLE_CHECK_PRODUCT_MUTATION, {
+          variables: { id, productId },
+        })
+      }
+    }
+  }
+
+  if (Array.isArray(screenIds)) {
+    const assignedRes = await dataConnect.executeGraphql(GET_ASSIGNED_EB_SCREENS_QUERY, {
+      variables: { productId },
+    })
+    const currentIds = assignedRes.data.ebScreens.map((s) => s.id)
+    const nextIds = new Set(screenIds)
+    for (const id of currentIds) {
+      if (!nextIds.has(id)) {
+        await dataConnect.executeGraphql(SET_EB_SCREEN_PRODUCT_MUTATION, {
+          variables: { id, productId: null },
+        })
+      }
+    }
+    for (const id of screenIds) {
+      if (!currentIds.includes(id)) {
+        await dataConnect.executeGraphql(SET_EB_SCREEN_PRODUCT_MUTATION, {
           variables: { id, productId },
         })
       }
