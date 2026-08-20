@@ -70,6 +70,17 @@ export async function ebDeleteCableCheck(cableCheckId: string) {
   return res.data
 }
 
+const callEbRegisterCableCheck = httpsCallable<
+  { cableTypeId: string },
+  { id: string; sequenceNumber: number }
+>(functions, 'ebRegisterCableCheck')
+
+/** Manually registers one unit of stock for a cable type (no ESP32 test involved). */
+export async function ebRegisterCableCheck(cableTypeId: string) {
+  const res = await callEbRegisterCableCheck({ cableTypeId })
+  return res.data
+}
+
 interface EbClientProductInput {
   clientId: string
   serialNumber: string

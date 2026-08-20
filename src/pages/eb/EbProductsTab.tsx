@@ -22,6 +22,7 @@ import {
   ebUpdateClientProduct,
 } from '../../lib/ebEngineering'
 import { EbCableChecksTab } from './EbCableChecksTab'
+import { EbStockTab } from './EbStockTab'
 
 type ProductRow = ListEbClientProductsData['ebClientProducts'][number]
 type ClientRow = ListEbClientsData['ebClients'][number]
@@ -474,7 +475,7 @@ function ProductTypeTabButton({
   )
 }
 
-type ProductType = 'controller' | 'cables' | 'clientView'
+type ProductType = 'controller' | 'cables' | 'stock' | 'clientView'
 
 // Second-level menu under "Productos": which kind of product to view - more
 // may be added later, kept separate (not one big page) so each stays simple.
@@ -490,6 +491,9 @@ export function EbProductsTab() {
         <ProductTypeTabButton active={productType === 'cables'} onClick={() => setProductType('cables')}>
           Cables
         </ProductTypeTabButton>
+        <ProductTypeTabButton active={productType === 'stock'} onClick={() => setProductType('stock')}>
+          Stock
+        </ProductTypeTabButton>
         <ProductTypeTabButton active={productType === 'clientView'} onClick={() => setProductType('clientView')}>
           Vista cliente
         </ProductTypeTabButton>
@@ -498,6 +502,7 @@ export function EbProductsTab() {
       <div className="mt-4">
         {productType === 'controller' && <EbControllerProductsTab />}
         {productType === 'cables' && <EbCableChecksTab />}
+        {productType === 'stock' && <EbStockTab />}
         {productType === 'clientView' && <EbClientPreviewTab />}
       </div>
     </div>

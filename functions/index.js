@@ -3289,3 +3289,23 @@ exports.esp32RegisterCableCheck = onRequest({ secrets: [CABLE_CHECK_DEVICE_SECRE
 
   res.status(200).json({ id: insertRes.data.cableCheck_insert.id, sequenceNumber })
 })
+
+// Manual counterpart to esp32RegisterCableCheck for stock that doesn't go
+// through the tester (e.g. the EBcontroller case itself, or an EBups cable) -
+// same sequence counter and insert shape, just admin/admin:lab-authenticated
+// through the normal app sign-in instead of the device secret.
+exports.ebRegisterCableCheck = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { cableTypeId } = request.data ?? {}
+  if (typeof cableTypeId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el tipo de cable.')
+  }
+
+  const sequenceNumber = await reserveCableCheckSequenceNumber()
+  const insertRes = await dataConnect.executeGraphql(CREATE_CABLE_CHECK_MUTATION, {
+    variables: { sequenceNumber, cableTypeId, checkedById: request.auth.uid },
+  })
+
+  return { id: insertRes.data.cableCheck_insert.id, sequenceNumber }
+})
