@@ -2677,6 +2677,14 @@ const GET_EB_SCREEN_PRODUCT_QUERY = `
     }
   }
 `
+const UPDATE_EB_SCREEN_MUTATION = `
+  mutation UpdateEbScreenAdmin($id: UUID!, $reference: String!, $model: String!, $serialNumber: String!) {
+    ebScreen_update(
+      id: $id
+      data: { reference: $reference, model: $model, serialNumber: $serialNumber }
+    )
+  }
+`
 const DELETE_EB_SCREEN_MUTATION = `
   mutation DeleteEbScreenAdmin($id: UUID!) {
     ebScreen_delete(id: $id)
@@ -2922,6 +2930,33 @@ exports.ebSetScreenUnavailable = onCall(async (request) => {
       id: screenId,
       unavailableReason: trimmed || null,
       unavailableAt: trimmed ? new Date().toISOString() : null,
+    },
+  })
+  return { success: true }
+})
+
+// Corrects a mistyped registration. Allowed even for a unit already attached
+// to a sale - this only fixes how the same physical unit is identified, it
+// doesn't move it in or out of stock the way assigning/unavailable do.
+exports.ebUpdateScreen = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { screenId, reference, model, serialNumber } = request.data ?? {}
+  if (
+    typeof screenId !== 'string' ||
+    typeof reference !== 'string' || !reference.trim() ||
+    typeof model !== 'string' || !model.trim() ||
+    typeof serialNumber !== 'string' || !serialNumber.trim()
+  ) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_EB_SCREEN_MUTATION, {
+    variables: {
+      id: screenId,
+      reference: reference.trim(),
+      model: model.trim(),
+      serialNumber: serialNumber.trim(),
     },
   })
   return { success: true }

@@ -13,6 +13,7 @@ import {
   ebRegisterCableCheck,
   ebRegisterScreen,
   ebSetScreenUnavailable,
+  ebUpdateScreen,
 } from '../../lib/ebEngineering'
 
 type CableCheckRow = ListCableChecksData['cableChecks'][number]
@@ -35,6 +36,8 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState({ reference: '', model: '', serialNumber: '' })
 
   async function handleRegister() {
     if (!serialNumber.trim()) return
@@ -61,6 +64,31 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
       await onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo actualizar.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function startEditing(screen: ScreenRow) {
+    setEditingId(screen.id)
+    setConfirmingDeleteId(null)
+    setMarkingId(null)
+    setEditDraft({
+      reference: screen.reference,
+      model: screen.model,
+      serialNumber: screen.serialNumber,
+    })
+  }
+
+  async function handleSaveEdit(screenId: string) {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await ebUpdateScreen({ screenId, ...editDraft })
+      setEditingId(null)
+      await onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar.')
     } finally {
       setSubmitting(false)
     }
@@ -157,6 +185,12 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
                 <p className="text-xs text-slate-400">
                   {new Date(screen.createdAt).toLocaleDateString('es-ES')}
                 </p>
+                <button
+                  onClick={() => startEditing(screen)}
+                  className="text-xs font-semibold text-eb-blue hover:underline"
+                >
+                  Editar
+                </button>
                 {!screen.product && !screen.unavailableAt && (
                   <button
                     onClick={() => {
@@ -187,6 +221,55 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
                 )}
               </div>
             </div>
+
+            {editingId === screen.id && (
+              <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <label className="flex-1 basis-28 text-xs font-medium text-slate-500">
+                  Referencia
+                  <input
+                    value={editDraft.reference}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, reference: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+                  />
+                </label>
+                <label className="flex-1 basis-24 text-xs font-medium text-slate-500">
+                  Modelo
+                  <input
+                    value={editDraft.model}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, model: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+                  />
+                </label>
+                <label className="flex-1 basis-32 text-xs font-medium text-slate-500">
+                  Número de serie
+                  <input
+                    value={editDraft.serialNumber}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, serialNumber: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleSaveEdit(screen.id)}
+                    disabled={
+                      submitting ||
+                      !editDraft.reference.trim() ||
+                      !editDraft.model.trim() ||
+                      !editDraft.serialNumber.trim()
+                    }
+                    className="rounded-lg bg-eb-blue px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {markingId === screen.id && (
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">

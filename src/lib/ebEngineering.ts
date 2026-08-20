@@ -112,6 +112,17 @@ export async function ebSetScreenUnavailable(screenId: string, reason: string) {
   return res.data
 }
 
+const callEbUpdateScreen = httpsCallable<
+  EbRegisterScreenInput & { screenId: string },
+  { success: boolean }
+>(functions, 'ebUpdateScreen')
+
+/** Corrects a display's reference/model/serial - allowed even if it's on a sale. */
+export async function ebUpdateScreen(input: EbRegisterScreenInput & { screenId: string }) {
+  const res = await callEbUpdateScreen(input)
+  return res.data
+}
+
 const callEbDeleteScreen = httpsCallable<{ screenId: string }, { success: boolean }>(
   functions,
   'ebDeleteScreen',
