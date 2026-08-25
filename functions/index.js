@@ -8,6 +8,7 @@ const admin = require('firebase-admin')
 const sanitizeHtml = require('sanitize-html')
 const { GoogleGenAI, Type } = require('@google/genai')
 const { renderWorkOrderPdfBuffer } = require('./workOrderPdf')
+const { renderRatingsPdfBuffer } = require('./ratingsPdf')
 
 admin.initializeApp()
 
@@ -3512,4 +3513,106 @@ exports.ebRegisterCableCheck = onCall(async (request) => {
   })
 
   return { id: insertRes.data.cableCheck_insert.id, sequenceNumber }
+})
+
+// ---------------------------------------------------------------------------
+// Service ratings - the tablets in the workshops run a separate Flutter app
+// ("EB Rating App") that writes to its own Firebase project (ebratingapp),
+// not to this one. There's no cross-project Admin SDK access set up, so this
+// reads the collection over Firestore's REST API with that project's web API
+// key, kept as a secret here rather than shipped in the frontend bundle.
+// Read-only and proxied (instead of called straight from the browser) so the
+// ratings screen sits behind the same permission model as everything else.
+// ---------------------------------------------------------------------------
+
+const EB_RATING_API_KEY = defineSecret('EB_RATING_API_KEY')
+
+const RATINGS_URL =
+  'https://firestore.googleapis.com/v1/projects/ebratingapp/databases/(default)/documents/Ratings'
+
+// Firestore's REST API wraps every field in a type tag ({"integerValue": "5"});
+// this flattens the handful of shapes this collection actually uses.
+function plainFirestoreValue(field) {
+  if (!field || typeof field !== 'object') return null
+  if ('integerValue' in field) return Number(field.integerValue)
+  if ('doubleValue' in field) return Number(field.doubleValue)
+  if ('stringValue' in field) return field.stringValue
+  if ('booleanValue' in field) return field.booleanValue
+  if ('timestampValue' in field) return field.timestampValue
+  if ('nullValue' in field) return null
+  return null
+}
+
+async function fetchAllServiceRatings(key) {
+  const ratings = []
+  let pageToken = null
+
+  do {
+    const url = new URL(RATINGS_URL)
+    url.searchParams.set('key', key)
+    url.searchParams.set('pageSize', '300')
+    if (pageToken) url.searchParams.set('pageToken', pageToken)
+
+    const res = await fetch(url)
+    if (!res.ok) {
+      console.error(`[ratings] ${res.status} from Firestore REST: ${await res.text()}`)
+      throw new HttpsError('unavailable', 'No se pudieron obtener las valoraciones.')
+    }
+    const json = await res.json()
+    for (const doc of json.documents ?? []) {
+      const f = doc.fields ?? {}
+      ratings.push({
+        id: doc.name.split('/').pop(),
+        rating: plainFirestoreValue(f.rating) ?? 0,
+        comments: plainFirestoreValue(f.comments) ?? '',
+        // See enum Location { none, menachaAlgeciras, varaderoLaLinea } and
+        // the serviceType toggle in the rating app's Rating.dart - both are
+        // sent as the raw index, mapped to labels in the frontend.
+        location: plainFirestoreValue(f.location) ?? 0,
+        serviceType: plainFirestoreValue(f.serviceType) ?? 0,
+        date: plainFirestoreValue(f.date) ?? doc.createTime,
+      })
+    }
+    pageToken = json.nextPageToken ?? null
+  } while (pageToken)
+
+  ratings.sort((a, b) => (a.date < b.date ? 1 : -1))
+  return ratings
+}
+
+exports.listServiceRatings = onCall({ secrets: [EB_RATING_API_KEY] }, async (request) => {
+  requirePermission(request, 'ratings:view')
+  return { ratings: await fetchAllServiceRatings(EB_RATING_API_KEY.value()) }
+})
+
+// Returns the report inline as base64 rather than uploading it to Storage:
+// it's regenerated per requested period, so keeping copies of every export
+// would just accumulate files nobody points at.
+exports.exportRatingsPdf = onCall({ secrets: [EB_RATING_API_KEY] }, async (request) => {
+  requirePermission(request, 'ratings:view')
+
+  const { from, to } = request.data ?? {}
+  if ((from && typeof from !== 'string') || (to && typeof to !== 'string')) {
+    throw new HttpsError('invalid-argument', 'Fechas no válidas.')
+  }
+
+  const all = await fetchAllServiceRatings(EB_RATING_API_KEY.value())
+  // `to` is an inclusive day, so compare against its end rather than midnight.
+  const fromTime = from ? new Date(`${from}T00:00:00.000Z`).getTime() : null
+  const toTime = to ? new Date(`${to}T23:59:59.999Z`).getTime() : null
+  const ratings = all.filter((r) => {
+    const t = new Date(r.date).getTime()
+    if (fromTime !== null && t < fromTime) return false
+    if (toTime !== null && t > toTime) return false
+    return true
+  })
+
+  const buffer = await renderRatingsPdfBuffer({
+    ratings,
+    from: from || null,
+    to: to || null,
+    generatedAt: new Date().toISOString(),
+  })
+
+  return { pdfBase64: buffer.toString('base64'), count: ratings.length }
 })

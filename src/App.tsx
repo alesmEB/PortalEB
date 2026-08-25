@@ -18,6 +18,7 @@ import { LoginPage } from './pages/LoginPage'
 import { NewOrderPage } from './pages/NewOrderPage'
 import { OrdersListPage } from './pages/OrdersListPage'
 import { OrderDetailPage } from './pages/OrderDetailPage'
+import { RatingsPage } from './pages/RatingsPage'
 import { SendNotificationPage } from './pages/SendNotificationPage'
 
 function App() {
@@ -131,6 +132,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <InterventionsListPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/ratings"
+              element={
+                <ProtectedRoute>
+                  <RatingsPage />
                 </ProtectedRoute>
               }
             />

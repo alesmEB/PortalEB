@@ -168,6 +168,15 @@ export function DashboardPage() {
             </button>
           )}
 
+          <HasPermission permission="ratings:view">
+            <button
+              onClick={() => navigate('/ratings')}
+              className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+            >
+              Valoraciones
+            </button>
+          </HasPermission>
+
         </div>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
