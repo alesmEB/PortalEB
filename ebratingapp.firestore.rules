@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// Firestore rules for the SEPARATE "ebratingapp" project - not for PortalEB
+// (that's firestore.rules next to this file). Kept here because PortalEB's
+// ratings screen is the only thing that reads this data, so the two need to
+// stay in sync; ebratingapp has no repo of its own.
+//
+// NOT deployed by `firebase deploy` from this repo - firebase.json points at
+// the portaleb project. Deploy it explicitly against ebratingapp, e.g.
+//   firebase deploy --only firestore:rules --project ebratingapp
+// from a config pointing at this file, or via the Firebase console.
+//
+// The workshop tablets only ever submit new ratings, so that's all these
+// rules allow. Reading, editing and deleting are closed to every client: the
+// app's web API key is embedded in the tablet build, so anyone holding it
+// could otherwise read or wipe the whole collection.
+//
+// PortalEB still reads this data, but through its Cloud Functions using the
+// Admin SDK, which bypasses these rules - see listServiceRatings in
+// functions/index.js. That path is authorised by IAM (PortalEB's runtime
+// service account, 129669119751-compute@developer.gserviceaccount.com, holds
+// roles/datastore.viewer on ebratingapp), not by these rules. Revoking that
+// binding breaks the ratings screen.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /Ratings/{ratingId} {
+      allow create: if true;
+      allow read, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

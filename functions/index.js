@@ -3518,77 +3518,61 @@ exports.ebRegisterCableCheck = onCall(async (request) => {
 // ---------------------------------------------------------------------------
 // Service ratings - the tablets in the workshops run a separate Flutter app
 // ("EB Rating App") that writes to its own Firebase project (ebratingapp),
-// not to this one. There's no cross-project Admin SDK access set up, so this
-// reads the collection over Firestore's REST API with that project's web API
-// key, kept as a secret here rather than shipped in the frontend bundle.
-// Read-only and proxied (instead of called straight from the browser) so the
-// ratings screen sits behind the same permission model as everything else.
+// not to this one. Read with the Admin SDK against that project rather than
+// its public web API key: the key is embedded in the tablet app, so it can't
+// be the thing that guards this data - ebratingapp's Firestore rules are
+// create-only, and the Admin SDK bypasses rules using this project's runtime
+// service account, which was granted read access on ebratingapp via IAM.
+// Proxied through here (instead of read from the browser) so the ratings
+// screen sits behind the same permission model as everything else.
 // ---------------------------------------------------------------------------
 
-const EB_RATING_API_KEY = defineSecret('EB_RATING_API_KEY')
-
-const RATINGS_URL =
-  'https://firestore.googleapis.com/v1/projects/ebratingapp/databases/(default)/documents/Ratings'
-
-// Firestore's REST API wraps every field in a type tag ({"integerValue": "5"});
-// this flattens the handful of shapes this collection actually uses.
-function plainFirestoreValue(field) {
-  if (!field || typeof field !== 'object') return null
-  if ('integerValue' in field) return Number(field.integerValue)
-  if ('doubleValue' in field) return Number(field.doubleValue)
-  if ('stringValue' in field) return field.stringValue
-  if ('booleanValue' in field) return field.booleanValue
-  if ('timestampValue' in field) return field.timestampValue
-  if ('nullValue' in field) return null
-  return null
+let ratingsDb = null
+function getRatingsDb() {
+  if (!ratingsDb) {
+    const app = admin.initializeApp({ projectId: 'ebratingapp' }, 'ebratingapp')
+    ratingsDb = admin.firestore(app)
+  }
+  return ratingsDb
 }
 
-async function fetchAllServiceRatings(key) {
-  const ratings = []
-  let pageToken = null
+// The tablet app writes `date` as a Firestore timestamp; older rows can be
+// missing it, so fall back to the document's own creation time.
+function toIsoDate(value, fallback) {
+  if (value && typeof value.toDate === 'function') return value.toDate().toISOString()
+  if (typeof value === 'string') return value
+  return fallback
+}
 
-  do {
-    const url = new URL(RATINGS_URL)
-    url.searchParams.set('key', key)
-    url.searchParams.set('pageSize', '300')
-    if (pageToken) url.searchParams.set('pageToken', pageToken)
-
-    const res = await fetch(url)
-    if (!res.ok) {
-      console.error(`[ratings] ${res.status} from Firestore REST: ${await res.text()}`)
-      throw new HttpsError('unavailable', 'No se pudieron obtener las valoraciones.')
+async function fetchAllServiceRatings() {
+  const snapshot = await getRatingsDb().collection('Ratings').get()
+  const ratings = snapshot.docs.map((doc) => {
+    const d = doc.data()
+    return {
+      id: doc.id,
+      rating: typeof d.rating === 'number' ? d.rating : 0,
+      comments: typeof d.comments === 'string' ? d.comments : '',
+      // See enum Location { none, menachaAlgeciras, varaderoLaLinea } and the
+      // serviceType toggle in the rating app's Rating.dart - both are stored
+      // as the raw index, mapped to labels in the frontend.
+      location: typeof d.location === 'number' ? d.location : 0,
+      serviceType: typeof d.serviceType === 'number' ? d.serviceType : 0,
+      date: toIsoDate(d.date, doc.createTime.toDate().toISOString()),
     }
-    const json = await res.json()
-    for (const doc of json.documents ?? []) {
-      const f = doc.fields ?? {}
-      ratings.push({
-        id: doc.name.split('/').pop(),
-        rating: plainFirestoreValue(f.rating) ?? 0,
-        comments: plainFirestoreValue(f.comments) ?? '',
-        // See enum Location { none, menachaAlgeciras, varaderoLaLinea } and
-        // the serviceType toggle in the rating app's Rating.dart - both are
-        // sent as the raw index, mapped to labels in the frontend.
-        location: plainFirestoreValue(f.location) ?? 0,
-        serviceType: plainFirestoreValue(f.serviceType) ?? 0,
-        date: plainFirestoreValue(f.date) ?? doc.createTime,
-      })
-    }
-    pageToken = json.nextPageToken ?? null
-  } while (pageToken)
-
+  })
   ratings.sort((a, b) => (a.date < b.date ? 1 : -1))
   return ratings
 }
 
-exports.listServiceRatings = onCall({ secrets: [EB_RATING_API_KEY] }, async (request) => {
+exports.listServiceRatings = onCall(async (request) => {
   requirePermission(request, 'ratings:view')
-  return { ratings: await fetchAllServiceRatings(EB_RATING_API_KEY.value()) }
+  return { ratings: await fetchAllServiceRatings() }
 })
 
 // Returns the report inline as base64 rather than uploading it to Storage:
 // it's regenerated per requested period, so keeping copies of every export
 // would just accumulate files nobody points at.
-exports.exportRatingsPdf = onCall({ secrets: [EB_RATING_API_KEY] }, async (request) => {
+exports.exportRatingsPdf = onCall(async (request) => {
   requirePermission(request, 'ratings:view')
 
   const { from, to } = request.data ?? {}
@@ -3596,7 +3580,7 @@ exports.exportRatingsPdf = onCall({ secrets: [EB_RATING_API_KEY] }, async (reque
     throw new HttpsError('invalid-argument', 'Fechas no válidas.')
   }
 
-  const all = await fetchAllServiceRatings(EB_RATING_API_KEY.value())
+  const all = await fetchAllServiceRatings()
   // `to` is an inclusive day, so compare against its end rather than midnight.
   const fromTime = from ? new Date(`${from}T00:00:00.000Z`).getTime() : null
   const toTime = to ? new Date(`${to}T23:59:59.999Z`).getTime() : null
