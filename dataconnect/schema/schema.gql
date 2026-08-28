@@ -449,7 +449,7 @@ type EbClientProductCable
   cableType: EbCableType! @ref(fields: ["cableTypeId"])
 }
 
-# One physical display unit held as stock (e.g. reference "EBEN000000",
+# One physical display unit held as stock (e.g. reference "EBEN070200",
 # model "PV450"). Deliberately not an EbCableType/CableCheck - it isn't a
 # cable and each unit carries its own serial number - but tracked the same
 # way: registered on arrival, then taken out of stock either by being

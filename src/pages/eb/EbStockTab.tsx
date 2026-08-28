@@ -24,7 +24,7 @@ type ScreenRow = ListEbScreensData['ebScreens'][number]
 // EbScreen in schema.gql) - stock like cables, but each unit is
 // individually serial-numbered, so this lists the units themselves rather
 // than just a per-reference count.
-const DEFAULT_SCREEN_REFERENCE = 'EBEN000000'
+const DEFAULT_SCREEN_REFERENCE = 'EBEN070200'
 const DEFAULT_SCREEN_MODEL = 'PV450'
 
 function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; onChanged: () => Promise<unknown> }) {

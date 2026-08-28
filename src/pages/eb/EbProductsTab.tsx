@@ -186,20 +186,22 @@ function CableCheckPicker({
   )
 }
 
-// Same additive shape as CableCheckPicker, for the display units tracked in
-// the Stock tab (see EbScreen in schema.gql).
+// Like CableCheckPicker but single-choice: a unit carries one display, and
+// that display is what gives the sale its serial number (see ProductForm), so
+// picking two would leave the serial ambiguous. Clicking the selected one
+// again clears it.
 function ScreenPicker({
   options,
-  selected,
-  onToggle,
+  selectedId,
+  onSelect,
 }: {
   options: { id: string; reference: string; model: string; serialNumber: string }[]
-  selected: Set<string>
-  onToggle: (id: string) => void
+  selectedId: string | null
+  onSelect: (id: string | null) => void
 }) {
   return (
     <div>
-      <p className="text-xs font-medium text-slate-500">Pantallas (opcional)</p>
+      <p className="text-xs font-medium text-slate-500">Pantalla (opcional)</p>
       <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
         {options.length === 0 && (
           <p className="text-xs text-slate-400">No hay pantallas en stock.</p>
@@ -209,16 +211,18 @@ function ScreenPicker({
             <label
               key={s.id}
               className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs ${
-                selected.has(s.id)
+                selectedId === s.id
                   ? 'border-eb-teal bg-eb-teal text-white'
                   : 'border-slate-300 text-slate-600'
               }`}
             >
               <input
-                type="checkbox"
+                type="radio"
+                name="eb-screen-picker"
                 className="hidden"
-                checked={selected.has(s.id)}
-                onChange={() => onToggle(s.id)}
+                checked={selectedId === s.id}
+                onChange={() => onSelect(s.id)}
+                onClick={() => selectedId === s.id && onSelect(null)}
               />
               {s.model} · {s.serialNumber}
             </label>
@@ -260,13 +264,11 @@ function ProductForm({
   const [selectedCableChecks, setSelectedCableChecks] = useState<Set<string>>(
     new Set(product?.registeredCables.map((c) => c.id) ?? []),
   )
-  const [selectedScreens, setSelectedScreens] = useState<Set<string>>(
-    new Set(product?.screens.map((s) => s.id) ?? []),
+  const [selectedScreenId, setSelectedScreenId] = useState<string | null>(
+    product?.screens[0]?.id ?? null,
   )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const canSubmit = clientId && serialNumber.trim() && hardwareNumber.trim()
 
   // Already-assigned checks won't show up in the unassigned pool (their
   // productId is set), so they're merged in here to stay visible/toggleable
@@ -291,6 +293,18 @@ function ProductForm({
     return merged
   }, [availableScreens, product])
 
+  // The display carries the unit's serial number, so once one is picked the
+  // sale takes that serial instead of a typed-in one (the server does the
+  // same in ebAddClientProduct/ebUpdateClientProduct).
+  const screenSerial = useMemo(
+    () => screenOptions.find((s) => s.id === selectedScreenId)?.serialNumber ?? null,
+    [screenOptions, selectedScreenId],
+  )
+
+  const effectiveSerialNumber = screenSerial ?? serialNumber
+
+  const canSubmit = clientId && effectiveSerialNumber.trim() && hardwareNumber.trim()
+
   function toggleCable(id: string) {
     setSelectedCables((prev) => {
       const next = new Set(prev)
@@ -309,22 +323,13 @@ function ProductForm({
     })
   }
 
-  function toggleScreen(id: string) {
-    setSelectedScreens((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   async function handleSubmit() {
     setSubmitting(true)
     setError(null)
     try {
       const input = {
         clientId,
-        serialNumber: serialNumber.trim(),
+        serialNumber: effectiveSerialNumber.trim(),
         hardwareNumber: hardwareNumber.trim(),
         softwareVersion: softwareVersion.trim() || undefined,
         purchasedAt: purchasedAt || undefined,
@@ -333,7 +338,7 @@ function ProductForm({
         soldToEndUserAt: product?.soldToEndUserAt ?? undefined,
         cableTypeIds: [...selectedCables],
         cableCheckIds: [...selectedCableChecks],
-        screenIds: [...selectedScreens],
+        screenIds: selectedScreenId ? [selectedScreenId] : [],
       }
       if (product) {
         await ebUpdateClientProduct({ productId: product.id, ...input })
@@ -365,12 +370,20 @@ function ProductForm({
           ))}
         </select>
       </label>
-      <input
-        placeholder="Número de serie"
-        value={serialNumber}
-        onChange={(e) => setSerialNumber(e.target.value)}
-        className={inputClass}
-      />
+      <div>
+        <input
+          placeholder="Número de serie"
+          value={effectiveSerialNumber}
+          onChange={(e) => setSerialNumber(e.target.value)}
+          disabled={screenSerial !== null}
+          className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-500`}
+        />
+        {screenSerial !== null && (
+          <p className="mt-1 text-xs text-slate-500">
+            Lo aporta la pantalla seleccionada. Quítala abajo para escribirlo a mano.
+          </p>
+        )}
+      </div>
       <input
         placeholder="Número de hardware"
         value={hardwareNumber}
@@ -403,7 +416,11 @@ function ProductForm({
         selected={selectedCableChecks}
         onToggle={toggleCableCheck}
       />
-      <ScreenPicker options={screenOptions} selected={selectedScreens} onToggle={toggleScreen} />
+      <ScreenPicker
+        options={screenOptions}
+        selectedId={selectedScreenId}
+        onSelect={setSelectedScreenId}
+      />
       <label className="block text-xs font-medium text-slate-500">
         Observaciones (opcional)
         <textarea

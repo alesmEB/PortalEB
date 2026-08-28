@@ -2691,6 +2691,13 @@ const DELETE_EB_SCREEN_MUTATION = `
     ebScreen_delete(id: $id)
   }
 `
+const GET_EB_SCREEN_SERIAL_QUERY = `
+  query GetEbScreenSerialAdmin($id: UUID!) {
+    ebScreen(id: $id) {
+      serialNumber
+    }
+  }
+`
 const GET_ASSIGNED_EB_SCREENS_QUERY = `
   query GetAssignedEbScreensAdmin($productId: UUID!) {
     ebScreens(where: { productId: { eq: $productId } }) {
@@ -2880,6 +2887,27 @@ exports.ebDeleteCableCheck = onCall(async (request) => {
 
 // Display units (PV450 and friends) are stock like cables, but each is
 // individually serial-numbered and isn't a cable - see EbScreen in schema.gql.
+// A unit carries at most one display, and that display is what gives the sale
+// its serial number - so anything past the first is dropped here rather than
+// silently assigned, keeping the rule true of the stored rows and not just of
+// the form that submitted them (see ScreenPicker in EbProductsTab.tsx).
+function oneScreenId(screenIds) {
+  if (!Array.isArray(screenIds)) return null
+  return screenIds.length > 0 ? screenIds.slice(0, 1) : []
+}
+
+// The display physically carries the unit's serial number, so a sale that
+// includes one takes that serial rather than whatever was typed in - the form
+// disables the field in that case.
+async function serialNumberForSale(screenIds, typedSerialNumber) {
+  const ids = oneScreenId(screenIds)
+  if (!ids || ids.length === 0) return typedSerialNumber
+  const res = await dataConnect.executeGraphqlRead(GET_EB_SCREEN_SERIAL_QUERY, {
+    variables: { id: ids[0] },
+  })
+  return res.data.ebScreen?.serialNumber ?? typedSerialNumber
+}
+
 exports.ebRegisterScreen = onCall(async (request) => {
   requireAdminOrLab(request)
 
@@ -3016,7 +3044,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
   const res = await dataConnect.executeGraphql(CREATE_EB_CLIENT_PRODUCT_MUTATION, {
     variables: {
       clientId,
-      serialNumber: serialNumber.trim(),
+      serialNumber: await serialNumberForSale(screenIds, serialNumber.trim()),
       hardwareNumber: hardwareNumber.trim(),
       softwareVersion: softwareVersion?.trim() || null,
       purchasedAt: purchasedAt || null,
@@ -3037,7 +3065,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
       variables: { id: cableCheckId, productId },
     })
   }
-  for (const screenId of Array.isArray(screenIds) ? screenIds : []) {
+  for (const screenId of oneScreenId(screenIds) ?? []) {
     await dataConnect.executeGraphql(SET_EB_SCREEN_PRODUCT_MUTATION, {
       variables: { id: screenId, productId },
     })
@@ -3081,7 +3109,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     variables: {
       id: productId,
       clientId,
-      serialNumber: serialNumber.trim(),
+      serialNumber: await serialNumberForSale(screenIds, serialNumber.trim()),
       hardwareNumber: hardwareNumber.trim(),
       softwareVersion: softwareVersion?.trim() || null,
       purchasedAt: purchasedAt || null,
@@ -3122,12 +3150,13 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     }
   }
 
-  if (Array.isArray(screenIds)) {
+  const desiredScreenIds = oneScreenId(screenIds)
+  if (desiredScreenIds) {
     const assignedRes = await dataConnect.executeGraphql(GET_ASSIGNED_EB_SCREENS_QUERY, {
       variables: { productId },
     })
     const currentIds = assignedRes.data.ebScreens.map((s) => s.id)
-    const nextIds = new Set(screenIds)
+    const nextIds = new Set(desiredScreenIds)
     for (const id of currentIds) {
       if (!nextIds.has(id)) {
         await dataConnect.executeGraphql(SET_EB_SCREEN_PRODUCT_MUTATION, {
@@ -3135,7 +3164,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
         })
       }
     }
-    for (const id of screenIds) {
+    for (const id of desiredScreenIds) {
       if (!currentIds.includes(id)) {
         await dataConnect.executeGraphql(SET_EB_SCREEN_PRODUCT_MUTATION, {
           variables: { id, productId },
