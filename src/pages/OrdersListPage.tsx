@@ -30,6 +30,44 @@ import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 type LocationFilter = OrderLocation | 'ALL'
 type StatusFilter = WorkOrderStatus | 'ALL'
 
+type OrderRow = ListWorkOrdersData['workOrders'][number]
+
+/** The post-completion admin process (see "Gestión administrativa" in
+ * OrderDetailPage). Both sides of each step are offered: administración works
+ * off what's still pending, but also needs to pull up what's already done -
+ * and the protocol's two outcomes are separate, since "no procedía" is a
+ * decision, not a pending step. Only visible with "orders:closing". */
+const ADMIN_PROCESS_FILTERS: { value: string; label: string; matches: (order: OrderRow) => boolean }[] =
+  [
+    {
+      value: 'PENDING_ADJUST',
+      label: 'Pendientes de ajustar',
+      matches: (o) => o.status === WorkOrderStatus.COMPLETED && !o.adjustedAt,
+    },
+    { value: 'ADJUSTED', label: 'Ajustadas', matches: (o) => !!o.adjustedAt },
+    {
+      value: 'PENDING_PROTOCOL',
+      label: 'Pendientes de protocolo',
+      matches: (o) => !!o.adjustedAt && !o.serviceProtocolAt,
+    },
+    {
+      value: 'PROTOCOL_DONE',
+      label: 'Protocolo realizado',
+      matches: (o) => !!o.serviceProtocolAt && o.serviceProtocolDone === true,
+    },
+    {
+      value: 'PROTOCOL_NOT_APPLICABLE',
+      label: 'Protocolo no procedía',
+      matches: (o) => !!o.serviceProtocolAt && o.serviceProtocolDone === false,
+    },
+    {
+      value: 'PENDING_INVOICE',
+      label: 'Pendientes de facturar',
+      matches: (o) => !!o.serviceProtocolAt && !o.invoicedAt,
+    },
+    { value: 'INVOICED', label: 'Facturadas', matches: (o) => !!o.invoicedAt },
+  ]
+
 export function OrdersListPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -45,6 +83,7 @@ export function OrdersListPage() {
   const [searchText, setSearchText] = useState('')
   const [hideCompleted, setHideCompleted] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
+  const [adminProcessFilter, setAdminProcessFilter] = useState('ALL')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const canDelete = usePermission('orders:delete')
@@ -55,7 +94,8 @@ export function OrdersListPage() {
     (boatFilter.trim() ? 1 : 0) +
     (searchText.trim() ? 1 : 0) +
     (hideCompleted ? 1 : 0) +
-    (showDeleted ? 1 : 0)
+    (showDeleted ? 1 : 0) +
+    (adminProcessFilter !== 'ALL' ? 1 : 0)
 
   useEffect(() => {
     if (!profile) return
@@ -105,6 +145,10 @@ export function OrdersListPage() {
       if (hideCompleted && order.status === WorkOrderStatus.COMPLETED) return false
       if (locationFilter !== 'ALL' && order.locationCode !== locationFilter) return false
       if (statusFilter !== 'ALL' && order.status !== statusFilter) return false
+      if (adminProcessFilter !== 'ALL') {
+        const step = ADMIN_PROCESS_FILTERS.find((f) => f.value === adminProcessFilter)
+        if (step && !step.matches(order)) return false
+      }
       if (boatQuery && !order.boat.name.toLowerCase().includes(boatQuery)) return false
       if (searchQuery) {
         const haystack =
@@ -113,7 +157,16 @@ export function OrdersListPage() {
       }
       return true
     })
-  }, [orders, hideCompleted, showDeleted, locationFilter, statusFilter, boatFilter, searchText])
+  }, [
+    orders,
+    hideCompleted,
+    showDeleted,
+    locationFilter,
+    statusFilter,
+    adminProcessFilter,
+    boatFilter,
+    searchText,
+  ])
 
   async function handleDelete(orderId: string) {
     await deleteWorkOrder(orderId)
@@ -213,6 +266,24 @@ export function OrdersListPage() {
                 ))}
               </select>
             </label>
+
+            {canViewAdminProcess && (
+              <label className="block text-xs font-medium text-slate-500">
+                Gestión administrativa
+                <select
+                  value={adminProcessFilter}
+                  onChange={(e) => setAdminProcessFilter(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+                >
+                  <option value="ALL">Todas</option>
+                  {ADMIN_PROCESS_FILTERS.map((step) => (
+                    <option key={step.value} value={step.value}>
+                      {step.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             <label className="block text-xs font-medium text-slate-500">
               Embarcación / máquina
