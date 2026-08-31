@@ -1,6 +1,13 @@
 # Starter queries. Expand this file as each screen is built; there's no
 # need to pre-build a full CRUD surface before the UI that consumes it.
 
+# Every list query here spells out a `limit`. Data Connect defaults to 100 and
+# says nothing when it truncates, so a screen just stops showing rows past the
+# hundredth and the data looks like it was never saved - which is exactly what
+# happened once the EB client list passed 100. 1000 is a ceiling, not
+# pagination: a list that can realistically approach it needs paging instead of
+# a bigger number.
+
 # Data Connect's SDK codegen only exports an enum's TypeScript type when
 # it's selected from a root-level query - MediaType/PhotoStage/OrderEventType
 # are otherwise only ever selected through a nested relation field (see
@@ -35,7 +42,7 @@ query GetCurrentUser @auth(level: USER) {
 # Autocomplete source for the "reuse an existing customer" step of order
 # creation.
 query ListCustomers @auth(level: USER) {
-  customers(orderBy: { name: ASC }) {
+  customers(orderBy: { name: ASC }, limit: 1000) {
     id
     name
     contactName
@@ -53,7 +60,7 @@ query ListCustomers @auth(level: USER) {
 # Autocomplete source for the "reuse an existing boat/machine" step of order
 # creation; each boat comes with its already-registered engines.
 query ListBoats @auth(level: USER) {
-  boats(orderBy: { name: ASC }) {
+  boats(orderBy: { name: ASC }, limit: 1000) {
     id
     name
     registrationNumber
@@ -75,7 +82,7 @@ query ListBoats @auth(level: USER) {
 
 # Admin section: users, boats and customers management.
 query ListUsers @auth(level: USER) {
-  users(orderBy: { displayName: ASC }) {
+  users(orderBy: { displayName: ASC }, limit: 1000) {
     id
     email
     displayName
@@ -91,7 +98,7 @@ query ListUsers @auth(level: USER) {
 }
 
 query ListPermissions @auth(level: USER) {
-  permissions(orderBy: { key: ASC }) {
+  permissions(orderBy: { key: ASC }, limit: 1000) {
     id
     key
     description
@@ -102,7 +109,7 @@ query ListPermissions @auth(level: USER) {
 # any ADMIN (team lead) granted the "orders:assignable" permission. Filtered
 # client-side since role-or-permission isn't expressible in a single `where`.
 query ListAssignableUsers @auth(level: USER) {
-  users(where: { isActive: { eq: true } }, orderBy: { displayName: ASC }) {
+  users(where: { isActive: { eq: true } }, orderBy: { displayName: ASC }, limit: 1000) {
     id
     displayName
     role
@@ -116,7 +123,7 @@ query ListAssignableUsers @auth(level: USER) {
 
 # Summary rows for the main orders list screen.
 query ListWorkOrders @auth(level: USER) {
-  workOrders(orderBy: { createdAt: DESC }) {
+  workOrders(orderBy: { createdAt: DESC }, limit: 1000) {
     id
     code
     externalCode
@@ -145,7 +152,7 @@ query ListWorkOrders @auth(level: USER) {
 # users so the orders list only shows their own orders (see
 # GetMyLinkedCustomer, which resolves the current user to a customerId).
 query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
-  workOrders(where: { customerId: { eq: $customerId } }, orderBy: { createdAt: DESC }) {
+  workOrders(where: { customerId: { eq: $customerId } }, orderBy: { createdAt: DESC }, limit: 1000) {
     id
     code
     externalCode
@@ -188,6 +195,7 @@ query GetMyActiveTimeLog @auth(level: USER) {
 query ListMyAssignedWorkOrders @auth(level: USER) {
   technicianAssignments(
     where: { technicianId: { eq_expr: "auth.uid" }, unassignedAt: { isNull: true } }
+    limit: 1000
   ) {
     isAllowed
     isLead
@@ -233,7 +241,7 @@ query ListSchedulableWorkOrders @auth(level: USER) @retired {
 # day it's already scheduled on (so the panel can show which of the current
 # week's checkboxes are already ticked, across any week).
 query ListAssignedWorkOrders @auth(level: USER) {
-  workOrders(where: { status: { in: [ASSIGNED, IN_PROGRESS] } }, orderBy: { code: ASC }) {
+  workOrders(where: { status: { in: [ASSIGNED, IN_PROGRESS] } }, orderBy: { code: ASC }, limit: 1000) {
     id
     code
     status
@@ -264,7 +272,7 @@ query ListAssignedWorkOrders @auth(level: USER) {
 # for every order, regardless of the order's status, so a COMPLETED order's
 # past scheduled days still show up (read-only) instead of disappearing.
 query ListWorkOrderScheduledDates @auth(level: USER) {
-  workOrderScheduledDates(orderBy: { date: ASC }) {
+  workOrderScheduledDates(orderBy: { date: ASC }, limit: 1000) {
     date
     workOrder {
       id
@@ -399,7 +407,7 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
 # ListUsers/ListPermissions above; writes all go through Cloud Functions
 # (see ebCreate*/ebAdd*/ebUpdate*/ebDelete* in functions/index.js).
 query ListEbClients @auth(level: USER) {
-  ebClients(orderBy: { companyName: ASC }) {
+  ebClients(orderBy: { companyName: ASC }, limit: 1000) {
     id
     email
     companyName
@@ -419,7 +427,7 @@ query ListEbClients @auth(level: USER) {
 }
 
 query ListEbCableTypes @auth(level: USER) {
-  ebCableTypes(orderBy: { code: ASC }) {
+  ebCableTypes(orderBy: { code: ASC }, limit: 1000) {
     id
     code
     name
@@ -430,7 +438,7 @@ query ListEbCableTypes @auth(level: USER) {
 # "all products sold" screen (filtered client-side by date/country/etc,
 # same pattern as OrdersListPage's filters).
 query ListEbClientProducts @auth(level: USER) {
-  ebClientProducts(orderBy: { purchasedAt: DESC }) {
+  ebClientProducts(orderBy: { purchasedAt: DESC }, limit: 1000) {
     id
     productName
     serialNumber
@@ -486,6 +494,7 @@ query ListMyEbClientProducts($clientId: UUID!) @auth(level: USER) {
   ebClientProducts(
     where: { clientId: { eq: $clientId }, retiredAt: { isNull: true } }
     orderBy: { purchasedAt: DESC }
+    limit: 1000
   ) {
     id
     productName
@@ -514,7 +523,7 @@ query ListMyEbClientProducts($clientId: UUID!) @auth(level: USER) {
 }
 
 query ListEbNewsPosts @auth(level: USER) {
-  ebNewsPosts(orderBy: { createdAt: DESC }) {
+  ebNewsPosts(orderBy: { createdAt: DESC }, limit: 1000) {
     id
     title
     body
@@ -527,7 +536,7 @@ query ListEbNewsPosts @auth(level: USER) {
 }
 
 query ListEbFaqItems @auth(level: USER) {
-  ebFaqItems(orderBy: { createdAt: ASC }) {
+  ebFaqItems(orderBy: { createdAt: ASC }, limit: 1000) {
     id
     question
     answer
@@ -538,7 +547,7 @@ query ListEbFaqItems @auth(level: USER) {
 # Interventions list ("Orden de intervención" intake, see intervention.pdf) -
 # lab-only screen for now, same access model as createIntervention.
 query ListInterventions @auth(level: USER) {
-  interventions(orderBy: { createdAt: DESC }) {
+  interventions(orderBy: { createdAt: DESC }, limit: 1000) {
     id
     code
     locationCode
