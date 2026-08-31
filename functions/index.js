@@ -1399,6 +1399,7 @@ const GET_WORK_ORDER_PROCESS_QUERY = `
     workOrder(id: $id) {
       status
       adjustedAt
+      serviceProtocolDone
       serviceProtocolAt
       invoicedAt
     }
@@ -1512,6 +1513,94 @@ exports.invoiceOrder = onCall(async (request) => {
   })
   await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
     variables: { workOrderId, actorId: request.auth.uid, eventType: 'ORDER_INVOICED' },
+  })
+
+  return { success: true }
+})
+
+// ---------------------------------------------------------------------------
+// Undoing those three steps. Separate permission from "orders:closing": being
+// the person who records the process day to day isn't the same as being able
+// to rewrite it afterwards. Only the last recorded step can be undone, which
+// keeps the three fields in a state the forward path could have produced (no
+// "facturada pero sin ajustar"), and every undo is logged with its actor - a
+// reverted step leaves a trail in the historial rather than disappearing.
+// ---------------------------------------------------------------------------
+
+const REVERT_ADJUST_MUTATION = `
+  mutation RevertAdjustAdmin($id: UUID!) {
+    workOrder_update(id: $id, data: { adjustedAt: null })
+  }
+`
+const REVERT_SERVICE_PROTOCOL_MUTATION = `
+  mutation RevertServiceProtocolAdmin($id: UUID!) {
+    workOrder_update(id: $id, data: { serviceProtocolDone: null, serviceProtocolAt: null })
+  }
+`
+const REVERT_INVOICE_MUTATION = `
+  mutation RevertInvoiceAdmin($id: UUID!) {
+    workOrder_update(id: $id, data: { invoicedAt: null })
+  }
+`
+
+const REVERTIBLE_STEPS = {
+  adjust: {
+    mutation: REVERT_ADJUST_MUTATION,
+    eventType: 'ORDER_ADJUST_REVERTED',
+    notRecorded: 'La orden no está marcada como ajustada.',
+    blockedBy: (wo) =>
+      wo.serviceProtocolAt ? 'Revierte antes el protocolo de servicio.' : null,
+    isRecorded: (wo) => !!wo.adjustedAt,
+  },
+  protocol: {
+    mutation: REVERT_SERVICE_PROTOCOL_MUTATION,
+    eventType: 'SERVICE_PROTOCOL_REVERTED',
+    notRecorded: 'El protocolo de servicio no está registrado.',
+    blockedBy: (wo) => (wo.invoicedAt ? 'Revierte antes la facturación.' : null),
+    isRecorded: (wo) => !!wo.serviceProtocolAt,
+    metadata: (wo) => ({ previousDone: wo.serviceProtocolDone }),
+  },
+  invoice: {
+    mutation: REVERT_INVOICE_MUTATION,
+    eventType: 'ORDER_INVOICE_REVERTED',
+    notRecorded: 'La orden no está marcada como facturada.',
+    blockedBy: () => null,
+    isRecorded: (wo) => !!wo.invoicedAt,
+  },
+}
+
+exports.revertAdminProcessStep = onCall(async (request) => {
+  requirePermission(request, 'admin:reopen')
+
+  const { workOrderId, step } = request.data ?? {}
+  if (typeof workOrderId !== 'string' || !Object.hasOwn(REVERTIBLE_STEPS, step)) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  const spec = REVERTIBLE_STEPS[step]
+
+  const res = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_PROCESS_QUERY, {
+    variables: { id: workOrderId },
+  })
+  const wo = res.data.workOrder
+  if (!wo) {
+    throw new HttpsError('not-found', 'La orden no existe.')
+  }
+  if (!spec.isRecorded(wo)) {
+    throw new HttpsError('failed-precondition', spec.notRecorded)
+  }
+  const blocked = spec.blockedBy(wo)
+  if (blocked) {
+    throw new HttpsError('failed-precondition', blocked)
+  }
+
+  await dataConnect.executeGraphql(spec.mutation, { variables: { id: workOrderId } })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: {
+      workOrderId,
+      actorId: request.auth.uid,
+      eventType: spec.eventType,
+      metadata: spec.metadata ? spec.metadata(wo) : null,
+    },
   })
 
   return { success: true }

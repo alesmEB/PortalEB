@@ -81,6 +81,11 @@ enum OrderEventType {
   ORDER_ADJUSTED
   SERVICE_PROTOCOL_RECORDED
   ORDER_INVOICED
+  # Undoing the three steps above - each clears its own field so the step can
+  # be recorded again, see revertAdminProcessStep in functions/index.js.
+  ORDER_ADJUST_REVERTED
+  SERVICE_PROTOCOL_REVERTED
+  ORDER_INVOICE_REVERTED
   EXTERNAL_CODE_UPDATED
   ORDER_DELETED
   # Admin skipped the technician-side workflow (photos, clock-out) and marked

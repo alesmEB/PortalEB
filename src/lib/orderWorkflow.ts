@@ -149,6 +149,20 @@ export async function invoiceOrder(workOrderId: string) {
   return res.data
 }
 
+/** The three "Gestión administrativa" steps, in the order they're recorded. */
+export type AdminProcessStep = 'adjust' | 'protocol' | 'invoice'
+
+const callRevertAdminProcessStep = httpsCallable<
+  { workOrderId: string; step: AdminProcessStep },
+  { success: boolean }
+>(functions, 'revertAdminProcessStep')
+
+/** Requires "admin:reopen". Only the last recorded step can be reverted. */
+export async function revertAdminProcessStep(workOrderId: string, step: AdminProcessStep) {
+  const res = await callRevertAdminProcessStep({ workOrderId, step })
+  return res.data
+}
+
 const callSetWorkOrderExternalCode = httpsCallable<
   { workOrderId: string; externalCode: string },
   { success: boolean }

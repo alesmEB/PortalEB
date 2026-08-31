@@ -42,12 +42,14 @@ import {
   invoiceOrder,
   recordServiceProtocol,
   reportIncident,
+  revertAdminProcessStep,
   setWorkOrderExternalCode,
   startOrder,
   startWorking,
   stopWorking,
   toggleWorkOrderTask,
 } from '../lib/orderWorkflow'
+import type { AdminProcessStep } from '../lib/orderWorkflow'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
 import { uploadQuotePdf } from '../lib/quoteStorage'
@@ -883,11 +885,18 @@ function AdminStepModal({
   onClose: () => void
 }) {
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleClick(action: AdminStepAction) {
     setSubmitting(true)
+    setError(null)
     try {
       await action.onClick()
+    } catch (err) {
+      // The steps have server-side guards the UI can't always anticipate (a
+      // permission just revoked, someone else moving the order meanwhile) -
+      // without this the dialog just sat there as if nothing had happened.
+      setError(err instanceof Error ? err.message : 'No se ha podido completar la acción.')
     } finally {
       setSubmitting(false)
     }
@@ -898,6 +907,9 @@ function AdminStepModal({
       <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
         <h2 className="text-sm font-semibold text-eb-blue-dark">{title}</h2>
         <p className="mt-1 text-xs text-slate-500">{description}</p>
+        {error && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+        )}
         <div className="mt-4 flex gap-2">
           <button
             onClick={onClose}
@@ -924,6 +936,24 @@ function AdminStepModal({
   )
 }
 
+const REVERT_STEP_COPY: Record<AdminProcessStep, { title: string; description: string }> = {
+  adjust: {
+    title: 'Revertir el ajuste',
+    description:
+      'La orden volverá a estar pendiente de ajustar. Quedará registrado en el historial quién lo ha revertido.',
+  },
+  protocol: {
+    title: 'Revertir el protocolo de servicio',
+    description:
+      'El protocolo volverá a estar pendiente y podrá registrarse de nuevo. Quedará registrado en el historial quién lo ha revertido.',
+  },
+  invoice: {
+    title: 'Revertir la facturación',
+    description:
+      'La orden volverá a estar pendiente de facturar. Quedará registrado en el historial quién lo ha revertido.',
+  },
+}
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
@@ -936,6 +966,7 @@ export function OrderDetailPage() {
   const canApproveQuotes = usePermission('quotes:approve')
   const canViewQuotes = canUploadQuotes || canApproveQuotes
   const canViewAdminProcess = usePermission('orders:closing')
+  const canRevertAdminProcess = usePermission('admin:reopen')
   const isLab = usePermission('admin:lab')
   const canEditExternalCode = profile?.role === UserRole.ADMIN || isLab
   const canChat = usePermission('chat:write')
@@ -949,6 +980,7 @@ export function OrderDetailPage() {
   const [startingOrder, setStartingOrder] = useState(false)
   const [completingOrder, setCompletingOrder] = useState(false)
   const [adminStepModal, setAdminStepModal] = useState<'adjust' | 'protocol' | 'invoice' | null>(null)
+  const [revertStepModal, setRevertStepModal] = useState<AdminProcessStep | null>(null)
   const [busy, setBusy] = useState(false)
   const quoteFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -1168,6 +1200,9 @@ export function OrderDetailPage() {
     OrderEventType.ORDER_ADJUSTED,
     OrderEventType.SERVICE_PROTOCOL_RECORDED,
     OrderEventType.ORDER_INVOICED,
+    OrderEventType.ORDER_ADJUST_REVERTED,
+    OrderEventType.SERVICE_PROTOCOL_REVERTED,
+    OrderEventType.ORDER_INVOICE_REVERTED,
   ])
   const visibleTracking = order.tracking.filter(
     (event) =>
@@ -1565,6 +1600,14 @@ export function OrderDetailPage() {
                   Marcar
                 </button>
               )}
+              {canRevertAdminProcess && order.adjustedAt && !order.serviceProtocolAt && (
+                <button
+                  onClick={() => setRevertStepModal('adjust')}
+                  className="shrink-0 rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600"
+                >
+                  Revertir
+                </button>
+              )}
             </li>
             <li className="flex items-center justify-between gap-2 text-sm text-slate-700">
               <span>
@@ -1583,6 +1626,14 @@ export function OrderDetailPage() {
                   Marcar
                 </button>
               )}
+              {canRevertAdminProcess && order.serviceProtocolAt && !order.invoicedAt && (
+                <button
+                  onClick={() => setRevertStepModal('protocol')}
+                  className="shrink-0 rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600"
+                >
+                  Revertir
+                </button>
+              )}
             </li>
             <li className="flex items-center justify-between gap-2 text-sm text-slate-700">
               <span>
@@ -1595,6 +1646,14 @@ export function OrderDetailPage() {
                   className="shrink-0 rounded-lg bg-eb-blue px-3 py-1 text-xs font-semibold text-white"
                 >
                   Marcar
+                </button>
+              )}
+              {canRevertAdminProcess && order.invoicedAt && (
+                <button
+                  onClick={() => setRevertStepModal('invoice')}
+                  className="shrink-0 rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600"
+                >
+                  Revertir
                 </button>
               )}
             </li>
@@ -1690,6 +1749,25 @@ export function OrderDetailPage() {
               onClick: async () => {
                 await recordServiceProtocol(order.id, false)
                 setAdminStepModal(null)
+                await loadOrder()
+              },
+            },
+          ]}
+        />
+      )}
+
+      {revertStepModal && (
+        <AdminStepModal
+          title={REVERT_STEP_COPY[revertStepModal].title}
+          description={REVERT_STEP_COPY[revertStepModal].description}
+          onClose={() => setRevertStepModal(null)}
+          actions={[
+            {
+              label: 'Revertir',
+              variant: 'secondary',
+              onClick: async () => {
+                await revertAdminProcessStep(order.id, revertStepModal)
+                setRevertStepModal(null)
                 await loadOrder()
               },
             },
