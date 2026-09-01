@@ -24,6 +24,7 @@ import {
   ebUpdateClientProduct,
 } from '../../lib/ebEngineering'
 import { EbCableChecksTab } from './EbCableChecksTab'
+import { EbSalesRankingTab } from './EbSalesRankingTab'
 import { EbStockTab } from './EbStockTab'
 
 type ProductRow = ListEbClientProductsData['ebClientProducts'][number]
@@ -682,7 +683,7 @@ function ProductTypeTabButton({
   )
 }
 
-type ProductType = 'controller' | 'cables' | 'stock' | 'clientView'
+type ProductType = 'controller' | 'cables' | 'stock' | 'ranking' | 'clientView'
 
 // Second-level menu under "Productos": which kind of product to view - more
 // may be added later, kept separate (not one big page) so each stays simple.
@@ -701,6 +702,9 @@ export function EbProductsTab() {
         <ProductTypeTabButton active={productType === 'stock'} onClick={() => setProductType('stock')}>
           Stock
         </ProductTypeTabButton>
+        <ProductTypeTabButton active={productType === 'ranking'} onClick={() => setProductType('ranking')}>
+          Ranking
+        </ProductTypeTabButton>
         <ProductTypeTabButton active={productType === 'clientView'} onClick={() => setProductType('clientView')}>
           Vista cliente
         </ProductTypeTabButton>
@@ -710,6 +714,7 @@ export function EbProductsTab() {
         {productType === 'controller' && <EbControllerProductsTab />}
         {productType === 'cables' && <EbCableChecksTab />}
         {productType === 'stock' && <EbStockTab />}
+        {productType === 'ranking' && <EbSalesRankingTab />}
         {productType === 'clientView' && <EbClientPreviewTab />}
       </div>
     </div>
@@ -913,11 +918,15 @@ function EbControllerProductsTab() {
           onChange={setSearch}
           placeholder="Buscar por cliente, serie o hardware..."
         />
-        <div className="flex flex-wrap gap-2">
+        {/* Country and both dates share one row from sm up - min-w-0 lets the
+            three shrink together instead of the dates being pushed onto a
+            second line. Below that they wrap, since on a phone the three
+            side by side truncate their own labels. */}
+        <div className="flex flex-wrap gap-2 sm:flex-nowrap">
           <select
             value={countryFilter}
             onChange={(e) => setCountryFilter(e.target.value)}
-            className={`${inputClass} w-auto`}
+            className={`${inputClass} w-auto min-w-0 sm:flex-1`}
           >
             <option value="">Todos los países</option>
             {countries.map((country) => (
@@ -931,14 +940,14 @@ function EbControllerProductsTab() {
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             title="Desde"
-            className={`${inputClass} w-auto`}
+            className={`${inputClass} w-auto min-w-0 sm:flex-1 sm:px-2`}
           />
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             title="Hasta"
-            className={`${inputClass} w-auto`}
+            className={`${inputClass} w-auto min-w-0 sm:flex-1 sm:px-2`}
           />
         </div>
       </div>
