@@ -145,6 +145,8 @@ interface EbClientProductInput {
   observations?: string
   /** "YYYY-MM-DD", optional - set when a distributor resells the unit to this client. */
   soldToEndUserAt?: string
+  /** Kept by EB Engineering instead of sold - excluded from the units-sold total. */
+  internalUse?: boolean
   cableTypeIds?: string[]
   /** IDs of specific ESP32-tested CableCheck rows to attach to this sale (see CableCheckPicker). */
   cableCheckIds?: string[]

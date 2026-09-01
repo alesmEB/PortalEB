@@ -2637,6 +2637,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
     $purchasedAt: Date
     $programFileUrl: String
     $observations: String
+    $internalUse: Boolean!
     $createdById: String!
   ) {
     ebClientProduct_insert(
@@ -2648,6 +2649,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
         observations: $observations
+        internalUse: $internalUse
         createdById: $createdById
       }
     )
@@ -2664,6 +2666,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
     $programFileUrl: String
     $observations: String
     $soldToEndUserAt: Date
+    $internalUse: Boolean!
   ) {
     ebClientProduct_update(
       id: $id
@@ -2676,6 +2679,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
         programFileUrl: $programFileUrl
         observations: $observations
         soldToEndUserAt: $soldToEndUserAt
+        internalUse: $internalUse
       }
     )
   }
@@ -3118,6 +3122,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
     purchasedAt,
     programFileUrl,
     observations,
+    internalUse,
     cableTypeIds,
     cableCheckIds,
     screenIds,
@@ -3139,6 +3144,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
       observations: observations || null,
+      internalUse: internalUse === true,
       createdById: request.auth.uid,
     },
   })
@@ -3181,6 +3187,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     programFileUrl,
     observations,
     soldToEndUserAt,
+    internalUse,
     cableTypeIds,
     cableCheckIds,
     screenIds,
@@ -3205,6 +3212,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
       programFileUrl: programFileUrl || null,
       observations: observations || null,
       soldToEndUserAt: soldToEndUserAt || null,
+      internalUse: internalUse === true,
     },
   })
 

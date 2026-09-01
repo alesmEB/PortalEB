@@ -448,6 +448,7 @@ query ListEbClientProducts @auth(level: USER) {
     purchasedAt
     observations
     soldToEndUserAt
+    internalUse
     retiredAt
     createdAt
     client {

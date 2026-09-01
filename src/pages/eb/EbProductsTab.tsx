@@ -258,6 +258,7 @@ function ProductForm({
   const [softwareVersion, setSoftwareVersion] = useState(product?.softwareVersion ?? '')
   const [purchasedAt, setPurchasedAt] = useState(product?.purchasedAt ?? '')
   const [observations, setObservations] = useState(product?.observations ?? '')
+  const [internalUse, setInternalUse] = useState(product?.internalUse ?? false)
   const [selectedCables, setSelectedCables] = useState<Set<string>>(
     new Set(product?.cables.map((c) => c.cableType.id) ?? []),
   )
@@ -334,6 +335,7 @@ function ProductForm({
         softwareVersion: softwareVersion.trim() || undefined,
         purchasedAt: purchasedAt || undefined,
         observations: observations.trim() || undefined,
+        internalUse,
         programFileUrl: product?.programFileUrl ?? undefined,
         soldToEndUserAt: product?.soldToEndUserAt ?? undefined,
         cableTypeIds: [...selectedCables],
@@ -404,6 +406,21 @@ function ProductForm({
           onChange={(e) => setPurchasedAt(e.target.value)}
           className={`mt-1 ${inputClass}`}
         />
+      </label>
+      <label className="flex items-start gap-2 text-sm text-slate-600">
+        <input
+          type="checkbox"
+          checked={internalUse}
+          onChange={(e) => setInternalUse(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          Uso interno
+          <span className="block text-xs text-slate-400">
+            La unidad se registra igual, con sus cables y su pantalla, pero no cuenta como venta
+            ni ocupa número.
+          </span>
+        </span>
       </label>
       <CableTypePicker
         cableTypes={cableTypes}
@@ -735,11 +752,16 @@ function EbControllerProductsTab() {
   // first - computed from the full, unfiltered list so the numbers stay
   // stable regardless of the search/country/date filters below. Units
   // without a purchasedAt fall back to createdAt for ordering purposes only.
+  // Internal-use units are left out entirely: the number is a sale count, and
+  // giving one to a unit EB kept would make the last number stop matching the
+  // units-sold total.
   const ranksByProductId = useMemo(() => {
     const map = new Map<string, { globalRank: number; countryRank: number }>()
     if (!products) return map
     const effectiveDate = (p: ProductRow) => p.purchasedAt ?? p.createdAt
-    const sorted = [...products].sort((a, b) => (effectiveDate(a) < effectiveDate(b) ? -1 : 1))
+    const sorted = [...products]
+      .filter((p) => !p.internalUse)
+      .sort((a, b) => (effectiveDate(a) < effectiveDate(b) ? -1 : 1))
     const countryCounters = new Map<string, number>()
     sorted.forEach((product, index) => {
       const country = product.client.country
@@ -749,6 +771,9 @@ function EbControllerProductsTab() {
     })
     return map
   }, [products])
+
+  const soldCount = (products ?? []).filter((p) => !p.internalUse).length
+  const internalCount = (products ?? []).filter((p) => p.internalUse).length
 
   const query = search.trim().toLowerCase()
   const filteredProducts = products?.filter((product) => {
@@ -765,7 +790,10 @@ function EbControllerProductsTab() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">{products?.length ?? 0} unidades vendidas</p>
+        <p className="text-sm text-slate-500">
+          {soldCount} unidades vendidas
+          {internalCount > 0 && ` · ${internalCount} de uso interno`}
+        </p>
         <button
           onClick={() => setCreating((v) => !v)}
           className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"
@@ -837,11 +865,16 @@ function EbControllerProductsTab() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-3">
                   <div className="flex shrink-0 flex-col items-center pt-0.5">
-                    <span className="text-lg font-bold leading-none text-eb-blue-dark">
-                      #{ranks?.globalRank}
-                    </span>
+                    {product.internalUse ? (
+                      <span className="text-lg font-bold leading-none text-slate-300">—</span>
+                    ) : (
+                      <span className="text-lg font-bold leading-none text-eb-blue-dark">
+                        #{ranks?.globalRank}
+                      </span>
+                    )}
                     <span className="mt-0.5 flex items-center gap-1 text-xs leading-none text-slate-400">
-                      #{ranks?.countryRank} <CountryFlag country={product.client.country} />
+                      {!product.internalUse && `#${ranks?.countryRank}`}{' '}
+                      <CountryFlag country={product.client.country} />
                     </span>
                   </div>
 
@@ -851,6 +884,11 @@ function EbControllerProductsTab() {
                   >
                     <p className="flex items-center gap-2 text-sm font-semibold text-eb-blue-dark">
                       {product.productName} · {product.client.companyName}
+                      {product.internalUse && (
+                        <span className="rounded-full bg-eb-teal/10 px-2 py-0.5 text-[10px] font-medium text-eb-teal-dark">
+                          Uso interno
+                        </span>
+                      )}
                       {retired && (
                         <span className="rounded-full bg-slate-300 px-2 py-0.5 text-[10px] font-medium text-slate-700">
                           Dado de baja

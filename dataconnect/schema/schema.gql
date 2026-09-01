@@ -434,6 +434,11 @@ type EbClientProduct @table(name: "eb_client_products") {
   # a distributor resells this unit - the date is chosen there (defaults to
   # today), not necessarily when the transfer is recorded in the app.
   soldToEndUserAt: Date
+  # A unit kept by EB Engineering itself (demo, testing, own workshop) rather
+  # than sold. It's recorded like any other sale - client, serial, cables,
+  # display - but doesn't count towards the units-sold total and takes no
+  # number in the sale sequence, so those stay a count of real sales.
+  internalUse: Boolean! @default(value: false)
   # Set when a unit is decommissioned (e.g. broken) - null means active. Kept
   # in the database and still visible in the list rather than deleted, since
   # the sale/serial history matters even for a dead unit. See
