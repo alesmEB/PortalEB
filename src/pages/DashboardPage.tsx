@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { OrderLocation, UserRole, getMyEbClient } from '@dataconnect/generated'
+import { UserRole, getMyEbClient } from '@dataconnect/generated'
 import logoElias from '../assets/branding/logo-elias.png'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
 import { FRESH } from '../lib/dataConnectOptions'
-import { createWorkOrder } from '../lib/orderCreation'
 
 export function DashboardPage() {
   const { profile, permissions, signOut } = useAuth()
   const navigate = useNavigate()
-  const [creatingTestOrder, setCreatingTestOrder] = useState(false)
   // Blocks rendering the regular dashboard for CLIENT-role users until we
   // know whether they're an EB Engineering client - if so, they're sent
   // straight to their product list instead of ever seeing this page (see
@@ -31,31 +29,6 @@ export function DashboardPage() {
       setCheckingEbClient(false)
     })
   }, [profile?.role, navigate])
-
-  // Lab-only shortcut for QA: creates a throwaway order and drops straight
-  // into technician assignment, skipping the quote step entirely.
-  async function handleCreateTestOrder() {
-    setCreatingTestOrder(true)
-    try {
-      const stamp = Date.now()
-      const { workOrderId } = await createWorkOrder({
-        locationCode: OrderLocation.ALGECIRAS,
-        newCustomer: { name: `Cliente lab ${stamp}`, contactName: 'Lab', phone: '600000000' },
-        newBoat: { name: `Barco lab ${stamp}` },
-        newEngines: [
-          { engineType: 'Test', chassisNumber: 'LAB-CH', propellerSerialNumber: 'LAB-PROP' },
-        ],
-        assetLocation: 'Zona de pruebas',
-        description: 'Orden de prueba rápida (lab)',
-        tasks: ['Tarea de prueba'],
-        skipQuote: true,
-      })
-
-      navigate(`/orders/${workOrderId}`, { state: { from: '/', autoAssign: true } })
-    } finally {
-      setCreatingTestOrder(false)
-    }
-  }
 
   if (checkingEbClient) {
     return (
@@ -119,25 +92,6 @@ export function DashboardPage() {
               className="w-full rounded-lg bg-eb-blue-dark py-3 text-base font-semibold text-white transition-colors hover:opacity-90"
             >
               Administración
-            </button>
-          </HasPermission>
-
-          <HasPermission permission="admin:lab">
-            <button
-              onClick={() => navigate('/notifications/send')}
-              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5"
-            >
-              Enviar notificación (lab)
-            </button>
-          </HasPermission>
-
-          <HasPermission permission="admin:lab">
-            <button
-              disabled={creatingTestOrder}
-              onClick={handleCreateTestOrder}
-              className="w-full rounded-lg border-2 border-dashed border-eb-blue-dark py-3 text-base font-semibold text-eb-blue-dark transition-colors hover:bg-eb-blue-dark/5 disabled:opacity-50"
-            >
-              {creatingTestOrder ? 'Creando orden...' : 'Orden de prueba → asignación (lab)'}
             </button>
           </HasPermission>
 
