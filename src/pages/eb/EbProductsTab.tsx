@@ -269,6 +269,7 @@ function ProductForm({
     product?.screens[0]?.id ?? null,
   )
   const [submitting, setSubmitting] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Already-assigned checks won't show up in the unassigned pool (their
@@ -323,6 +324,78 @@ function ProductForm({
       return next
     })
   }
+
+  // What the confirmation step lists before an edit is written. Editing a sale
+  // rewrites a record that stock and client-facing views hang off, so the
+  // dialog spells out each field that would change instead of asking a bare
+  // "¿seguro?".
+  const changes = useMemo(() => {
+    if (!product) return []
+    const list: string[] = []
+    const was = (before: string, after: string) => `${before || '(vacío)'} → ${after || '(vacío)'}`
+    if (clientId !== product.client.id) {
+      const next = clients.find((c) => c.id === clientId)
+      list.push(`Cliente: ${was(product.client.companyName, next?.companyName ?? '')}`)
+    }
+    if (effectiveSerialNumber.trim() !== product.serialNumber) {
+      list.push(`Nº de serie: ${was(product.serialNumber, effectiveSerialNumber.trim())}`)
+    }
+    if (hardwareNumber.trim() !== product.hardwareNumber) {
+      list.push(`Nº de hardware: ${was(product.hardwareNumber, hardwareNumber.trim())}`)
+    }
+    if (softwareVersion.trim() !== (product.softwareVersion ?? '')) {
+      list.push(`Versión de software: ${was(product.softwareVersion ?? '', softwareVersion.trim())}`)
+    }
+    if (purchasedAt !== (product.purchasedAt ?? '')) {
+      list.push(`Fecha de compra: ${was(product.purchasedAt ?? '', purchasedAt)}`)
+    }
+    if (internalUse !== product.internalUse) {
+      list.push(
+        internalUse
+          ? 'Pasa a uso interno: deja de contar como venta y pierde su número'
+          : 'Deja de ser uso interno: vuelve a contar como venta y toma número',
+      )
+    }
+    const cableNames = (ids: Set<string>) =>
+      cableTypes.filter((c) => ids.has(c.id)).map((c) => c.name).sort().join(', ')
+    const cablesBefore = cableNames(new Set(product.cables.map((c) => c.cableType.id)))
+    const cablesAfter = cableNames(selectedCables)
+    if (cablesBefore !== cablesAfter) list.push(`Cables incluidos: ${was(cablesBefore, cablesAfter)}`)
+
+    const checkLabels = (ids: Set<string>) =>
+      cableCheckOptions
+        .filter((c) => ids.has(c.id))
+        .map((c) => `#${c.sequenceNumber}`)
+        .sort()
+        .join(', ')
+    const checksBefore = checkLabels(new Set(product.registeredCables.map((c) => c.id)))
+    const checksAfter = checkLabels(selectedCableChecks)
+    if (checksBefore !== checksAfter) {
+      list.push(`Cables registrados: ${was(checksBefore, checksAfter)}`)
+    }
+
+    const screenBefore = product.screens[0]?.serialNumber ?? ''
+    const screenAfter = screenOptions.find((s) => s.id === selectedScreenId)?.serialNumber ?? ''
+    if (screenBefore !== screenAfter) list.push(`Pantalla: ${was(screenBefore, screenAfter)}`)
+    if (observations.trim() !== (product.observations ?? '')) list.push('Observaciones')
+    return list
+  }, [
+    product,
+    clients,
+    clientId,
+    effectiveSerialNumber,
+    hardwareNumber,
+    softwareVersion,
+    purchasedAt,
+    internalUse,
+    cableTypes,
+    selectedCables,
+    cableCheckOptions,
+    selectedCableChecks,
+    screenOptions,
+    selectedScreenId,
+    observations,
+  ])
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -448,19 +521,46 @@ function ProductForm({
         />
       </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {confirming && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+          {changes.length === 0 ? (
+            <p className="text-xs text-amber-800">No has cambiado nada en esta venta.</p>
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-amber-800">
+                Se va a modificar esta venta:
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-800">
+                {changes.map((change) => (
+                  <li key={change}>{change}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <button
-          onClick={onCancel}
-          className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+          onClick={confirming ? () => setConfirming(false) : onCancel}
+          disabled={submitting}
+          className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
         >
-          Cancelar
+          {confirming ? 'Volver' : 'Cancelar'}
         </button>
         <button
-          disabled={!canSubmit || submitting}
-          onClick={handleSubmit}
+          disabled={!canSubmit || submitting || (confirming && changes.length === 0)}
+          onClick={confirming || !product ? handleSubmit : () => setConfirming(true)}
           className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {submitting ? 'Guardando...' : product ? 'Guardar cambios' : 'Registrar venta'}
+          {submitting
+            ? 'Guardando...'
+            : confirming
+              ? 'Confirmar cambios'
+              : product
+                ? 'Guardar cambios'
+                : 'Registrar venta'}
         </button>
       </div>
     </div>
@@ -772,6 +872,11 @@ function EbControllerProductsTab() {
     return map
   }, [products])
 
+  // The edit form lives in a modal rather than expanded inside the row: it's a
+  // long form (cables, registered cables, display) and reading it inline meant
+  // scrolling past the rest of the list.
+  const editingProduct = products?.find((p) => p.id === editingId) ?? null
+
   const soldCount = (products ?? []).filter((p) => !p.internalUse).length
   const internalCount = (products ?? []).filter((p) => p.internalUse).length
 
@@ -991,18 +1096,6 @@ function EbControllerProductsTab() {
                 </div>
               )}
 
-              {editingId === product.id && (
-                <ProductForm
-                  product={product}
-                  clients={clients}
-                  cableTypes={cableTypes}
-                  unassignedCableChecks={unassignedCableChecks}
-                  availableScreens={availableScreens}
-                  onSaved={() => { setEditingId(null); refresh() }}
-                  onCancel={() => setEditingId(null)}
-                  onCableTypesChanged={refreshCableTypes}
-                />
-              )}
             </div>
           )
         })}
@@ -1010,6 +1103,28 @@ function EbControllerProductsTab() {
           <p className="text-xs text-slate-400">Ninguna venta registrada todavía.</p>
         )}
       </div>
+
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl">
+            <h2 className="text-sm font-semibold text-eb-blue-dark">Editar venta</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {editingProduct.productName} · {editingProduct.client.companyName} · Serie{' '}
+              {editingProduct.serialNumber}
+            </p>
+            <ProductForm
+              product={editingProduct}
+              clients={clients}
+              cableTypes={cableTypes}
+              unassignedCableChecks={unassignedCableChecks}
+              availableScreens={availableScreens}
+              onSaved={() => { setEditingId(null); refresh() }}
+              onCancel={() => setEditingId(null)}
+              onCableTypesChanged={refreshCableTypes}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
