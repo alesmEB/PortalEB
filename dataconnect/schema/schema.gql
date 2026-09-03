@@ -256,6 +256,38 @@ type WorkOrderScheduledDate
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
+# A calendar entry with nothing billable behind it yet - "Mirar problema barco
+# X": a visit agreed with a client before there's an order, so the boat is free
+# text instead of a real Boat row and there's no customer, quote, assignment or
+# code. It only ever lives in the calendar (CalendarPage.tsx); if the visit
+# turns into actual work, a normal WorkOrder gets created and the appointment
+# is closed.
+type CalendarAppointment @table(name: "calendar_appointments") {
+  id: UUID! @default(expr: "uuidV4()")
+  title: String!
+  # Free text on purpose - these are boats we have no record of yet.
+  boatDetails: String
+  locationCode: OrderLocation!
+  notes: String
+  # Closed appointments drop out of the "citas" panel but keep the days they
+  # were scheduled on visible in the calendar, same as a COMPLETED order's
+  # past days - deleting is for entries created by mistake.
+  closedAt: Timestamp
+  createdById: String!
+  createdBy: User! @ref(fields: ["createdById"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Same shape as WorkOrderScheduledDate above: one row per day the appointment
+# sits on, so a visit can span several days.
+type CalendarAppointmentDate
+  @table(name: "calendar_appointment_dates", key: ["appointment", "date"]) {
+  appointmentId: UUID!
+  appointment: CalendarAppointment! @ref(fields: ["appointmentId"])
+  date: Date!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
 # Up to 2 rows per WorkOrder (attemptNumber 1 and 2); a 2nd rejection
 # cancels/archives the order. Enforced in the connector's mutation logic,
 # not as a DB constraint, since Data Connect has no CHECK directive.

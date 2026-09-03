@@ -2045,6 +2045,170 @@ exports.setWorkOrderScheduledDate = onCall(async (request) => {
   return { success: true }
 })
 
+// ---------------------------------------------------------------------------
+// Calendar appointments - days blocked out for something with no work order
+// behind it yet ("Mirar problema barco X"). Same edit rule as the calendar
+// itself (admin, or the admin:lab bypass): technicians can see them but never
+// write. See schema.gql's CalendarAppointment.
+// ---------------------------------------------------------------------------
+
+const CREATE_CALENDAR_APPOINTMENT_MUTATION = `
+  mutation CreateCalendarAppointmentAdmin(
+    $title: String!
+    $boatDetails: String
+    $locationCode: OrderLocation!
+    $notes: String
+    $createdById: String!
+  ) {
+    calendarAppointment_insert(
+      data: {
+        title: $title
+        boatDetails: $boatDetails
+        locationCode: $locationCode
+        notes: $notes
+        createdById: $createdById
+      }
+    )
+  }
+`
+const UPDATE_CALENDAR_APPOINTMENT_MUTATION = `
+  mutation UpdateCalendarAppointmentAdmin(
+    $id: UUID!
+    $title: String!
+    $boatDetails: String
+    $locationCode: OrderLocation!
+    $notes: String
+  ) {
+    calendarAppointment_update(
+      id: $id
+      data: { title: $title, boatDetails: $boatDetails, locationCode: $locationCode, notes: $notes }
+    )
+  }
+`
+const SET_CALENDAR_APPOINTMENT_CLOSED_MUTATION = `
+  mutation SetCalendarAppointmentClosedAdmin($id: UUID!, $closedAt: Timestamp) {
+    calendarAppointment_update(id: $id, data: { closedAt: $closedAt })
+  }
+`
+const DELETE_CALENDAR_APPOINTMENT_MUTATION = `
+  mutation DeleteCalendarAppointmentAdmin($id: UUID!) {
+    calendarAppointment_delete(id: $id)
+  }
+`
+const DELETE_CALENDAR_APPOINTMENT_DATES_MUTATION = `
+  mutation DeleteCalendarAppointmentDatesAdmin($appointmentId: UUID!) {
+    calendarAppointmentDate_deleteMany(where: { appointmentId: { eq: $appointmentId } })
+  }
+`
+const UPSERT_CALENDAR_APPOINTMENT_DATE_MUTATION = `
+  mutation UpsertCalendarAppointmentDateAdmin($appointmentId: UUID!, $date: Date!) {
+    calendarAppointmentDate_upsert(data: { appointmentId: $appointmentId, date: $date })
+  }
+`
+const DELETE_CALENDAR_APPOINTMENT_DATE_MUTATION = `
+  mutation DeleteCalendarAppointmentDateAdmin($appointmentId: UUID!, $date: Date!) {
+    calendarAppointmentDate_delete(key: { appointmentId: $appointmentId, date: $date })
+  }
+`
+
+const ORDER_LOCATIONS = ['ALGECIRAS', 'LA_LINEA', 'SOTOGRANDE']
+
+function appointmentFields(data) {
+  const { title, boatDetails, locationCode, notes } = data ?? {}
+  if (typeof title !== 'string' || !title.trim()) {
+    throw new HttpsError('invalid-argument', 'La cita necesita un título.')
+  }
+  if (!ORDER_LOCATIONS.includes(locationCode)) {
+    throw new HttpsError('invalid-argument', 'Localización inválida.')
+  }
+  return {
+    title: title.trim(),
+    boatDetails: typeof boatDetails === 'string' && boatDetails.trim() ? boatDetails.trim() : null,
+    locationCode,
+    notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+  }
+}
+
+exports.createCalendarAppointment = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const res = await dataConnect.executeGraphql(CREATE_CALENDAR_APPOINTMENT_MUTATION, {
+    variables: { ...appointmentFields(request.data), createdById: request.auth.uid },
+  })
+  return { appointmentId: res.data.calendarAppointment_insert.id }
+})
+
+exports.updateCalendarAppointment = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { appointmentId } = request.data ?? {}
+  if (typeof appointmentId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la cita.')
+  }
+
+  await dataConnect.executeGraphql(UPDATE_CALENDAR_APPOINTMENT_MUTATION, {
+    variables: { id: appointmentId, ...appointmentFields(request.data) },
+  })
+  return { success: true }
+})
+
+exports.setCalendarAppointmentClosed = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { appointmentId, closed } = request.data ?? {}
+  if (typeof appointmentId !== 'string' || typeof closed !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+
+  await dataConnect.executeGraphql(SET_CALENDAR_APPOINTMENT_CLOSED_MUTATION, {
+    variables: { id: appointmentId, closedAt: closed ? new Date().toISOString() : null },
+  })
+  return { success: true }
+})
+
+// Wipes the appointment's days first - PostgreSQL would refuse the delete
+// while they still reference it, and an appointment created by mistake has no
+// history worth keeping (that's what closing is for).
+exports.deleteCalendarAppointment = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { appointmentId } = request.data ?? {}
+  if (typeof appointmentId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la cita.')
+  }
+
+  await dataConnect.executeGraphql(DELETE_CALENDAR_APPOINTMENT_DATES_MUTATION, {
+    variables: { appointmentId },
+  })
+  await dataConnect.executeGraphql(DELETE_CALENDAR_APPOINTMENT_MUTATION, {
+    variables: { id: appointmentId },
+  })
+  return { success: true }
+})
+
+exports.setCalendarAppointmentScheduledDate = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { appointmentId, date, scheduled } = request.data ?? {}
+  if (typeof appointmentId !== 'string' || typeof scheduled !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new HttpsError('invalid-argument', 'Fecha inválida.')
+  }
+
+  if (scheduled) {
+    await dataConnect.executeGraphql(UPSERT_CALENDAR_APPOINTMENT_DATE_MUTATION, {
+      variables: { appointmentId, date },
+    })
+  } else {
+    await dataConnect.executeGraphql(DELETE_CALENDAR_APPOINTMENT_DATE_MUTATION, {
+      variables: { appointmentId, date },
+    })
+  }
+  return { success: true }
+})
+
 const GET_ALL_ACTIVE_TIME_LOGS_QUERY = `
   query GetAllActiveTimeLogsAdmin {
     timeLogs(where: { clockOut: { isNull: true } }) {

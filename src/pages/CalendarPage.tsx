@@ -2,18 +2,32 @@ import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
+  OrderLocation,
   UserRole,
   WorkOrderStatus,
   listAssignedWorkOrders,
+  listCalendarAppointmentDates,
+  listCalendarAppointments,
   listWorkOrderScheduledDates,
   type ListAssignedWorkOrdersData,
+  type ListCalendarAppointmentDatesData,
+  type ListCalendarAppointmentsData,
   type ListWorkOrderScheduledDatesData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
-import { setWorkOrderScheduledDate } from '../lib/calendar'
+import {
+  createCalendarAppointment,
+  deleteCalendarAppointment,
+  setCalendarAppointmentClosed,
+  setCalendarAppointmentScheduledDate,
+  setWorkOrderScheduledDate,
+  updateCalendarAppointment,
+  type CalendarAppointmentInput,
+} from '../lib/calendar'
 import { FRESH } from '../lib/dataConnectOptions'
+import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 import {
   addDays,
@@ -31,6 +45,9 @@ const weekdayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 type AssignedOrder = ListAssignedWorkOrdersData['workOrders'][number]
 type ScheduledEntry = ListWorkOrderScheduledDatesData['workOrderScheduledDates'][number]
+type Appointment = ListCalendarAppointmentsData['calendarAppointments'][number]
+type AppointmentEntry =
+  ListCalendarAppointmentDatesData['calendarAppointmentDates'][number]
 
 function taskProgressLabel(tasks: { isCompleted: boolean }[]) {
   if (tasks.length === 0) return null
@@ -71,6 +88,11 @@ export function CalendarPage() {
   const canManage = profile?.role === UserRole.ADMIN || isLab
   const [assignedOrders, setAssignedOrders] = useState<AssignedOrder[] | null>(null)
   const [scheduledEntries, setScheduledEntries] = useState<ScheduledEntry[] | null>(null)
+  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [appointmentEntries, setAppointmentEntries] = useState<AppointmentEntry[]>([])
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | 'new' | null>(null)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const [showClosedAppointments, setShowClosedAppointments] = useState(false)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()))
   const [view, setView] = useState<'week' | 'month'>('week')
@@ -92,6 +114,12 @@ export function CalendarPage() {
     listWorkOrderScheduledDates(FRESH).then((res) =>
       setScheduledEntries(res.data.workOrderScheduledDates),
     )
+    listCalendarAppointments(FRESH).then((res) =>
+      setAppointments(res.data.calendarAppointments),
+    )
+    listCalendarAppointmentDates(FRESH).then((res) =>
+      setAppointmentEntries(res.data.calendarAppointmentDates),
+    )
   }
 
   useEffect(() => {
@@ -107,6 +135,47 @@ export function CalendarPage() {
     }
     return map
   }, [scheduledEntries])
+
+  const appointmentsByDate = useMemo(() => {
+    const map = new Map<string, AppointmentEntry[]>()
+    for (const entry of appointmentEntries) {
+      const list = map.get(entry.date) ?? []
+      list.push(entry)
+      map.set(entry.date, list)
+    }
+    return map
+  }, [appointmentEntries])
+
+  // Closed appointments stay out of the panel but keep their days on the
+  // calendar, same as a completed order's past days.
+  const openAppointments = appointments.filter((a) => !a.closedAt)
+  const closedAppointments = appointments.filter((a) => a.closedAt)
+
+  async function handleToggleAppointment(
+    appointmentId: string,
+    dateKey: string,
+    scheduled: boolean,
+  ) {
+    const key = `cita-${appointmentId}-${dateKey}`
+    setSavingKey(key)
+    try {
+      await setCalendarAppointmentScheduledDate(appointmentId, dateKey, scheduled)
+      load()
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function handleCloseAppointment(appointmentId: string, closed: boolean) {
+    await setCalendarAppointmentClosed(appointmentId, closed)
+    load()
+  }
+
+  async function handleDeleteAppointment(appointmentId: string) {
+    await deleteCalendarAppointment(appointmentId)
+    setConfirmingDeleteId(null)
+    load()
+  }
 
   async function handleToggle(workOrderId: string, dateKey: string, scheduled: boolean) {
     const key = `${workOrderId}-${dateKey}`
@@ -271,6 +340,17 @@ export function CalendarPage() {
                         </button>
                       )
                     })}
+                    {(appointmentsByDate.get(key) ?? []).map((entry) => (
+                      <div
+                        key={entry.appointment.id}
+                        title={`Cita · ${orderLocationLabel[entry.appointment.locationCode]}${
+                          entry.appointment.boatDetails ? ` · ${entry.appointment.boatDetails}` : ''
+                        }`}
+                        className="rounded border border-dashed border-amber-400 bg-amber-50 px-1 py-0.5 text-[9px] text-amber-900"
+                      >
+                        <p className="truncate font-semibold">{entry.appointment.title}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )
@@ -350,7 +430,46 @@ export function CalendarPage() {
                         </div>
                       )
                     })}
-                    {dayEntries.length === 0 && <p className="text-xs text-slate-400">Sin órdenes</p>}
+                    {(appointmentsByDate.get(key) ?? []).map((entry) => {
+                      const appointment = entry.appointment
+                      const saving = savingKey === `cita-${appointment.id}-${key}`
+                      return (
+                        <div
+                          key={appointment.id}
+                          className="rounded-lg border border-dashed border-amber-400 bg-amber-50 p-2 text-left"
+                        >
+                          <div className="flex items-start justify-between gap-1">
+                            <div className="flex-1">
+                              <p className="text-xs font-semibold text-amber-900">
+                                {appointment.title}
+                              </p>
+                              {appointment.boatDetails && (
+                                <p className="text-xs text-amber-800">{appointment.boatDetails}</p>
+                              )}
+                            </div>
+                            {canManage && !appointment.closedAt && (
+                              <button
+                                disabled={saving}
+                                onClick={() => handleToggleAppointment(appointment.id, key, false)}
+                                title="Quitar este día"
+                                className="text-amber-500 hover:text-red-600 disabled:opacity-50"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <span className="mt-1 inline-block rounded-full bg-amber-200/70 px-2 py-0.5 text-[10px] text-amber-900">
+                            Cita · {orderLocationLabel[appointment.locationCode]}
+                          </span>
+                          {appointment.notes && (
+                            <p className="mt-1 text-[11px] text-amber-800">{appointment.notes}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {dayEntries.length === 0 && (appointmentsByDate.get(key) ?? []).length === 0 && (
+                      <p className="text-xs text-slate-400">Sin órdenes</p>
+                    )}
                   </div>
                 </div>
               )
@@ -425,8 +544,289 @@ export function CalendarPage() {
             </div>
           </div>
           )}
+
+          {canManage && (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-eb-blue-dark">
+                    Citas sin orden ({openAppointments.length})
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Visitas que todavía no tienen orden de trabajo. Se marcan en los días igual que
+                    las órdenes.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setEditingAppointment('new')}
+                  className="shrink-0 rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"
+                >
+                  + Nueva cita
+                </button>
+              </div>
+              <div className="mt-3 space-y-3">
+                {openAppointments.map((appointment) => {
+                  const scheduledSet = new Set(appointment.scheduledDates.map((d) => d.date))
+                  return (
+                    <div
+                      key={appointment.id}
+                      className="rounded-lg border border-dashed border-amber-400 bg-amber-50/60 p-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          onClick={() => setEditingAppointment(appointment)}
+                          className="flex-1 text-left"
+                        >
+                          <p className="text-sm font-semibold text-amber-900">{appointment.title}</p>
+                          <p className="text-xs text-amber-800">
+                            {orderLocationLabel[appointment.locationCode]}
+                            {appointment.boatDetails && ` · ${appointment.boatDetails}`}
+                          </p>
+                          {appointment.notes && (
+                            <p className="mt-0.5 text-xs text-amber-700">{appointment.notes}</p>
+                          )}
+                        </button>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            onClick={() => handleCloseAppointment(appointment.id, true)}
+                            title="Cerrar la cita - deja de aparecer aquí pero se mantiene en los días"
+                            className="rounded-lg border border-amber-400 px-2 py-1 text-xs text-amber-800"
+                          >
+                            Cerrar
+                          </button>
+                          <button
+                            onClick={() => setConfirmingDeleteId(appointment.id)}
+                            title="Eliminar la cita"
+                            className="text-slate-400 hover:text-red-600"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {confirmingDeleteId === appointment.id && (
+                        <div className="mt-2 rounded-lg bg-red-50 p-2">
+                          <p className="text-xs text-red-700">
+                            ¿Eliminar esta cita y los días en los que está marcada?
+                          </p>
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              onClick={() => setConfirmingDeleteId(null)}
+                              className="flex-1 rounded-lg border border-slate-300 py-1.5 text-xs text-slate-600"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAppointment(appointment.id)}
+                              className="flex-1 rounded-lg bg-red-600 py-1.5 text-xs font-semibold text-white"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {appointment.scheduledDates.length > 0 && (
+                        <p className="mt-1 text-[11px] text-amber-600">
+                          Programada: {appointment.scheduledDates.map((d) => d.date).join(', ')}
+                        </p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {visibleDays.map((day) => {
+                          const dayKey = toDateKey(day)
+                          const checked = scheduledSet.has(dayKey)
+                          const saving = savingKey === `cita-${appointment.id}-${dayKey}`
+                          return (
+                            <label
+                              key={dayKey}
+                              className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs capitalize ${
+                                checked
+                                  ? 'border-amber-500 bg-amber-500 text-white'
+                                  : 'border-amber-300 text-amber-800'
+                              } ${saving ? 'opacity-50' : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="hidden"
+                                disabled={saving}
+                                checked={checked}
+                                onChange={(e) =>
+                                  handleToggleAppointment(appointment.id, dayKey, e.target.checked)
+                                }
+                              />
+                              {formatDayLabel(day)}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+                {openAppointments.length === 0 && (
+                  <p className="text-xs text-slate-400">Ninguna cita pendiente.</p>
+                )}
+              </div>
+
+              {closedAppointments.length > 0 && (
+                <div className="mt-3 border-t border-slate-200 pt-3">
+                  <button
+                    onClick={() => setShowClosedAppointments((open) => !open)}
+                    className="text-xs text-slate-500 underline"
+                  >
+                    {showClosedAppointments ? 'Ocultar' : 'Ver'} citas cerradas (
+                    {closedAppointments.length})
+                  </button>
+                  {showClosedAppointments && (
+                    <ul className="mt-2 space-y-1">
+                      {closedAppointments.map((appointment) => (
+                        <li
+                          key={appointment.id}
+                          className="flex items-center justify-between gap-2 text-xs text-slate-500"
+                        >
+                          <span className="flex-1 truncate">
+                            {appointment.title} · {orderLocationLabel[appointment.locationCode]}
+                          </span>
+                          <button
+                            onClick={() => handleCloseAppointment(appointment.id, false)}
+                            className="shrink-0 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600"
+                          >
+                            Reabrir
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
+
+      {editingAppointment && (
+        <AppointmentModal
+          appointment={editingAppointment === 'new' ? null : editingAppointment}
+          onClose={() => setEditingAppointment(null)}
+          onSaved={() => {
+            setEditingAppointment(null)
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Create/edit dialog for a calendar appointment - the boat is free text
+ * because these are visits to boats the system has no record of yet. */
+function AppointmentModal({
+  appointment,
+  onClose,
+  onSaved,
+}: {
+  appointment: Appointment | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [title, setTitle] = useState(appointment?.title ?? '')
+  const [boatDetails, setBoatDetails] = useState(appointment?.boatDetails ?? '')
+  const [locationCode, setLocationCode] = useState<OrderLocation>(
+    appointment?.locationCode ?? OrderLocation.ALGECIRAS,
+  )
+  const [notes, setNotes] = useState(appointment?.notes ?? '')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const inputClass =
+    'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue'
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const input: CalendarAppointmentInput = {
+        title: title.trim(),
+        boatDetails: boatDetails.trim() || undefined,
+        locationCode,
+        notes: notes.trim() || undefined,
+      }
+      if (appointment) await updateCalendarAppointment(appointment.id, input)
+      else await createCalendarAppointment(input)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar la cita.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">
+          {appointment ? 'Editar cita' : 'Nueva cita'}
+        </h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Una visita sin orden de trabajo, del estilo "Mirar problema barco X".
+        </p>
+
+        <div className="mt-3 space-y-3">
+          <input
+            placeholder="Qué hay que hacer"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className={inputClass}
+          />
+          <input
+            placeholder="Embarcación / máquina (opcional)"
+            value={boatDetails}
+            onChange={(e) => setBoatDetails(e.target.value)}
+            className={inputClass}
+          />
+          <label className="block text-xs font-medium text-slate-500">
+            Localización
+            <select
+              value={locationCode}
+              onChange={(e) => setLocationCode(e.target.value as OrderLocation)}
+              className={`mt-1 ${inputClass}`}
+            >
+              {Object.values(OrderLocation).map((loc) => (
+                <option key={loc} value={loc}>
+                  {orderLocationLabel[loc]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-slate-500">
+            Comentarios de la actuación (opcional)
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className={`mt-1 ${inputClass}`}
+            />
+          </label>
+        </div>
+
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !title.trim()}
+            className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {submitting ? 'Guardando...' : appointment ? 'Guardar cambios' : 'Crear cita'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

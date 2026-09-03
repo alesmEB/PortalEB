@@ -268,6 +268,41 @@ query ListAssignedWorkOrders @auth(level: USER) {
   }
 }
 
+# The "Citas sin orden" panel of the calendar: appointments that aren't tied to
+# a work order, with the days each one is already scheduled on. Closed ones are
+# filtered out client-side so they can still be listed when reopening.
+query ListCalendarAppointments @auth(level: USER) {
+  calendarAppointments(orderBy: { createdAt: DESC }, limit: 1000) {
+    id
+    title
+    boatDetails
+    locationCode
+    notes
+    closedAt
+    createdAt
+    scheduledDates: calendarAppointmentDates_on_appointment(orderBy: { date: ASC }) {
+      date
+    }
+  }
+}
+
+# Day columns of the calendar, appointment side - mirrors
+# ListWorkOrderScheduledDates below, including keeping closed appointments'
+# past days visible.
+query ListCalendarAppointmentDates @auth(level: USER) {
+  calendarAppointmentDates(orderBy: { date: ASC }, limit: 1000) {
+    date
+    appointment {
+      id
+      title
+      boatDetails
+      locationCode
+      notes
+      closedAt
+    }
+  }
+}
+
 # Powers the day columns of the weekly calendar page - every scheduled day
 # for every order, regardless of the order's status, so a COMPLETED order's
 # past scheduled days still show up (read-only) instead of disappearing.
