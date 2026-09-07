@@ -163,6 +163,25 @@ export async function revertAdminProcessStep(workOrderId: string, step: AdminPro
   return res.data
 }
 
+export interface WorkOrderTaskInput {
+  /** Omitted for a job being added; an existing job keeps its id so its
+   *  completed state survives the edit. */
+  id?: string
+  description: string
+}
+
+const callUpdateWorkOrderTasks = httpsCallable<
+  { workOrderId: string; tasks: WorkOrderTaskInput[] },
+  { success: boolean; changed: boolean }
+>(functions, 'updateWorkOrderTasks')
+
+/** Rewrites the order's job list - requires "orders:create" and an order that
+ *  isn't completed or cancelled. Logged as ORDER_TASKS_UPDATED. */
+export async function updateWorkOrderTasks(workOrderId: string, tasks: WorkOrderTaskInput[]) {
+  const res = await callUpdateWorkOrderTasks({ workOrderId, tasks })
+  return res.data
+}
+
 const callSetWorkOrderExternalCode = httpsCallable<
   { workOrderId: string; externalCode: string },
   { success: boolean }

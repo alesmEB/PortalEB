@@ -365,7 +365,7 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
         propellerSerialNumber
       }
     }
-    tasks: workOrderTasks_on_workOrder {
+    tasks: workOrderTasks_on_workOrder(orderBy: { createdAt: ASC }) {
       id
       description
       isCompleted

@@ -1774,6 +1774,191 @@ exports.toggleWorkOrderTask = onCall(async (request) => {
   return { success: true }
 })
 
+// Correcting the list of jobs after the order exists - people do get them
+// wrong, and recreating the whole order to fix a description is worse than
+// editing one. Tasks are matched by id rather than replaced wholesale so a
+// task the technician already ticked keeps its isCompleted; only the ones
+// actually dropped from the list are deleted. Gated on "orders:create" -
+// the same people who typed them in the first place - and logged, since this
+// rewrites what the order says it's for.
+const GET_WORK_ORDER_TASKS_QUERY = `
+  query GetWorkOrderTasksAdmin($workOrderId: UUID!) {
+    workOrder(id: $workOrderId) {
+      code
+      status
+      locationCode
+      assetLocation
+      description
+      createdAt
+      finalReportUrl
+      customer {
+        name
+        contactName
+        phone
+      }
+      boat {
+        name
+        registrationNumber
+        engines: engines_on_boat {
+          engineType
+          chassisNumber
+          propellerSerialNumber
+        }
+      }
+      tasks: workOrderTasks_on_workOrder(orderBy: { createdAt: ASC }) {
+        id
+        description
+        isCompleted
+      }
+    }
+  }
+`
+const ORDER_LOCATION_LABEL = {
+  ALGECIRAS: 'Algeciras',
+  LA_LINEA: 'La Línea',
+  SOTOGRANDE: 'Sotogrande',
+}
+const UPDATE_WORK_ORDER_TASK_DESCRIPTION_MUTATION = `
+  mutation UpdateWorkOrderTaskDescriptionAdmin($id: UUID!, $description: String!) {
+    workOrderTask_update(id: $id, data: { description: $description })
+  }
+`
+const DELETE_WORK_ORDER_TASK_MUTATION = `
+  mutation DeleteWorkOrderTaskAdmin($id: UUID!) {
+    workOrderTask_delete(id: $id)
+  }
+`
+
+const TASK_EDITABLE_STATUSES = [
+  'PENDING_QUOTE',
+  'QUOTE_REJECTED',
+  'AWAITING_ASSIGNMENT',
+  'ASSIGNED',
+  'IN_PROGRESS',
+]
+
+exports.updateWorkOrderTasks = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+  const callerPermissions = Array.isArray(request.auth.token?.permissions)
+    ? request.auth.token.permissions
+    : []
+  if (!callerPermissions.includes('orders:create') && !callerPermissions.includes('admin:lab')) {
+    throw new HttpsError('permission-denied', 'No tienes permiso para editar los trabajos.')
+  }
+
+  const { workOrderId, tasks } = request.data ?? {}
+  if (typeof workOrderId !== 'string' || !Array.isArray(tasks)) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  const incoming = tasks
+    .map((task) => ({
+      id: typeof task?.id === 'string' ? task.id : null,
+      description: typeof task?.description === 'string' ? task.description.trim() : '',
+    }))
+    .filter((task) => task.description)
+  if (incoming.length === 0) {
+    throw new HttpsError('invalid-argument', 'La orden necesita al menos un trabajo.')
+  }
+
+  const res = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_TASKS_QUERY, {
+    variables: { workOrderId },
+  })
+  const workOrder = res.data.workOrder
+  if (!workOrder) {
+    throw new HttpsError('not-found', 'La orden no existe.')
+  }
+  if (!TASK_EDITABLE_STATUSES.includes(workOrder.status)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'No se pueden editar los trabajos de una orden completada o cancelada.',
+    )
+  }
+
+  const existingById = new Map(workOrder.tasks.map((task) => [task.id, task]))
+  const keptIds = new Set()
+  const added = []
+  const renamed = []
+
+  for (const task of incoming) {
+    const existing = task.id ? existingById.get(task.id) : null
+    if (!existing) {
+      await dataConnect.executeGraphql(CREATE_WORK_ORDER_TASK_MUTATION, {
+        variables: { workOrderId, description: task.description },
+      })
+      added.push(task.description)
+      continue
+    }
+    keptIds.add(existing.id)
+    if (existing.description !== task.description) {
+      await dataConnect.executeGraphql(UPDATE_WORK_ORDER_TASK_DESCRIPTION_MUTATION, {
+        variables: { id: existing.id, description: task.description },
+      })
+      renamed.push({ from: existing.description, to: task.description })
+    }
+  }
+
+  const removed = []
+  for (const existing of workOrder.tasks) {
+    if (keptIds.has(existing.id)) continue
+    await dataConnect.executeGraphql(DELETE_WORK_ORDER_TASK_MUTATION, {
+      variables: { id: existing.id },
+    })
+    removed.push({ description: existing.description, wasCompleted: existing.isCompleted })
+  }
+
+  if (added.length === 0 && removed.length === 0 && renamed.length === 0) {
+    return { success: true, changed: false }
+  }
+
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: {
+      workOrderId,
+      actorId: request.auth.uid,
+      eventType: 'ORDER_TASKS_UPDATED',
+      metadata: { added, removed, renamed },
+    },
+  })
+
+  // The order's PDF is rendered once, when the order is created (see
+  // createWorkOrder), and lists the jobs - so editing them leaves it saying
+  // something the order no longer says. Re-render it from the stored data,
+  // reading the tasks back rather than reusing the request's list so the PDF
+  // and the app show them in the same order. Same storage path, but the
+  // download token is new, so finalReportUrl has to be rewritten too.
+  let finalReportUrl = workOrder.finalReportUrl ?? null
+  if (finalReportUrl) {
+    const after = await dataConnect.executeGraphqlRead(GET_WORK_ORDER_TASKS_QUERY, {
+      variables: { workOrderId },
+    })
+    const wo = after.data.workOrder
+    const buffer = await renderWorkOrderPdfBuffer({
+      code: wo.code,
+      locationLabel: ORDER_LOCATION_LABEL[wo.locationCode] ?? wo.locationCode,
+      createdAt: new Date(wo.createdAt),
+      customerName: wo.customer.name,
+      contactName: wo.customer.contactName,
+      phone: wo.customer.phone,
+      boatName: wo.boat.name,
+      registrationNumber: wo.boat.registrationNumber ?? undefined,
+      assetLocation: wo.assetLocation,
+      engines: wo.boat.engines,
+      tasks: wo.tasks.map((task) => task.description),
+      comments: wo.description || undefined,
+    })
+    finalReportUrl = await uploadPdfAndGetDownloadUrl(
+      `work-orders/${wo.code}/informe.pdf`,
+      buffer,
+    )
+    await dataConnect.executeGraphql(SET_WORK_ORDER_REPORT_URL_MUTATION, {
+      variables: { id: workOrderId, finalReportUrl },
+    })
+  }
+
+  return { success: true, changed: true, finalReportUrl }
+})
+
 // Individual clock in/out isn't logged to OrderTracking (see
 // OrderDetailPage's comment on the client side) - the TimeLog table is the
 // authoritative record. The "already working elsewhere, switch shifts?"

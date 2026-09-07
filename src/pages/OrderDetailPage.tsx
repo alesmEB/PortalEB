@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { Camera, ChevronDown, FileText, Images, Paperclip, Video } from 'lucide-react'
+import { Camera, ChevronDown, FileText, Images, Paperclip, Video, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   MediaType,
@@ -48,8 +48,9 @@ import {
   startWorking,
   stopWorking,
   toggleWorkOrderTask,
+  updateWorkOrderTasks,
 } from '../lib/orderWorkflow'
-import type { AdminProcessStep } from '../lib/orderWorkflow'
+import type { AdminProcessStep, WorkOrderTaskInput } from '../lib/orderWorkflow'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
 import { uploadQuotePdf } from '../lib/quoteStorage'
@@ -954,6 +955,113 @@ const REVERT_STEP_COPY: Record<AdminProcessStep, { title: string; description: s
   },
 }
 
+/** Inline editor for "Trabajos a realizar". Existing jobs keep their id so a
+ * job the technician already ticked off survives a reword; clearing a row's
+ * text and saving is how a job gets removed. */
+function TasksEditor({
+  tasks,
+  onCancel,
+  onSave,
+}: {
+  tasks: { id: string; description: string; isCompleted: boolean }[]
+  onCancel: () => void
+  onSave: (tasks: WorkOrderTaskInput[]) => Promise<void>
+}) {
+  const [draft, setDraft] = useState<{ id?: string; description: string; wasCompleted: boolean }[]>(
+    () => tasks.map((task) => ({ id: task.id, description: task.description, wasCompleted: task.isCompleted })),
+  )
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const filled = draft.filter((task) => task.description.trim())
+  const removedCompleted = draft.filter(
+    (task) => task.wasCompleted && !task.description.trim(),
+  ).length
+
+  function updateAt(index: number, description: string) {
+    setDraft((prev) => prev.map((task, i) => (i === index ? { ...task, description } : task)))
+  }
+
+  function removeAt(index: number) {
+    setDraft((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  async function handleSave() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onSave(filled.map((task) => ({ id: task.id, description: task.description.trim() })))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron guardar los trabajos.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {draft.map((task, index) => (
+        <div key={task.id ?? `nuevo-${index}`} className="flex items-center gap-2">
+          <input
+            value={task.description}
+            onChange={(e) => updateAt(index, e.target.value)}
+            placeholder="Descripción del trabajo"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+          />
+          {task.wasCompleted && (
+            <span
+              className="shrink-0 rounded-full bg-eb-teal/10 px-2 py-0.5 text-[10px] text-eb-teal-dark"
+              title="Un técnico ya marcó este trabajo como hecho"
+            >
+              Hecho
+            </span>
+          )}
+          <button
+            onClick={() => removeAt(index)}
+            disabled={submitting}
+            title="Quitar este trabajo"
+            className="shrink-0 text-slate-400 hover:text-red-600 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+
+      <button
+        onClick={() => setDraft((prev) => [...prev, { description: '', wasCompleted: false }])}
+        disabled={submitting}
+        className="text-xs font-semibold text-eb-blue disabled:opacity-50"
+      >
+        + Añadir trabajo
+      </button>
+
+      {removedCompleted > 0 && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Vas a quitar {removedCompleted} trabajo{removedCompleted > 1 ? 's' : ''} que ya estaba
+          marcado como hecho.
+        </p>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={onCancel}
+          disabled={submitting}
+          className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={submitting || filled.length === 0}
+          className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {submitting ? 'Guardando...' : 'Guardar trabajos'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
@@ -968,6 +1076,7 @@ export function OrderDetailPage() {
   const canViewAdminProcess = usePermission('orders:closing')
   const canRevertAdminProcess = usePermission('admin:reopen')
   const isLab = usePermission('admin:lab')
+  const canCreateOrders = usePermission('orders:create')
   const canEditExternalCode = profile?.role === UserRole.ADMIN || isLab
   const canChat = usePermission('chat:write')
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
@@ -980,6 +1089,7 @@ export function OrderDetailPage() {
   const [startingOrder, setStartingOrder] = useState(false)
   const [completingOrder, setCompletingOrder] = useState(false)
   const [adminStepModal, setAdminStepModal] = useState<'adjust' | 'protocol' | 'invoice' | null>(null)
+  const [editingTasks, setEditingTasks] = useState(false)
   const [revertStepModal, setRevertStepModal] = useState<AdminProcessStep | null>(null)
   const [busy, setBusy] = useState(false)
   const quoteFileInputRef = useRef<HTMLInputElement>(null)
@@ -1183,6 +1293,13 @@ export function OrderDetailPage() {
   const myAssignment = order.assignments.find((a) => a.technicianId === profile?.id)
   const canManageOrder = !!myAssignment && (myAssignment.isAllowed || myAssignment.isLead)
   const canToggleTasks = !!myAssignment && order.status === WorkOrderStatus.IN_PROGRESS
+  // Whoever can create an order can also correct its job list, but only
+  // while the order can still change: a completed order's jobs are already
+  // written into its report, and a cancelled one isn't going anywhere.
+  const canEditTasks =
+    (canCreateOrders || isLab) &&
+    order.status !== WorkOrderStatus.COMPLETED &&
+    order.status !== WorkOrderStatus.CANCELLED
   const amWorkingHere = myActiveLog?.workOrderId === order.id
   const workingTechnicianIds = new Set(
     order.timeLogs.filter((log) => !log.clockOut).map((log) => log.technicianId),
@@ -1392,14 +1509,36 @@ export function OrderDetailPage() {
       </section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos a realizar</h2>
-          {order.tasks.length > 0 && (
-            <span className="text-xs text-slate-500">
-              {order.tasks.filter((t) => t.isCompleted).length}/{order.tasks.length}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {order.tasks.length > 0 && (
+              <span className="text-xs text-slate-500">
+                {order.tasks.filter((t) => t.isCompleted).length}/{order.tasks.length}
+              </span>
+            )}
+            {canEditTasks && !editingTasks && (
+              <button
+                onClick={() => setEditingTasks(true)}
+                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+              >
+                Editar
+              </button>
+            )}
+          </div>
         </div>
+
+        {editingTasks ? (
+          <TasksEditor
+            tasks={order.tasks}
+            onCancel={() => setEditingTasks(false)}
+            onSave={async (tasks) => {
+              await updateWorkOrderTasks(order.id, tasks)
+              setEditingTasks(false)
+              await loadOrder()
+            }}
+          />
+        ) : (
         <ul className="mt-2 space-y-1">
           {order.tasks.map((task) =>
             canToggleTasks ? (
@@ -1430,6 +1569,7 @@ export function OrderDetailPage() {
             ),
           )}
         </ul>
+        )}
       </section>
 
       {order.description && (
