@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import DOMPurify from 'dompurify'
 import { listEbNewsPosts, type ListEbNewsPostsData } from '@dataconnect/generated'
 import { RichTextEditor } from '../../components/RichTextEditor'
+import { BusyOverlay } from '../../components/BusyOverlay'
+import { useBusyAction } from '../../hooks/useBusyAction'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { ebCreateNewsPost, ebDeleteNewsPost, ebTranslateNewsPost } from '../../lib/ebEngineering'
 import { uploadEbNewsImage } from '../../lib/ebNewsStorage'
@@ -78,10 +80,11 @@ function NewPostForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () 
 export function EbNewsTab({ readOnly = false, lang = 'es' }: { readOnly?: boolean; lang?: EbLang } = {}) {
   const [posts, setPosts] = useState<NewsPost[] | null>(null)
   const [creating, setCreating] = useState(false)
+  const { busyLabel, runBusy } = useBusyAction()
   const [translations, setTranslations] = useState<Record<string, NewsTranslation>>({})
 
   function refresh() {
-    listEbNewsPosts(FRESH).then((res) => setPosts(res.data.ebNewsPosts))
+    return listEbNewsPosts(FRESH).then((res) => setPosts(res.data.ebNewsPosts))
   }
 
   useEffect(() => {
@@ -109,6 +112,8 @@ export function EbNewsTab({ readOnly = false, lang = 'es' }: { readOnly?: boolea
 
   return (
     <div>
+      <BusyOverlay label={busyLabel} />
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">{posts?.length ?? 0} noticias</p>
         {!readOnly && (
@@ -122,7 +127,13 @@ export function EbNewsTab({ readOnly = false, lang = 'es' }: { readOnly?: boolea
       </div>
 
       {creating && (
-        <NewPostForm onSaved={() => { setCreating(false); refresh() }} onCancel={() => setCreating(false)} />
+        <NewPostForm
+          onSaved={() => {
+            setCreating(false)
+            runBusy('Actualizando las noticias...', refresh)
+          }}
+          onCancel={() => setCreating(false)}
+        />
       )}
 
       <div className="mt-4 space-y-2">
@@ -139,7 +150,12 @@ export function EbNewsTab({ readOnly = false, lang = 'es' }: { readOnly?: boolea
                 </div>
                 {!readOnly && (
                   <button
-                    onClick={() => ebDeleteNewsPost(post.id).then(refresh)}
+                    onClick={() =>
+                      runBusy('Eliminando la noticia...', async () => {
+                        await ebDeleteNewsPost(post.id)
+                        await refresh()
+                      })
+                    }
                     className="text-slate-400 hover:text-red-600"
                     title="Eliminar noticia"
                   >

@@ -8,6 +8,8 @@ import {
 } from '@dataconnect/generated'
 import { SearchInput } from '../../components/SearchInput'
 import { COUNTRIES } from '../../lib/countries'
+import { BusyOverlay } from '../../components/BusyOverlay'
+import { useBusyAction } from '../../hooks/useBusyAction'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { ebCreateClient, ebDeleteClient, ebUpdateClient } from '../../lib/ebEngineering'
 
@@ -165,6 +167,7 @@ export function EbClientsTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const { busyLabel, runBusy } = useBusyAction()
 
   async function refresh() {
     const [clientsRes, usersRes] = await Promise.all([listEbClients(FRESH), listUsers(FRESH)])
@@ -187,6 +190,8 @@ export function EbClientsTab() {
 
   return (
     <div>
+      <BusyOverlay label={busyLabel} />
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">{clients?.length ?? 0} clientes</p>
         <button
@@ -209,7 +214,10 @@ export function EbClientsTab() {
         <ClientForm
           clients={clients ?? []}
           portalUsers={portalUsers}
-          onSaved={() => { setCreating(false); refresh() }}
+          onSaved={() => {
+            setCreating(false)
+            runBusy('Actualizando la lista...', refresh)
+          }}
           onCancel={() => setCreating(false)}
         />
       )}
@@ -260,7 +268,13 @@ export function EbClientsTab() {
                     Cancelar
                   </button>
                   <button
-                    onClick={() => ebDeleteClient(client.id).then(() => { setConfirmingDeleteId(null); refresh() })}
+                    onClick={() =>
+                      runBusy('Eliminando el cliente...', async () => {
+                        await ebDeleteClient(client.id)
+                        setConfirmingDeleteId(null)
+                        await refresh()
+                      })
+                    }
                     className="flex-1 rounded-lg bg-red-600 py-1.5 text-sm font-semibold text-white"
                   >
                     Eliminar
@@ -274,7 +288,10 @@ export function EbClientsTab() {
                 client={client}
                 clients={clients ?? []}
                 portalUsers={portalUsers}
-                onSaved={() => { setEditingId(null); refresh() }}
+                onSaved={() => {
+                  setEditingId(null)
+                  runBusy('Actualizando la lista...', refresh)
+                }}
                 onCancel={() => setEditingId(null)}
               />
             )}

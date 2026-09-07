@@ -11,9 +11,11 @@ import {
   type ListEbClientsData,
   type ListUnassignedCableChecksData,
 } from '@dataconnect/generated'
+import { BusyOverlay } from '../../components/BusyOverlay'
 import { CountryFlag } from '../../components/CountryFlag'
 import { EbAssignedCablesSection, EbControllerProductCard } from '../../components/EbControllerProductCard'
 import { SearchInput } from '../../components/SearchInput'
+import { useBusyAction } from '../../hooks/useBusyAction'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { EB_LANGUAGES, EB_LANGUAGE_LABEL, useEbLanguage } from '../../lib/ebI18n'
 import {
@@ -800,6 +802,7 @@ function EbControllerProductsTab() {
   const [countryFilter, setCountryFilter] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+  const { busyLabel, runBusy } = useBusyAction()
 
   async function refresh() {
     const [productsRes, clientsRes, cablesRes, unassignedRes, screensRes] = await Promise.all([
@@ -827,8 +830,10 @@ function EbControllerProductsTab() {
   async function handleToggleRetired(product: ProductRow) {
     setRetiringId(product.id)
     try {
-      await ebSetClientProductRetired(product.id, !product.retiredAt)
-      await refresh()
+      await runBusy(product.retiredAt ? 'Reactivando la unidad...' : 'Dando de baja la unidad...', async () => {
+        await ebSetClientProductRetired(product.id, !product.retiredAt)
+        await refresh()
+      })
     } finally {
       setRetiringId(null)
     }
@@ -958,7 +963,10 @@ function EbControllerProductsTab() {
           cableTypes={cableTypes}
           unassignedCableChecks={unassignedCableChecks}
           availableScreens={availableScreens}
-          onSaved={() => { setCreating(false); refresh() }}
+          onSaved={() => {
+            setCreating(false)
+            runBusy('Actualizando la lista...', refresh)
+          }}
           onCancel={() => setCreating(false)}
           onCableTypesChanged={refreshCableTypes}
         />
@@ -1074,7 +1082,10 @@ function EbControllerProductsTab() {
                   product={product}
                   downstreamClients={downstreamClients}
                   onCancel={() => setTransferringId(null)}
-                  onTransferred={() => { setTransferringId(null); refresh() }}
+                  onTransferred={() => {
+                    setTransferringId(null)
+                    runBusy('Actualizando la lista...', refresh)
+                  }}
                 />
               )}
 
@@ -1092,9 +1103,10 @@ function EbControllerProductsTab() {
                     </button>
                     <button
                       onClick={() =>
-                        ebDeleteClientProduct(product.id).then(() => {
+                        runBusy('Eliminando la venta...', async () => {
+                          await ebDeleteClientProduct(product.id)
                           setConfirmingDeleteId(null)
-                          refresh()
+                          await refresh()
                         })
                       }
                       className="flex-1 rounded-lg bg-red-600 py-1.5 text-sm font-semibold text-white"
@@ -1113,6 +1125,8 @@ function EbControllerProductsTab() {
         )}
       </div>
 
+      <BusyOverlay label={busyLabel} />
+
       {editingProduct && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
           <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl">
@@ -1127,7 +1141,10 @@ function EbControllerProductsTab() {
               cableTypes={cableTypes}
               unassignedCableChecks={unassignedCableChecks}
               availableScreens={availableScreens}
-              onSaved={() => { setEditingId(null); refresh() }}
+              onSaved={() => {
+                setEditingId(null)
+                runBusy('Actualizando la lista...', refresh)
+              }}
               onCancel={() => setEditingId(null)}
               onCableTypesChanged={refreshCableTypes}
             />

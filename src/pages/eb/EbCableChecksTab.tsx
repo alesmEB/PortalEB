@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { listCableChecks, type ListCableChecksData } from '@dataconnect/generated'
+import { BusyOverlay } from '../../components/BusyOverlay'
+import { useBusyAction } from '../../hooks/useBusyAction'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { ebDeleteCableCheck } from '../../lib/ebEngineering'
 
@@ -15,6 +17,7 @@ type CableCheckRow = ListCableChecksData['cableChecks'][number]
 export function EbCableChecksTab() {
   const [checks, setChecks] = useState<CableCheckRow[] | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const { busyLabel, runBusy } = useBusyAction()
 
   function refresh() {
     return listCableChecks(FRESH).then((res) => setChecks(res.data.cableChecks))
@@ -25,13 +28,17 @@ export function EbCableChecksTab() {
   }, [])
 
   async function handleDelete(cableCheckId: string) {
-    await ebDeleteCableCheck(cableCheckId)
-    setConfirmingDeleteId(null)
-    await refresh()
+    await runBusy('Eliminando el cable...', async () => {
+      await ebDeleteCableCheck(cableCheckId)
+      setConfirmingDeleteId(null)
+      await refresh()
+    })
   }
 
   return (
     <div>
+      <BusyOverlay label={busyLabel} />
+
       <p className="text-sm text-slate-500">{checks?.length ?? 0} cables comprobados</p>
 
       <div className="mt-3 space-y-2">

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { listEbFaqItems, type ListEbFaqItemsData } from '@dataconnect/generated'
+import { BusyOverlay } from '../../components/BusyOverlay'
+import { useBusyAction } from '../../hooks/useBusyAction'
 import { FRESH } from '../../lib/dataConnectOptions'
 import { ebCreateFaqItem, ebDeleteFaqItem, ebTranslateFaqItem } from '../../lib/ebEngineering'
 import type { EbLang } from '../../lib/ebI18n'
@@ -68,10 +70,11 @@ function NewFaqForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () =
 export function EbFaqTab({ readOnly = false, lang = 'es' }: { readOnly?: boolean; lang?: EbLang } = {}) {
   const [items, setItems] = useState<FaqItem[] | null>(null)
   const [creating, setCreating] = useState(false)
+  const { busyLabel, runBusy } = useBusyAction()
   const [translations, setTranslations] = useState<Record<string, FaqTranslation>>({})
 
   function refresh() {
-    listEbFaqItems(FRESH).then((res) => setItems(res.data.ebFaqItems))
+    return listEbFaqItems(FRESH).then((res) => setItems(res.data.ebFaqItems))
   }
 
   useEffect(() => {
@@ -99,6 +102,8 @@ export function EbFaqTab({ readOnly = false, lang = 'es' }: { readOnly?: boolean
 
   return (
     <div>
+      <BusyOverlay label={busyLabel} />
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">{items?.length ?? 0} preguntas</p>
         {!readOnly && (
@@ -112,7 +117,13 @@ export function EbFaqTab({ readOnly = false, lang = 'es' }: { readOnly?: boolean
       </div>
 
       {creating && (
-        <NewFaqForm onSaved={() => { setCreating(false); refresh() }} onCancel={() => setCreating(false)} />
+        <NewFaqForm
+          onSaved={() => {
+            setCreating(false)
+            runBusy('Actualizando las preguntas...', refresh)
+          }}
+          onCancel={() => setCreating(false)}
+        />
       )}
 
       <div className="mt-4 space-y-2">
@@ -126,7 +137,12 @@ export function EbFaqTab({ readOnly = false, lang = 'es' }: { readOnly?: boolean
                 </p>
                 {!readOnly && (
                   <button
-                    onClick={() => ebDeleteFaqItem(item.id).then(refresh)}
+                    onClick={() =>
+                      runBusy('Eliminando la pregunta...', async () => {
+                        await ebDeleteFaqItem(item.id)
+                        await refresh()
+                      })
+                    }
                     className="text-slate-400 hover:text-red-600"
                     title="Eliminar pregunta"
                   >

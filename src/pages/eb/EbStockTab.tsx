@@ -7,6 +7,8 @@ import {
   type ListEbCableTypesData,
   type ListEbScreensData,
 } from '@dataconnect/generated'
+import { BusyOverlay } from '../../components/BusyOverlay'
+import { useBusyAction } from '../../hooks/useBusyAction'
 import { FRESH } from '../../lib/dataConnectOptions'
 import {
   ebDeleteScreen,
@@ -31,7 +33,10 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
   const [reference, setReference] = useState(DEFAULT_SCREEN_REFERENCE)
   const [model, setModel] = useState(DEFAULT_SCREEN_MODEL)
   const [serialNumber, setSerialNumber] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const { busyLabel, runBusy } = useBusyAction()
+  // One source of truth: the same in-flight action that veils the screen
+  // is what disables the buttons.
+  const submitting = busyLabel !== null
   const [error, setError] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
@@ -41,31 +46,29 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
 
   async function handleRegister() {
     if (!serialNumber.trim()) return
-    setSubmitting(true)
     setError(null)
     try {
-      await ebRegisterScreen({ reference, model, serialNumber: serialNumber.trim() })
-      setSerialNumber('')
-      await onChanged()
+      await runBusy('Registrando la pantalla...', async () => {
+        await ebRegisterScreen({ reference, model, serialNumber: serialNumber.trim() })
+        setSerialNumber('')
+        await onChanged()
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo registrar.')
-    } finally {
-      setSubmitting(false)
     }
   }
 
   async function handleSetUnavailable(screenId: string, newReason: string) {
-    setSubmitting(true)
     setError(null)
     try {
-      await ebSetScreenUnavailable(screenId, newReason)
-      setMarkingId(null)
-      setReason('')
-      await onChanged()
+      await runBusy('Actualizando la pantalla...', async () => {
+        await ebSetScreenUnavailable(screenId, newReason)
+        setMarkingId(null)
+        setReason('')
+        await onChanged()
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo actualizar.')
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -81,30 +84,28 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
   }
 
   async function handleSaveEdit(screenId: string) {
-    setSubmitting(true)
     setError(null)
     try {
-      await ebUpdateScreen({ screenId, ...editDraft })
-      setEditingId(null)
-      await onChanged()
+      await runBusy('Guardando la pantalla...', async () => {
+        await ebUpdateScreen({ screenId, ...editDraft })
+        setEditingId(null)
+        await onChanged()
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar.')
-    } finally {
-      setSubmitting(false)
     }
   }
 
   async function handleDelete(screenId: string) {
-    setSubmitting(true)
     setError(null)
     try {
-      await ebDeleteScreen(screenId)
-      setConfirmingDeleteId(null)
-      await onChanged()
+      await runBusy('Eliminando la pantalla...', async () => {
+        await ebDeleteScreen(screenId)
+        setConfirmingDeleteId(null)
+        await onChanged()
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo eliminar.')
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -112,6 +113,8 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
 
   return (
     <div className="mt-6">
+      <BusyOverlay label={busyLabel} />
+
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm font-semibold text-eb-blue-dark">Pantallas</h3>
         <p className="text-xs text-slate-500">
@@ -341,7 +344,8 @@ export function EbStockTab() {
   const [cableTypes, setCableTypes] = useState<CableTypeRow[] | null>(null)
   const [screens, setScreens] = useState<ScreenRow[] | null>(null)
   const [registerTypeId, setRegisterTypeId] = useState('')
-  const [registering, setRegistering] = useState(false)
+  const { busyLabel: stockBusyLabel, runBusy: runStockBusy } = useBusyAction()
+  const registering = stockBusyLabel !== null
 
   function refresh() {
     return listCableChecks(FRESH).then((res) => setChecks(res.data.cableChecks))
@@ -362,13 +366,10 @@ export function EbStockTab() {
 
   async function handleRegister() {
     if (!registerTypeId) return
-    setRegistering(true)
-    try {
+    await runStockBusy('Registrando el cable...', async () => {
       await ebRegisterCableCheck(registerTypeId)
       await refresh()
-    } finally {
-      setRegistering(false)
-    }
+    })
   }
 
   const stockByTypeId = useMemo(() => {
@@ -385,6 +386,8 @@ export function EbStockTab() {
 
   return (
     <div>
+      <BusyOverlay label={stockBusyLabel} />
+
       <h3 className="text-sm font-semibold text-eb-blue-dark">Cables</h3>
       <div className="mt-2 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white/90 p-4">
         <label className="flex-1 text-xs font-medium text-slate-500">
