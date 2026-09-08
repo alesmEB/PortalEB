@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Proceso administrativo de una orden",
+    "subtitle": "PortalEB · lo que ocurre despues de completar el trabajo",
+    "viewBox": [
+      980,
+      680
+    ],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "camino-normal",
+        "label": "Camino normal",
+        "focus": [
+          "completada",
+          "ajustada",
+          "protocolo",
+          "facturada"
+        ],
+        "note": "Los tres pasos van en orden: cada uno exige que el anterior este registrado."
+      },
+      {
+        "id": "reversion",
+        "label": "Reversion",
+        "focus": [
+          "protocolo",
+          "facturada",
+          "revertir",
+          "ajustada"
+        ],
+        "note": "Solo se puede deshacer el ultimo paso registrado, y queda en el historial."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Gestion administrativa"
+    },
+    {
+      "id": "reversion",
+      "label": "Reversion (admin:reopen)"
+    }
+  ],
+  "states": [
+    {
+      "id": "completada",
+      "type": "start",
+      "label": "Completada",
+      "sublabel": "trabajo ejecutado",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "status"
+    },
+    {
+      "id": "ajustada",
+      "type": "active",
+      "label": "Ajustada",
+      "sublabel": "cuadre interno",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "adjustedAt"
+    },
+    {
+      "id": "protocolo",
+      "type": "decision",
+      "label": "Protocolo",
+      "sublabel": "realizado o no procedia",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "serviceProtocolAt"
+    },
+    {
+      "id": "facturada",
+      "type": "success",
+      "label": "Facturada",
+      "sublabel": "cliente facturado",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "invoicedAt"
+    },
+    {
+      "id": "revertir",
+      "type": "failure",
+      "label": "Revertir",
+      "sublabel": "deja el paso pendiente",
+      "lane": "reversion",
+      "col": 0,
+      "tag": "permiso"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "completada",
+      "to": "ajustada",
+      "route": "straight"
+    },
+    {
+      "from": "ajustada",
+      "to": "protocolo",
+      "route": "straight"
+    },
+    {
+      "from": "protocolo",
+      "to": "facturada",
+      "route": "straight"
+    },
+    {
+      "from": "protocolo",
+      "to": "revertir",
+      "variant": "dashed",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "from": "facturada",
+      "to": "revertir",
+      "variant": "dashed"
+    },
+    {
+      "from": "revertir",
+      "to": "ajustada",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Orden estricto",
+      "items": [
+        "Ajustada solo si la orden esta COMPLETED",
+        "Protocolo solo si ya esta ajustada",
+        "Facturada solo si el protocolo esta registrado"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Reversion",
+      "items": [
+        "Solo el ultimo paso registrado se puede deshacer",
+        "Requiere el permiso admin:reopen, distinto de orders:closing",
+        "Los tres campos nunca quedan en un estado imposible"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Queda registrado",
+      "items": [
+        "Cada paso y cada reversion escriben en OrderTracking",
+        "La reversion del protocolo guarda si era realizado o no procedia",
+        "El panel y el historial solo los ve quien tiene orders:closing"
+      ]
+    }
+  ]
+}

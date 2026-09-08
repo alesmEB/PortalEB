@@ -1,0 +1,265 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Ciclo de una orden de trabajo",
+    "subtitle": "PortalEB · del presupuesto al cierre",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "camino-normal",
+        "label": "Camino normal",
+        "focus": [
+          "crear",
+          "presupuesto",
+          "decision",
+          "asignar",
+          "trabajo",
+          "completar"
+        ],
+        "note": "El presupuesto se acepta, se asignan tecnicos y el trabajo se ejecuta y se cierra."
+      },
+      {
+        "id": "rechazo",
+        "label": "Presupuesto rechazado",
+        "focus": [
+          "decision",
+          "rechazo",
+          "presupuesto",
+          "cancelada"
+        ],
+        "note": "Caben dos intentos de presupuesto; el segundo rechazo cancela la orden."
+      },
+      {
+        "id": "atajo",
+        "label": "Cierre por administracion",
+        "focus": [
+          "trabajo",
+          "forzar",
+          "completar"
+        ],
+        "note": "Administracion puede cerrar la orden desde asignada o en progreso, sin informe."
+      }
+    ]
+  },
+  "lanes": [
+    {
+      "id": "admin",
+      "label": "Administracion"
+    },
+    {
+      "id": "cliente",
+      "label": "Cliente"
+    },
+    {
+      "id": "taller",
+      "label": "Tecnicos"
+    },
+    {
+      "id": "excepciones",
+      "label": "Rechazo y atajo",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "presupuestar",
+      "label": "Presupuesto",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "ejecutar",
+      "label": "Ejecucion",
+      "fromCol": 3,
+      "toCol": 5,
+      "variant": "emphasis"
+    }
+  ],
+  "mainPath": [
+    "crear",
+    "presupuesto",
+    "decision",
+    "asignar",
+    "trabajo",
+    "completar"
+  ],
+  "nodes": [
+    {
+      "id": "crear",
+      "lane": "admin",
+      "col": 0,
+      "type": "frontend",
+      "label": "Crear orden",
+      "sublabel": "datos y trabajos",
+      "tag": "PENDING_QUOTE"
+    },
+    {
+      "id": "presupuesto",
+      "lane": "admin",
+      "col": 1,
+      "type": "backend",
+      "label": "Presupuesto",
+      "sublabel": "PDF, hasta 2 intentos",
+      "width": 110
+    },
+    {
+      "id": "decision",
+      "lane": "cliente",
+      "col": 2,
+      "type": "external",
+      "label": "Cliente decide",
+      "sublabel": "acepta o rechaza",
+      "width": 110
+    },
+    {
+      "id": "asignar",
+      "lane": "admin",
+      "col": 3,
+      "type": "backend",
+      "label": "Asignar",
+      "sublabel": "jefe y autorizados",
+      "tag": "ASSIGNED"
+    },
+    {
+      "id": "trabajo",
+      "lane": "taller",
+      "col": 4,
+      "type": "cloud",
+      "label": "Ejecutar",
+      "sublabel": "fichajes, tareas, fotos",
+      "tag": "IN_PROGRESS"
+    },
+    {
+      "id": "completar",
+      "lane": "taller",
+      "col": 5,
+      "type": "database",
+      "label": "Completar",
+      "sublabel": "fotos finales e informe",
+      "tag": "COMPLETED"
+    },
+    {
+      "id": "rechazo",
+      "lane": "excepciones",
+      "col": 3,
+      "type": "security",
+      "label": "Rechazado",
+      "sublabel": "vuelve a presupuesto",
+      "tag": "QUOTE_REJECTED"
+    },
+    {
+      "id": "cancelada",
+      "lane": "excepciones",
+      "col": 4,
+      "type": "security",
+      "label": "Cancelada",
+      "sublabel": "segundo rechazo",
+      "tag": "CANCELLED"
+    },
+    {
+      "id": "forzar",
+      "lane": "excepciones",
+      "col": 5,
+      "type": "messagebus",
+      "label": "Cierre directo",
+      "sublabel": "sin pasar por el taller",
+      "tag": "orders:forcecomplete"
+    }
+  ],
+  "edges": [
+    {
+      "from": "crear",
+      "to": "presupuesto",
+      "role": "main"
+    },
+    {
+      "from": "presupuesto",
+      "to": "decision",
+      "role": "main",
+      "label": "envia"
+    },
+    {
+      "from": "decision",
+      "to": "asignar",
+      "role": "main",
+      "label": "acepta",
+      "variant": "emphasis"
+    },
+    {
+      "from": "asignar",
+      "to": "trabajo",
+      "role": "main"
+    },
+    {
+      "from": "trabajo",
+      "to": "completar",
+      "role": "main"
+    },
+    {
+      "from": "decision",
+      "to": "rechazo",
+      "role": "branch",
+      "label": "rechaza",
+      "variant": "security"
+    },
+    {
+      "from": "rechazo",
+      "to": "presupuesto",
+      "role": "return",
+      "label": "2do intento",
+      "variant": "dashed"
+    },
+    {
+      "from": "rechazo",
+      "to": "cancelada",
+      "role": "error",
+      "label": "sin 2do intento",
+      "variant": "security"
+    },
+    {
+      "from": "trabajo",
+      "to": "forzar",
+      "role": "async",
+      "label": "atajo de administracion",
+      "variant": "dashed"
+    },
+    {
+      "from": "forzar",
+      "to": "completar",
+      "role": "async",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Presupuesto",
+      "items": [
+        "Como mucho dos intentos por orden",
+        "El cliente acepta o rechaza desde su acceso",
+        "El segundo rechazo cancela y archiva la orden"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Ejecucion",
+      "items": [
+        "Los tecnicos fichan por orden, no por jornada",
+        "Las tareas se marcan mientras la orden esta en progreso",
+        "Completar exige fotos finales y genera el informe"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Atajo de administracion",
+      "items": [
+        "Mientras los tecnicos no usan la web, administracion cierra la orden",
+        "Cierra los fichajes abiertos y no genera informe",
+        "Queda registrado como ORDER_FORCE_COMPLETED"
+      ]
+    }
+  ]
+}

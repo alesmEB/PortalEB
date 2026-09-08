@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Camino de los datos en PortalEB",
+    "subtitle": "Las lecturas salen del navegador; las escrituras siempre pasan por Cloud Functions",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "escritura",
+        "label": "Escritura",
+        "focus": [
+          "app",
+          "functions",
+          "dataconnect"
+        ],
+        "note": "Toda escritura es una callable que valida permisos y escribe con el Admin SDK."
+      },
+      {
+        "id": "lectura",
+        "label": "Lectura",
+        "focus": [
+          "app",
+          "dataconnect"
+        ],
+        "note": "El navegador consulta Data Connect directamente, limitado por @auth en cada consulta."
+      },
+      {
+        "id": "identidad",
+        "label": "Identidad",
+        "focus": [
+          "auth",
+          "app",
+          "functions"
+        ],
+        "note": "El rol y los permisos viajan en los custom claims del token."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "app",
+      "type": "frontend",
+      "label": "PortalEB",
+      "sublabel": "React + Vite (PWA)",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        140,
+        64
+      ],
+      "tag": "navegador"
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Firebase Auth",
+      "sublabel": "rol + permisos en claims",
+      "pos": [
+        40,
+        130
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "functions",
+      "type": "backend",
+      "label": "Cloud Functions",
+      "sublabel": "callables onCall",
+      "pos": [
+        300,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "unica via de escritura"
+    },
+    {
+      "id": "dataconnect",
+      "type": "database",
+      "label": "Data Connect",
+      "sublabel": "PostgreSQL",
+      "pos": [
+        580,
+        300
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "@auth por consulta"
+    },
+    {
+      "id": "storage",
+      "type": "cloud",
+      "label": "Storage",
+      "sublabel": "informes y fotos",
+      "pos": [
+        300,
+        460
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "firestore",
+      "type": "messagebus",
+      "label": "Firestore",
+      "sublabel": "solo el chat",
+      "pos": [
+        40,
+        460
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "tag": "reglas propias"
+    }
+  ],
+  "connections": [
+    {
+      "id": "login",
+      "from": "auth",
+      "to": "app",
+      "label": "token con claims",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 62,
+      "labelDy": 24
+    },
+    {
+      "id": "escritura",
+      "from": "app",
+      "to": "functions",
+      "label": "httpsCallable",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "admin-sdk",
+      "from": "functions",
+      "to": "dataconnect",
+      "label": "Admin SDK, salta @auth",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "lectura",
+      "from": "app",
+      "to": "dataconnect",
+      "label": "consultas con limite",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          110,
+          240
+        ],
+        [
+          655,
+          240
+        ]
+      ]
+    },
+    {
+      "id": "pdf",
+      "from": "functions",
+      "to": "storage",
+      "label": "sube PDFs",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 92,
+      "labelDy": 24
+    },
+    {
+      "id": "chat",
+      "from": "app",
+      "to": "firestore",
+      "label": "chat",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDx": 62,
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Escrituras",
+      "items": [
+        "Siempre una callable: valida permisos y luego escribe",
+        "El Admin SDK se salta el @auth de Data Connect",
+        "Los cambios que importan quedan en OrderTracking"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Lecturas",
+      "items": [
+        "El navegador consulta Data Connect directamente",
+        "Cada consulta declara su @auth y su limite de filas",
+        "Sin limite explicito, Data Connect corta a 100 sin avisar"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Fuera de PostgreSQL",
+      "items": [
+        "Firestore solo guarda el chat de cada orden",
+        "Storage guarda informes, presupuestos y fotos",
+        "Las valoraciones viven en otro proyecto, ebratingapp"
+      ]
+    }
+  ]
+}
