@@ -26,6 +26,7 @@ exige volver a iniciar sesión**.
 | `orders:forcecomplete` | Completar una orden sin pasar por el flujo del técnico |
 | `orders:assignable` | Puede ser asignado a órdenes como técnico |
 | `assignments:view` | Ver la sección de Asignaciones |
+| `admin:assigntechnicians` | Asignar o cambiar los técnicos de una orden |
 | `admin:reopen` | Revertir ajustada / protocolo / facturada |
 | `admin:manage` | Gestionar usuarios, permisos, clientes, embarcaciones, motores y turnos |
 | `admin:lab` | Acceso a pruebas en producción; hace de bypass del rol ADMIN |
@@ -50,7 +51,7 @@ servidor**; que la interfaz esconda un botón no es la protección.
 | `updateWorkOrderTasks` | `orders:create` o `admin:lab`, y orden no completada ni cancelada |
 | `addQuote` | `quotes:upload` o `admin:lab` |
 | `acceptQuote` | `quotes:approve` |
-| `assignTechnicians` | solo autenticado, más el estado correcto de la orden |
+| `assignTechnicians` | `admin:assigntechnicians`, más el estado correcto de la orden |
 | `startOrder`, `completeOrder` | estar asignado con `isAllowed` o `isLead` |
 | `reportIncident`, `toggleWorkOrderTask` | estar asignado a la orden |
 | `startWorking`, `stopWorking` | autenticado; el fichaje es del propio usuario |
@@ -92,12 +93,14 @@ dispositivos) exigen `admin:manage`, salvo `changeUserPassword`, que exige
 
 `listServiceRatings` y `exportRatingsPdf` exigen `ratings:view`.
 
-## Puntos a revisar
+## Notas
 
-- **`assignTechnicians` solo comprueba que haya sesión iniciada.** Valida el
-  estado de la orden y detecta ediciones concurrentes, pero no pide ningún
-  permiso: cualquier usuario autenticado que conozca el id de una orden podría
-  cambiar sus técnicos. Encaja un `orders:create` o un permiso propio.
-- **`sendPushNotification` tampoco pide permiso**, solo sesión.
+- `sendPushNotification` exige `admin:lab`: es la pantalla de envío manual, que
+  no forma parte del flujo normal — las notificaciones de verdad las mandan los
+  disparadores del chat y el aviso de turno abierto.
 - `syncUserClaims` es deliberadamente abierta: la llama el propio cliente para
   refrescar sus claims.
+- Un botón escondido no es una protección. Los *callables* son endpoints
+  públicos: cualquiera con cuenta puede llamarlos directamente, así que la
+  comprobación tiene que estar en la función, y la interfaz solo evita ofrecer
+  lo que va a fallar.

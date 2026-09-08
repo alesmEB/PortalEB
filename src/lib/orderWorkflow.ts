@@ -40,6 +40,7 @@ const callAssignTechnicians = httpsCallable<
   { assigned: number; unassigned: number }
 >(functions, 'assignTechnicians')
 
+/** Requires "admin:assigntechnicians". */
 export async function assignTechnicians(input: AssignTechniciansInput) {
   const res = await callAssignTechnicians(input)
   return res.data

@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Vida de una unidad EBcontroller",
+    "subtitle": "PortalEB · del stock al cliente final",
+    "viewBox": [980, 680],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "venta",
+        "label": "Venta",
+        "focus": ["stock", "venta", "distribuidor", "final"],
+        "note": "Una unidad vendida a un distribuidor puede reasignarse luego a su cliente final."
+      },
+      {
+        "id": "fuera",
+        "label": "Fuera del recuento",
+        "focus": ["venta", "interna", "baja"],
+        "note": "Uso interno no cuenta como venta; dada de baja si se retira."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "Unidad vendida" },
+    { "id": "aparte", "label": "Fuera del recuento" }
+  ],
+  "states": [
+    {
+      "id": "stock",
+      "type": "start",
+      "label": "Componentes",
+      "sublabel": "cables y pantallas",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "stock"
+    },
+    {
+      "id": "venta",
+      "type": "active",
+      "label": "Venta",
+      "sublabel": "serie y hardware",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "numero"
+    },
+    {
+      "id": "distribuidor",
+      "type": "waiting",
+      "label": "Distribuidor",
+      "sublabel": "pendiente de reventa",
+      "lane": "main",
+      "col": 2,
+      "step": "03"
+    },
+    {
+      "id": "final",
+      "type": "success",
+      "label": "Cliente final",
+      "sublabel": "misma unidad",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "soldToEndUserAt"
+    },
+    {
+      "id": "interna",
+      "type": "neutral",
+      "label": "Uso interno",
+      "sublabel": "no cuenta",
+      "lane": "aparte",
+      "col": 0,
+      "tag": "internalUse"
+    },
+    {
+      "id": "baja",
+      "type": "failure",
+      "label": "Dada de baja",
+      "sublabel": "sigue visible",
+      "lane": "aparte",
+      "col": 1,
+      "tag": "retiredAt"
+    }
+  ],
+  "transitions": [
+    { "from": "stock", "to": "venta", "route": "straight" },
+    { "from": "venta", "to": "distribuidor", "route": "straight" },
+    { "from": "distribuidor", "to": "final", "route": "straight" },
+    {
+      "from": "distribuidor",
+      "to": "interna",
+      "variant": "dashed",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    { "from": "final", "to": "baja", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Que entra en la venta",
+      "items": [
+        "Tipos de cable del catalogo y cables ya comprobados",
+        "Como mucho una pantalla, que aporta el numero de serie",
+        "El numero de EBcontroller sale del orden de compra"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Reventa",
+      "items": [
+        "Si la compra un distribuidor, la unidad queda a su nombre",
+        "Al revenderla se repunta la misma ficha al cliente final",
+        "No se duplica el registro: es el mismo aparato"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Fuera del recuento",
+      "items": [
+        "Uso interno: la unidad se queda en casa y no suma como venta",
+        "Tampoco ocupa numero, para que el ultimo cuadre con el total",
+        "Dada de baja: se retira pero sigue en la lista, con su historial"
+      ]
+    }
+  ]
+}

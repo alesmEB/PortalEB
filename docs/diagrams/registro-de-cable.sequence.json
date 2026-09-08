@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Registro de un cable comprobado",
+    "subtitle": "PortalEB · del comprobador ESP32 al stock",
+    "viewBox": [
+      860,
+      700
+    ],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "identidad",
+        "label": "Quien llama",
+        "focus": [
+          "esp32",
+          "endpoint"
+        ],
+        "note": "El dispositivo se identifica con una cabecera secreta, no con una cuenta."
+      },
+      {
+        "id": "resolucion",
+        "label": "Resolver cable y tecnico",
+        "focus": [
+          "endpoint",
+          "dc",
+          "auth"
+        ],
+        "note": "El codigo del cable y el email del tecnico se traducen a filas reales."
+      },
+      {
+        "id": "alta",
+        "label": "Alta en stock",
+        "focus": [
+          "endpoint",
+          "counter",
+          "dc"
+        ],
+        "note": "El numero de comprobacion se reserva en Firestore para evitar carreras."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "esp32",
+      "type": "external",
+      "label": "Comprobador",
+      "sublabel": "ESP32 del taller"
+    },
+    {
+      "id": "endpoint",
+      "type": "backend",
+      "label": "Endpoint",
+      "sublabel": "onRequest del ESP32"
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Firebase Auth",
+      "sublabel": "email a uid"
+    },
+    {
+      "id": "counter",
+      "type": "messagebus",
+      "label": "Firestore",
+      "sublabel": "contador"
+    },
+    {
+      "id": "dc",
+      "type": "database",
+      "label": "Data Connect",
+      "sublabel": "PostgreSQL"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 250,
+      "label": "Identidad"
+    },
+    {
+      "from": 270,
+      "to": 430,
+      "label": "Resolver"
+    },
+    {
+      "from": 450,
+      "to": 610,
+      "label": "Alta"
+    }
+  ],
+  "messages": [
+    {
+      "from": "esp32",
+      "to": "endpoint",
+      "y": 170,
+      "label": "POST cableCode + userEmail",
+      "variant": "emphasis",
+      "note": "cabecera x-device-secret"
+    },
+    {
+      "from": "endpoint",
+      "to": "dc",
+      "y": 290,
+      "label": "buscar el tipo de cable por codigo"
+    },
+    {
+      "from": "dc",
+      "to": "endpoint",
+      "y": 330,
+      "label": "cableTypeId, o 404 si no existe",
+      "variant": "dashed"
+    },
+    {
+      "from": "endpoint",
+      "to": "auth",
+      "y": 380,
+      "label": "resolver el email del tecnico"
+    },
+    {
+      "from": "auth",
+      "to": "endpoint",
+      "y": 420,
+      "label": "uid",
+      "variant": "dashed"
+    },
+    {
+      "from": "endpoint",
+      "to": "counter",
+      "y": 470,
+      "label": "reservar numero de comprobacion",
+      "variant": "security"
+    },
+    {
+      "from": "endpoint",
+      "to": "dc",
+      "y": 530,
+      "label": "insertar CableCheck sin producto",
+      "variant": "emphasis"
+    },
+    {
+      "from": "endpoint",
+      "to": "esp32",
+      "y": 590,
+      "label": "numero asignado",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Identidad del dispositivo",
+      "items": [
+        "Se autentica con la cabecera x-device-secret",
+        "El tecnico se identifica por email, no por uid",
+        "El email es lo que sabe quien configura el firmware"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Que queda registrado",
+      "items": [
+        "Una fila CableCheck numerada, sin producto asignado",
+        "Sin producto significa que esta en stock",
+        "Se asigna a una venta desde la pestana de Productos"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "El comprobador falla a veces",
+      "items": [
+        "Puede registrar varias comprobaciones de un mismo cable",
+        "Por eso se pueden borrar desde la pestana Cables",
+        "No se borra una comprobacion ya asignada a una venta"
+      ]
+    }
+  ]
+}

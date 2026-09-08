@@ -1066,9 +1066,8 @@ export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const navigate = useNavigate()
-  const routerState = location.state as { from?: string; autoAssign?: boolean } | null
+  const routerState = location.state as { from?: string } | null
   const backTo = routerState?.from ?? '/orders'
-  const autoAssignTriggered = useRef(false)
   const { profile } = useAuth()
   const canUploadQuotes = usePermission('quotes:upload')
   const canApproveQuotes = usePermission('quotes:approve')
@@ -1077,6 +1076,7 @@ export function OrderDetailPage() {
   const canRevertAdminProcess = usePermission('admin:reopen')
   const isLab = usePermission('admin:lab')
   const canCreateOrders = usePermission('orders:create')
+  const canAssignTechnicians = usePermission('admin:assigntechnicians')
   const canEditExternalCode = profile?.role === UserRole.ADMIN || isLab
   const canChat = usePermission('chat:write')
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
@@ -1134,19 +1134,6 @@ export function OrderDetailPage() {
     if (!order || !profile || !canChat) return
     return subscribeToUnreadOrderIds('technicians', [order.id], profile.id, setUnreadTechnicianIds)
   }, [order, profile, canChat])
-
-  // Lab "quick test order" shortcut on the dashboard drops straight into
-  // this modal instead of making QA click "Asignar técnicos" separately.
-  useEffect(() => {
-    if (
-      routerState?.autoAssign &&
-      !autoAssignTriggered.current &&
-      order?.status === WorkOrderStatus.AWAITING_ASSIGNMENT
-    ) {
-      autoAssignTriggered.current = true
-      setAssigning(true)
-    }
-  }, [order, routerState?.autoAssign])
 
   async function handleAddQuote(file: Blob) {
     if (!order) return
@@ -1384,7 +1371,7 @@ export function OrderDetailPage() {
             </button>
           </HasPermission>
         )}
-        {order.status === WorkOrderStatus.AWAITING_ASSIGNMENT && (
+        {canAssignTechnicians && order.status === WorkOrderStatus.AWAITING_ASSIGNMENT && (
           <button
             onClick={() => setAssigning(true)}
             className="rounded-lg bg-eb-blue-dark px-3 py-1.5 text-sm font-semibold text-white"
@@ -1392,15 +1379,16 @@ export function OrderDetailPage() {
             Asignar técnicos
           </button>
         )}
-        {(order.status === WorkOrderStatus.ASSIGNED ||
-          order.status === WorkOrderStatus.IN_PROGRESS) && (
-          <button
-            onClick={() => setAssigning(true)}
-            className="rounded-lg bg-eb-blue-dark px-3 py-1.5 text-sm font-semibold text-white"
-          >
-            Añadir técnicos
-          </button>
-        )}
+        {canAssignTechnicians &&
+          (order.status === WorkOrderStatus.ASSIGNED ||
+            order.status === WorkOrderStatus.IN_PROGRESS) && (
+            <button
+              onClick={() => setAssigning(true)}
+              className="rounded-lg bg-eb-blue-dark px-3 py-1.5 text-sm font-semibold text-white"
+            >
+              Añadir técnicos
+            </button>
+          )}
         {order.status === WorkOrderStatus.ASSIGNED && canManageOrder && (
           <button
             disabled={busy}

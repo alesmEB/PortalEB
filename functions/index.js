@@ -555,10 +555,11 @@ async function sendToUsers(userIds, { title, body, data = {} }) {
 // client-side only, same trust model as the rest of the app (see
 // dataconnect/connector/mutations.gql header) - this just requires the
 // caller to be signed in.
+// Manual push from the lab notification screen - never part of the normal
+// workflow, where notifications are sent by the chat triggers and the active
+// shift schedule instead.
 exports.sendPushNotification = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
-  }
+  requirePermission(request, 'admin:lab')
 
   const { userIds, title, body, orderId } = request.data ?? {}
   if (!Array.isArray(userIds) || userIds.length === 0) {
@@ -1104,9 +1105,7 @@ exports.acceptQuote = onCall(async (request) => {
 // must leave that status alone instead of regressing it.
 const ASSIGNABLE_STATUSES = ['AWAITING_ASSIGNMENT', 'ASSIGNED', 'IN_PROGRESS']
 exports.assignTechnicians = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
-  }
+  requirePermission(request, 'admin:assigntechnicians')
 
   const { workOrderId, code, assignments, expectedTechnicianIds } = request.data ?? {}
   if (typeof workOrderId !== 'string' || !Array.isArray(assignments)) {

@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "El PDF de la orden",
+    "subtitle": "PortalEB · como se genera y como se mantiene al dia",
+    "viewBox": [
+      1080,
+      700
+    ],
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "creacion",
+        "label": "Al crear la orden",
+        "focus": [
+          "form",
+          "crear",
+          "render",
+          "storage",
+          "orden"
+        ],
+        "note": "El PDF se compone al crear la orden y su enlace se guarda en la ficha."
+      },
+      {
+        "id": "regeneracion",
+        "label": "Al corregir los trabajos",
+        "focus": [
+          "editor",
+          "tareas",
+          "render",
+          "storage",
+          "orden"
+        ],
+        "note": "Editar los trabajos rehace el PDF: si no, el documento diria otra cosa."
+      }
+    ]
+  },
+  "stages": [
+    {
+      "label": "Origen"
+    },
+    {
+      "label": "Funcion"
+    },
+    {
+      "label": "Render"
+    },
+    {
+      "label": "Archivo"
+    },
+    {
+      "label": "Ficha"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "form",
+      "type": "frontend",
+      "label": "Alta de orden",
+      "sublabel": "datos y trabajos",
+      "stage": 0,
+      "row": 0
+    },
+    {
+      "id": "editor",
+      "type": "frontend",
+      "label": "Editar trabajos",
+      "sublabel": "correccion posterior",
+      "stage": 0,
+      "row": 2
+    },
+    {
+      "id": "crear",
+      "type": "backend",
+      "label": "createWorkOrder",
+      "sublabel": "reserva codigo",
+      "stage": 1,
+      "row": 0
+    },
+    {
+      "id": "tareas",
+      "type": "backend",
+      "label": "updateTasks",
+      "sublabel": "empareja por id",
+      "stage": 1,
+      "row": 2
+    },
+    {
+      "id": "render",
+      "type": "cloud",
+      "label": "workOrderPdf",
+      "sublabel": "react-pdf sin JSX",
+      "stage": 2,
+      "row": 1,
+      "tag": "servidor"
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "Storage",
+      "sublabel": "informe.pdf",
+      "stage": 3,
+      "row": 1,
+      "tag": "token nuevo"
+    },
+    {
+      "id": "orden",
+      "type": "database",
+      "label": "WorkOrder",
+      "sublabel": "finalReportUrl",
+      "stage": 4,
+      "row": 1
+    }
+  ],
+  "flows": [
+    {
+      "from": "form",
+      "to": "crear",
+      "label": "datos de la orden"
+    },
+    {
+      "from": "crear",
+      "to": "render",
+      "label": "compone"
+    },
+    {
+      "from": "editor",
+      "to": "tareas",
+      "label": "lista corregida"
+    },
+    {
+      "from": "tareas",
+      "to": "render",
+      "label": "rehace"
+    },
+    {
+      "from": "render",
+      "to": "storage",
+      "label": "sube el PDF",
+      "variant": "emphasis"
+    },
+    {
+      "from": "storage",
+      "to": "orden",
+      "label": "guarda el enlace",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Se genera una vez",
+      "items": [
+        "Al crear la orden, con los trabajos ya dentro",
+        "El atajo rapido de lab no genera PDF",
+        "La ruta es work-orders/{codigo}/informe.pdf"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Y se rehace al editar",
+      "items": [
+        "Corregir los trabajos vuelve a componerlo",
+        "Se leen los trabajos ya guardados, no los del formulario",
+        "Asi el PDF y la app los muestran en el mismo orden"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "El enlace cambia",
+      "items": [
+        "Cada subida genera un token de descarga nuevo",
+        "Por eso hay que reescribir finalReportUrl",
+        "Una orden completada ya no admite cambios en los trabajos"
+      ]
+    }
+  ]
+}
