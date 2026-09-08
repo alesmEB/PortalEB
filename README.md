@@ -1,32 +1,55 @@
-# React + TypeScript + Vite
+# PortalEB
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Portal de gestión del taller de **Elías Blanco** (naval e industrial): órdenes
+de trabajo desde el presupuesto hasta la factura, calendario de trabajo, chat
+por orden, fichajes de los técnicos y una sección propia, "EB Engineering",
+para el producto EBcontroller y sus clientes internacionales.
 
-Currently, two official plugins are available:
+Aplicación web instalable (PWA) sobre Firebase, en producción en
+https://portaleb.web.app.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Puesta en marcha
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+> **Ojo:** el servidor de desarrollo apunta al **backend de producción**. Todo
+> lo que crees, edites o borres desde él son datos reales.
+
+| Comando | Para qué |
+|---|---|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run build` | Comprobación de tipos (`tsc -b`) y compilación |
+| `npm run lint` | oxlint |
+| `npm run preview` | Sirve lo compilado |
+
+## Cómo está montado
+
+- **React + TypeScript + Vite + Tailwind** en el navegador.
+- **Firebase Data Connect (PostgreSQL)** como base de datos principal.
+- **Cloud Functions** para toda escritura: validan permisos, releen el estado
+  del servidor y registran lo que hacen.
+- **Firestore** solo para el chat de cada orden, **Storage** para informes,
+  presupuestos, fotos y firmas, y **Auth** para identidad, con el rol y los
+  permisos en los custom claims.
+
+```
+src/pages        una página por pantalla
+src/lib          llamadas a las Cloud Functions y utilidades
+functions        todas las Cloud Functions (un solo archivo)
+dataconnect      esquema y consultas
+docs             documentación del proyecto
+```
+
+## Documentación
+
+| Documento | Qué responde |
+|---|---|
+| [docs/dominio.md](docs/dominio.md) | Qué entidades existen y cómo se relacionan |
+| [docs/permisos.md](docs/permisos.md) | Quién puede hacer qué, y dónde se comprueba |
+| [docs/despliegue.md](docs/despliegue.md) | Qué se despliega, en qué orden y qué mirar después |
+| [docs/integraciones.md](docs/integraciones.md) | Comprobador de cables, valoraciones, traducciones, notificaciones y archivos |
+| [docs/diagrams/](docs/diagrams/) | Los flujos principales en diagramas interactivos |
+| [CLAUDE.md](CLAUDE.md) | Convenciones y trampas conocidas al tocar el código |
