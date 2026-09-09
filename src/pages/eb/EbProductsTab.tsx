@@ -121,7 +121,7 @@ function CableTypePicker({
             onClick={handleCreate}
             className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
-            Crear
+            {submitting ? 'Creando...' : 'Crear'}
           </button>
         </div>
       )}
@@ -820,7 +820,9 @@ function EbControllerProductsTab() {
   }
 
   function refreshCableTypes() {
-    listEbCableTypes(FRESH).then((res) => setCableTypes(res.data.ebCableTypes))
+    return runBusy('Actualizando los cables...', () =>
+      listEbCableTypes(FRESH).then((res) => setCableTypes(res.data.ebCableTypes)),
+    )
   }
 
   useEffect(() => {
@@ -906,8 +908,14 @@ function EbControllerProductsTab() {
     <div>
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          {soldCount} unidades vendidas
-          {internalCount > 0 && ` · ${internalCount} de uso interno`}
+          {products === null ? (
+            'Cargando...'
+          ) : (
+            <>
+              {soldCount} unidades vendidas
+              {internalCount > 0 && ` · ${internalCount} de uso interno`}
+            </>
+          )}
         </p>
         <button
           onClick={() => setCreating((v) => !v)}

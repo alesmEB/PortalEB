@@ -193,7 +193,9 @@ export function EbClientsTab() {
       <BusyOverlay label={busyLabel} />
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">{clients?.length ?? 0} clientes</p>
+        <p className="text-sm text-slate-500">
+          {clients === null ? 'Cargando...' : `${clients.length} clientes`}
+        </p>
         <button
           onClick={() => setCreating((v) => !v)}
           className="rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"

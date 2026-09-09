@@ -105,7 +105,9 @@ export function EbFaqTab({ readOnly = false, lang = 'es' }: { readOnly?: boolean
       <BusyOverlay label={busyLabel} />
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">{items?.length ?? 0} preguntas</p>
+        <p className="text-sm text-slate-500">
+          {items === null ? 'Cargando...' : `${items.length} preguntas`}
+        </p>
         {!readOnly && (
           <button
             onClick={() => setCreating((v) => !v)}

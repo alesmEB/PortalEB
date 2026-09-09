@@ -115,7 +115,9 @@ export function EbNewsTab({ readOnly = false, lang = 'es' }: { readOnly?: boolea
       <BusyOverlay label={busyLabel} />
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">{posts?.length ?? 0} noticias</p>
+        <p className="text-sm text-slate-500">
+          {posts === null ? 'Cargando...' : `${posts.length} noticias`}
+        </p>
         {!readOnly && (
           <button
             onClick={() => setCreating((v) => !v)}

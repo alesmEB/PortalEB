@@ -118,7 +118,9 @@ function ScreensSection({ screens, onChanged }: { screens: ScreenRow[] | null; o
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm font-semibold text-eb-blue-dark">Pantallas</h3>
         <p className="text-xs text-slate-500">
-          {inStock.length} en stock · {screens?.length ?? 0} registradas
+          {screens === null
+            ? 'Cargando...'
+            : `${inStock.length} en stock · ${screens.length} registradas`}
         </p>
       </div>
 
