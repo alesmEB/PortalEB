@@ -173,7 +173,7 @@
       "items": [
         "Puede registrar varias comprobaciones de un mismo cable",
         "Por eso se pueden borrar desde la pestana Cables",
-        "No se borra una comprobacion ya asignada a una venta"
+        "Un tipo de cable sin comprobaciones ni ventas se borra del catalogo"
       ]
     }
   ]

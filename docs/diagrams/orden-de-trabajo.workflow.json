@@ -247,8 +247,8 @@
       "dot": "emerald",
       "title": "Ejecucion",
       "items": [
-        "Los tecnicos fichan por orden, no por jornada",
-        "Las tareas se marcan mientras la orden esta en progreso",
+        "Asignar tecnicos exige el permiso admin:assigntechnicians",
+        "Los trabajos se pueden corregir mientras la orden no este completada",
         "Completar exige fotos finales y genera el informe"
       ]
     },
