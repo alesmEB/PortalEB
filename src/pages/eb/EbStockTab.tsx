@@ -11,6 +11,7 @@ import { BusyOverlay } from '../../components/BusyOverlay'
 import { useBusyAction } from '../../hooks/useBusyAction'
 import { FRESH } from '../../lib/dataConnectOptions'
 import {
+  ebDeleteCableType,
   ebDeleteScreen,
   ebRegisterCableCheck,
   ebRegisterScreen,
@@ -346,6 +347,7 @@ export function EbStockTab() {
   const [cableTypes, setCableTypes] = useState<CableTypeRow[] | null>(null)
   const [screens, setScreens] = useState<ScreenRow[] | null>(null)
   const [registerTypeId, setRegisterTypeId] = useState('')
+  const [deletingType, setDeletingType] = useState<CableTypeRow | null>(null)
   const { busyLabel: stockBusyLabel, runBusy: runStockBusy } = useBusyAction()
   const registering = stockBusyLabel !== null
 
@@ -357,13 +359,18 @@ export function EbStockTab() {
     return listEbScreens(FRESH).then((res) => setScreens(res.data.ebScreens))
   }
 
-  useEffect(() => {
-    refresh()
-    refreshScreens()
-    listEbCableTypes(FRESH).then((res) => {
+  function refreshCableTypes() {
+    return listEbCableTypes(FRESH).then((res) => {
       setCableTypes(res.data.ebCableTypes)
       setRegisterTypeId((current) => current || res.data.ebCableTypes[0]?.id || '')
     })
+  }
+
+  useEffect(() => {
+    refresh()
+    refreshScreens()
+    refreshCableTypes()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleRegister() {
@@ -429,6 +436,7 @@ export function EbStockTab() {
                       <th className="px-4 py-2 font-medium">Referencia</th>
                       <th className="px-4 py-2 font-medium">Cable</th>
                       <th className="px-4 py-2 text-right font-medium">En stock</th>
+                      <th className="px-2 py-2" />
                     </tr>
                   </thead>
                   <tbody>
@@ -438,6 +446,15 @@ export function EbStockTab() {
                         <td className="px-4 py-2 text-slate-700">{type.name}</td>
                         <td className="px-4 py-2 text-right font-semibold text-eb-blue-dark">
                           {stockByTypeId.get(type.id) ?? 0}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          <button
+                            onClick={() => setDeletingType(type)}
+                            title="Eliminar este tipo de cable"
+                            className="text-slate-300 hover:text-red-600"
+                          >
+                            ✕
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -450,6 +467,93 @@ export function EbStockTab() {
       )}
 
       <ScreensSection screens={screens} onChanged={refreshScreens} />
+
+      {deletingType && (
+        <DeleteCableTypeModal
+          cableType={deletingType}
+          inStock={stockByTypeId.get(deletingType.id) ?? 0}
+          onClose={() => setDeletingType(null)}
+          onConfirm={async () => {
+            await runStockBusy('Eliminando el tipo de cable...', async () => {
+              await ebDeleteCableType(deletingType.id)
+              setDeletingType(null)
+              await refreshCableTypes()
+              await refresh()
+            })
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Confirmation before removing a type from the catalog. The server refuses
+ * while any check or sale still points at it; that refusal is shown here
+ * rather than pre-judged, since the client only knows about unassigned
+ * stock, not about cables already sold. */
+function DeleteCableTypeModal({
+  cableType,
+  inStock,
+  onClose,
+  onConfirm,
+}: {
+  cableType: CableTypeRow
+  inStock: number
+  onClose: () => void
+  onConfirm: () => Promise<void>
+}) {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleConfirm() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onConfirm()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">Eliminar tipo de cable</h2>
+        <p className="mt-2 text-sm text-slate-700">
+          {cableType.name} <span className="text-slate-400">({cableType.code})</span>
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Desaparece del catálogo y deja de ofrecerse al registrar ventas o stock. No se puede
+          deshacer.
+        </p>
+        {inStock > 0 && (
+          <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Tiene {inStock} unidad{inStock > 1 ? 'es' : ''} en stock. Mientras haya cables
+            comprobados de este tipo no se podrá eliminar.
+          </p>
+        )}
+        {error && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+        )}
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={submitting}
+            className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {submitting ? 'Eliminando...' : 'Eliminar'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

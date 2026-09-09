@@ -80,7 +80,8 @@ La sección del producto propio, con su público internacional:
   software, fecha de compra. `soldToEndUserAt` cuando un distribuidor la
   revende; `retiredAt` cuando se da de baja; `internalUse` cuando la unidad se
   queda en casa y **no cuenta como venta ni ocupa número**.
-- **EbCableType** — catálogo de cables (código `EBEN…` y nombre).
+- **EbCableType** — catálogo de cables (código `EBEN…` y nombre). Se puede
+  eliminar solo mientras no lo use ninguna comprobación ni ninguna venta.
 - **CableCheck** — cada comprobación de continuidad que registra el
   comprobador ESP32 del taller, numerada. Sin `productId` es stock; con él,
   está asignada a una venta.

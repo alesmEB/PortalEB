@@ -59,6 +59,17 @@ export async function ebCreateCableType(code: string, name: string) {
   return res.data
 }
 
+const callEbDeleteCableType = httpsCallable<{ cableTypeId: string }, { success: boolean }>(
+  functions,
+  'ebDeleteCableType',
+)
+
+/** Fails if the type is used by any registered check or any sale. */
+export async function ebDeleteCableType(cableTypeId: string) {
+  const res = await callEbDeleteCableType({ cableTypeId })
+  return res.data
+}
+
 const callEbDeleteCableCheck = httpsCallable<{ cableCheckId: string }, { success: boolean }>(
   functions,
   'ebDeleteCableCheck',

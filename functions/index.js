@@ -3304,6 +3304,65 @@ exports.ebCreateCableType = onCall(async (request) => {
 // a check that was never claimed by a sale (productId null), re-verified
 // server-side rather than trusted from the client, so a stale product-picker
 // view can't be used to delete a cable that's actually assigned.
+// A cable type created by mistake used to be permanent - there was no way to
+// remove it, so the catalog only ever grew. Deleting is refused while anything
+// points at the type: the checks are the shop's own record of tested cables,
+// and a sale's list of included cables is part of what was sold.
+const COUNT_CABLE_TYPE_USES_QUERY = `
+  query CountCableTypeUsesAdmin($cableTypeId: UUID!) {
+    ebCableType(id: $cableTypeId) {
+      code
+      name
+    }
+    checks: cableChecks(where: { cableTypeId: { eq: $cableTypeId } }, limit: 1000) {
+      id
+    }
+    sales: ebClientProductCables(where: { cableTypeId: { eq: $cableTypeId } }, limit: 1000) {
+      productId
+    }
+  }
+`
+const DELETE_EB_CABLE_TYPE_MUTATION = `
+  mutation DeleteEbCableTypeAdmin($id: UUID!) {
+    ebCableType_delete(id: $id)
+  }
+`
+
+exports.ebDeleteCableType = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { cableTypeId } = request.data ?? {}
+  if (typeof cableTypeId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador del tipo de cable.')
+  }
+
+  const res = await dataConnect.executeGraphqlRead(COUNT_CABLE_TYPE_USES_QUERY, {
+    variables: { cableTypeId },
+  })
+  if (!res.data.ebCableType) {
+    throw new HttpsError('not-found', 'Ese tipo de cable no existe.')
+  }
+  const checks = res.data.checks.length
+  const sales = res.data.sales.length
+  if (checks > 0 || sales > 0) {
+    const usos = [
+      checks > 0 ? `${checks} cable${checks > 1 ? 's' : ''} comprobado${checks > 1 ? 's' : ''}` : null,
+      sales > 0 ? `${sales} venta${sales > 1 ? 's' : ''}` : null,
+    ]
+      .filter(Boolean)
+      .join(' y ')
+    throw new HttpsError(
+      'failed-precondition',
+      `No se puede eliminar: este tipo de cable se usa en ${usos}.`,
+    )
+  }
+
+  await dataConnect.executeGraphql(DELETE_EB_CABLE_TYPE_MUTATION, {
+    variables: { id: cableTypeId },
+  })
+  return { success: true }
+})
+
 exports.ebDeleteCableCheck = onCall(async (request) => {
   requireAdminOrLab(request)
 
