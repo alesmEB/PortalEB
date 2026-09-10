@@ -15,9 +15,11 @@ import {
   type ListAssignableUsersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { BusyOverlay } from '../components/BusyOverlay'
 import { HasPermission } from '../components/HasPermission'
 import { OrderDocumentsViewer, type DocumentOption } from '../components/OrderDocumentsViewer'
 import { useAuth } from '../contexts/AuthContext'
+import { useBusyAction } from '../hooks/useBusyAction'
 import { usePermission } from '../hooks/usePermission'
 import {
   subscribeToMessages,
@@ -59,6 +61,19 @@ type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
 type AssignableUser = ListAssignableUsersData['users'][number]
 type ActiveTimeLog = GetMyActiveTimeLogData['timeLogs'][number]
 type TimeLogRow = WorkOrder['timeLogs'][number]
+
+function actionErrorMessage(err: unknown) {
+  if (!(err instanceof Error)) return 'No se ha podido completar la acción.'
+  // A callable that never reached the server (no signal on board, say) comes
+  // back as code "functions/internal" with the bare code as its message - the
+  // technician just saw "internal". Server-side HttpsErrors carry a real
+  // sentence instead, and those are kept as they are.
+  const code = (err as { code?: unknown }).code
+  if (typeof code === 'string' && code.startsWith('functions/') && err.message === code.slice(10)) {
+    return 'No se ha podido contactar con el servidor. Comprueba la conexión y vuelve a intentarlo.'
+  }
+  return err.message
+}
 
 function isAssignableUser(user: AssignableUser) {
   return (
@@ -375,13 +390,17 @@ function ExternalCodeBox({
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(workOrder.externalCode ?? '')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSave() {
     setSubmitting(true)
+    setError(null)
     try {
       await setWorkOrderExternalCode(workOrder.id, value.trim())
       setEditing(false)
       onSaved()
+    } catch (err) {
+      setError(actionErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -429,6 +448,7 @@ function ExternalCodeBox({
           </button>
         </div>
       )}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </section>
   )
 }
@@ -449,14 +469,18 @@ function NotesSection({
 }) {
   const [body, setBody] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleAdd() {
     if (!body.trim()) return
     setSubmitting(true)
+    setError(null)
     try {
       await addOrderNote({ workOrderId, body: body.trim() })
       setBody('')
       onAdded()
+    } catch (err) {
+      setError(actionErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -491,9 +515,10 @@ function NotesSection({
           onClick={handleAdd}
           className="self-end rounded-lg bg-eb-blue px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
         >
-          Añadir
+          {submitting ? 'Añadiendo...' : 'Añadir'}
         </button>
       </div>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </section>
   )
 }
@@ -512,9 +537,11 @@ function IncidentModal({
   const [description, setDescription] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit() {
     setSubmitting(true)
+    setError(null)
     try {
       const photos = []
       for (const file of files) {
@@ -523,6 +550,8 @@ function IncidentModal({
       }
       await reportIncident({ workOrderId, description: description.trim(), photos })
       onSaved()
+    } catch (err) {
+      setError(actionErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -546,10 +575,15 @@ function IncidentModal({
         <p className="mt-3 text-xs font-medium text-slate-500">Fotos o vídeos (opcional)</p>
         <MediaPicker files={files} onFilesChange={setFiles} />
 
+        {error && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+        )}
+
         <div className="mt-4 flex gap-2">
           <button
             onClick={onClose}
-            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+            disabled={submitting}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -562,6 +596,9 @@ function IncidentModal({
           </button>
         </div>
       </div>
+      <BusyOverlay
+        label={submitting ? (files.length > 0 ? 'Subiendo fotos y registrando la incidencia...' : 'Registrando la incidencia...') : null}
+      />
     </div>
   )
 }
@@ -731,12 +768,16 @@ function PhotoUploadModal({
 }) {
   const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const copy = photoModalCopy[stage]
 
   async function handleConfirm() {
     setSubmitting(true)
+    setError(null)
     try {
       await onConfirm(files)
+    } catch (err) {
+      setError(actionErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -750,10 +791,15 @@ function PhotoUploadModal({
 
         <MediaPicker files={files} onFilesChange={setFiles} />
 
+        {error && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+        )}
+
         <div className="mt-4 flex gap-2">
           <button
             onClick={onClose}
-            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+            disabled={submitting}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -992,7 +1038,7 @@ function TasksEditor({
     try {
       await onSave(filled.map((task) => ({ id: task.id, description: task.description.trim() })))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron guardar los trabajos.')
+      setError(actionErrorMessage(err))
       setSubmitting(false)
     }
   }
@@ -1091,7 +1137,10 @@ export function OrderDetailPage() {
   const [adminStepModal, setAdminStepModal] = useState<'adjust' | 'protocol' | 'invoice' | null>(null)
   const [editingTasks, setEditingTasks] = useState(false)
   const [revertStepModal, setRevertStepModal] = useState<AdminProcessStep | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { busyLabel, runBusy } = useBusyAction()
+  const busy = busyLabel !== null
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const quoteFileInputRef = useRef<HTMLInputElement>(null)
 
   // Both the report and, if the viewer can see quote PDFs, every quote
@@ -1120,10 +1169,15 @@ export function OrderDetailPage() {
     setMyActiveLog(res.data.timeLogs[0] ?? null)
   }, [])
 
+  const retryLoadOrder = useCallback(() => {
+    setLoadError(false)
+    loadOrder().catch(() => setLoadError(true))
+  }, [loadOrder])
+
   useEffect(() => {
-    loadOrder()
-    loadMyActiveLog()
-  }, [loadOrder, loadMyActiveLog])
+    retryLoadOrder()
+    loadMyActiveLog().catch(() => {})
+  }, [retryLoadOrder, loadMyActiveLog])
 
   useEffect(() => {
     if (!order || !profile || !canChat) return
@@ -1135,16 +1189,25 @@ export function OrderDetailPage() {
     return subscribeToUnreadOrderIds('technicians', [order.id], profile.id, setUnreadTechnicianIds)
   }, [order, profile, canChat])
 
+  // The buttons on the page itself have no dialog to show a failure in, so it
+  // goes to a toast instead - before, a rejected clock-in or task tick just
+  // un-greyed the button as if it had worked.
+  async function runPageAction(label: string, action: () => Promise<unknown>) {
+    setActionError(null)
+    try {
+      await runBusy(label, action)
+    } catch (err) {
+      setActionError(actionErrorMessage(err))
+    }
+  }
+
   async function handleAddQuote(file: Blob) {
     if (!order) return
-    setBusy(true)
-    try {
+    await runPageAction('Subiendo presupuesto...', async () => {
       const fileUrl = await uploadQuotePdf(order.code, order.quoteAttempts + 1, file)
       await addQuote(order.id, fileUrl)
       await loadOrder()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   function handleQuoteFileSelected(e: ChangeEvent<HTMLInputElement>) {
@@ -1155,13 +1218,10 @@ export function OrderDetailPage() {
 
   async function handleAcceptQuote() {
     if (!order) return
-    setBusy(true)
-    try {
+    await runPageAction('Aceptando presupuesto...', async () => {
       await acceptQuote(order.id)
       await loadOrder()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function uploadOrderPhotos(order: WorkOrder, storageStage: 'start' | 'final', files: File[]) {
@@ -1173,31 +1233,30 @@ export function OrderDetailPage() {
     return photos
   }
 
+  // These two throw instead of going through runPageAction: the photo dialog
+  // stays open on failure and shows the error itself, with the photos still
+  // selected so the technician can retry without picking them again.
   async function handleStartOrder(files: File[]) {
     if (!order) return
-    setBusy(true)
-    try {
+    setActionError(null)
+    await runBusy('Subiendo fotos y empezando la orden...', async () => {
       const photos = await uploadOrderPhotos(order, 'start', files)
       await startOrder(order.id, photos)
       setStartingOrder(false)
       await loadOrder()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function handleCompleteOrder(files: File[]) {
     if (!order) return
-    setBusy(true)
-    try {
+    setActionError(null)
+    await runBusy('Subiendo fotos y terminando la orden...', async () => {
       const photos = await uploadOrderPhotos(order, 'final', files)
       await completeOrder(order.id, photos)
       setCompletingOrder(false)
       await loadOrder()
       await loadMyActiveLog()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function handleForceCompleteOrder() {
@@ -1207,63 +1266,60 @@ export function OrderDetailPage() {
         'finales ni que los técnicos cierren su turno. Quedará registrado en el historial.',
     )
     if (!proceed) return
-    setBusy(true)
-    try {
+    await runPageAction('Completando la orden...', async () => {
       await forceCompleteOrder(order.id)
       await loadOrder()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   // Individual clock in/out isn't logged to OrderTracking - the TimeLog
   // table (see the "Turnos" timeline below) is the authoritative record.
   async function handleStartWorking() {
     if (!order) return
-    setBusy(true)
-    try {
-      if (myActiveLog && myActiveLog.workOrderId !== order.id) {
-        const proceed = confirm(
-          `Estás trabajando en la orden ${myActiveLog.workOrder.code}. Se cerrará ese turno y ` +
-            `empezarás a trabajar en ${order.code}. ¿Continuar?`,
-        )
-        if (!proceed) return
-      }
+    if (myActiveLog && myActiveLog.workOrderId !== order.id) {
+      const proceed = confirm(
+        `Estás trabajando en la orden ${myActiveLog.workOrder.code}. Se cerrará ese turno y ` +
+          `empezarás a trabajar en ${order.code}. ¿Continuar?`,
+      )
+      if (!proceed) return
+    }
+    await runPageAction('Empezando turno...', async () => {
       await startWorking(order.id)
       await loadOrder()
       await loadMyActiveLog()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function handleStopWorking() {
     if (!order || !myActiveLog) return
-    setBusy(true)
-    try {
+    await runPageAction('Cerrando turno...', async () => {
       await stopWorking()
       await loadOrder()
       await loadMyActiveLog()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function handleToggleTask(taskId: string, isCompleted: boolean) {
-    setBusy(true)
-    try {
+    await runPageAction(isCompleted ? 'Marcando trabajo como hecho...' : 'Desmarcando trabajo...', async () => {
       await toggleWorkOrderTask(taskId, isCompleted)
       await loadOrder()
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   if (order === undefined) {
     return (
       <div className="flex-1 p-4">
         <BackButton to={backTo} />
-        <p className="text-sm text-slate-500">Cargando...</p>
+        {loadError ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+            <span>No se ha podido cargar la orden.</span>
+            <button onClick={retryLoadOrder} className="shrink-0 font-semibold underline">
+              Reintentar
+            </button>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Cargando...</p>
+        )}
       </div>
     )
   }
@@ -1920,6 +1976,20 @@ export function OrderDetailPage() {
           ]}
         />
       )}
+
+      {actionError && (
+        <div
+          role="alert"
+          className="fixed inset-x-4 top-4 z-[60] mx-auto flex max-w-sm items-start gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm text-white shadow-xl"
+        >
+          <p className="flex-1">{actionError}</p>
+          <button onClick={() => setActionError(null)} aria-label="Cerrar" className="shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <BusyOverlay label={busyLabel} />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { MessageCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -24,11 +24,21 @@ export function AssignmentsPage() {
   const [assignments, setAssignments] = useState<Assignment[] | null>(null)
   const [workingOrderId, setWorkingOrderId] = useState<string | null>(null)
   const [unreadOrderIds, setUnreadOrderIds] = useState<Set<string>>(new Set())
+  const [loadError, setLoadError] = useState(false)
 
-  useEffect(() => {
-    listMyAssignedWorkOrders(FRESH).then((res) => setAssignments(res.data.technicianAssignments))
-    getMyActiveTimeLog(FRESH).then((res) => setWorkingOrderId(res.data.timeLogs[0]?.workOrderId ?? null))
+  const load = useCallback(() => {
+    setLoadError(false)
+    listMyAssignedWorkOrders(FRESH)
+      .then((res) => setAssignments(res.data.technicianAssignments))
+      .catch(() => setLoadError(true))
+    // Only highlights the order being worked on - if it fails the list is
+    // still usable, so it doesn't get its own error.
+    getMyActiveTimeLog(FRESH)
+      .then((res) => setWorkingOrderId(res.data.timeLogs[0]?.workOrderId ?? null))
+      .catch(() => {})
   }, [])
+
+  useEffect(load, [load])
 
   useEffect(() => {
     if (!assignments || !profile || !canChat) return
@@ -51,6 +61,15 @@ export function AssignmentsPage() {
       <p className="text-sm text-slate-500">Órdenes de trabajo en las que estás asignado.</p>
 
       <div className="mt-4 space-y-2">
+        {loadError && (
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+            <span>No se han podido cargar tus asignaciones.</span>
+            <button onClick={load} className="shrink-0 font-semibold underline">
+              Reintentar
+            </button>
+          </div>
+        )}
+        {assignments === null && !loadError && <p className="text-sm text-slate-500">Cargando...</p>}
         {pendingAssignments?.length === 0 && (
           <p className="text-sm text-slate-500">No tienes órdenes asignadas pendientes.</p>
         )}
