@@ -103,6 +103,12 @@ Dos cosas distintas comparten la rejilla:
   hay ficha. Cerrarlas las saca del panel pero mantiene sus días;
   **CalendarAppointmentDate** guarda un día por fila, igual que las órdenes.
 
+Una cita nace de dos formas: desde el panel "Citas sin orden", sin día, y se
+coloca después con los chips de la semana; o pulsando un día en la vista Mes,
+que la crea ya colocada en ese día. En esa vista, pulsar una orden la abre y
+pulsar una cita la abre para editarla. Solo administración (o `admin:lab`)
+puede crear y editar; los técnicos ven el calendario sin tocarlo.
+
 ## Lo que no está en PostgreSQL
 
 - **Firestore**: el chat de cada orden (`clientChats/{orderId}`,

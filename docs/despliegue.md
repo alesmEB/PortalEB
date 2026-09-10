@@ -37,6 +37,11 @@ npx firebase-tools@latest dataconnect:sdk:generate
 
 ## Después de desplegar hosting
 
+**El pie de página dice qué versión tienes cargada**: `v` más el hash corto del
+commit compilado y la fecha de compilación. Compáralo con `git log --oneline
+-1`; si no coincide, sigues en la anterior. Un `+` detrás del hash significa que
+se compiló con cambios sin commitear.
+
 La app es una PWA con service worker: **sirve la versión cacheada** hasta que la
 nueva se activa. Al abrirla hay que recargar dos veces. Comprobar que lo
 publicado es lo nuevo mirando el `index.html` que devuelve el navegador no vale,

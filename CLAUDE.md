@@ -43,6 +43,9 @@ npm run lint     # oxlint
   despliegue. Hay que recargar dos veces para ver lo nuevo. Verifica lo
   publicado descargando `/assets/index-<hash>.js` y buscando el texto nuevo,
   no fiándote del `index.html` que devuelve el navegador.
+- El pie de página muestra la versión cargada (`v<hash> · fecha`). Compara ese
+  hash con `git log --oneline -1`; un `+` indica que se compiló con cambios sin
+  commitear, así que **commitea antes de compilar para desplegar**.
 
 ## Data Connect: cosas que muerden
 

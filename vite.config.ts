@@ -1,10 +1,30 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Which build is on screen. The service worker keeps serving the previous
+// bundle until the new one activates, so right after a deploy it's easy to be
+// looking at the old code without knowing - the footer shows this to settle it.
+function gitVersion() {
+  try {
+    const hash = execSync('git rev-parse --short HEAD').toString().trim()
+    // Tracked files differing from HEAD mean this build holds code that isn't
+    // in that commit, so it says so instead of claiming the hash outright.
+    const dirty = execSync('git status --porcelain --untracked-files=no').toString().trim() !== ''
+    return dirty ? `${hash}+` : hash
+  } catch {
+    return 'desconocida'
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(gitVersion()),
+    __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   server: {
     port: process.env.PORT ? Number(process.env.PORT) : 5173,
   },
