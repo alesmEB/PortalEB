@@ -109,6 +109,11 @@ que la crea ya colocada en ese día. En esa vista, pulsar una orden la abre y
 pulsar una cita la abre para editarla. Solo administración (o `admin:lab`)
 puede crear y editar; los técnicos ven el calendario sin tocarlo.
 
+Cada ficha de la vista Mes se lee igual sea orden o cita: la embarcación, lo
+que hay que hacer debajo (las tareas de la orden, o el "qué hay que hacer" de
+la cita) y la localización. Una cita sin embarcación sube el trabajo a la
+primera línea.
+
 ## Lo que no está en PostgreSQL
 
 - **Firestore**: el chat de cada orden (`clientChats/{orderId}`,

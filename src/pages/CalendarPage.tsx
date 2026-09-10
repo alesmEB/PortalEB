@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { MapPin, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -375,6 +375,13 @@ export function CalendarPage() {
                         >
                           <p className="truncate font-semibold">{entry.workOrder.boat.name}</p>
                           <TaskList tasks={entry.workOrder.tasks} />
+                          <p className="mt-0.5 flex items-center gap-0.5 opacity-80">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">
+                              {orderLocationLabel[entry.workOrder.locationCode]}
+                              {entry.workOrder.assetLocation && ` · ${entry.workOrder.assetLocation}`}
+                            </span>
+                          </p>
                         </button>
                       )
                     })}
@@ -387,12 +394,26 @@ export function CalendarPage() {
                           const full = appointments.find((a) => a.id === entry.appointment.id)
                           if (canManage && full) setEditingAppointment(full)
                         }}
-                        title={`Cita · ${orderLocationLabel[entry.appointment.locationCode]}${
+                        title={`Cita · ${entry.appointment.title}${
                           entry.appointment.boatDetails ? ` · ${entry.appointment.boatDetails}` : ''
-                        }`}
+                        } · ${orderLocationLabel[entry.appointment.locationCode]}`}
                         className="block w-full rounded border border-dashed border-amber-400 bg-amber-50 px-1 py-0.5 text-left text-[9px] text-amber-900"
                       >
-                        <p className="truncate font-semibold">{entry.appointment.title}</p>
+                        {/* Same reading order as an order's chip - boat, then the
+                            job, then where - so both kinds scan alike. The boat is
+                            optional on an appointment, so the job moves up. */}
+                        <p className="truncate font-semibold">
+                          {entry.appointment.boatDetails || entry.appointment.title}
+                        </p>
+                        {entry.appointment.boatDetails && (
+                          <p className="truncate">{entry.appointment.title}</p>
+                        )}
+                        <p className="mt-0.5 flex items-center gap-0.5 opacity-80">
+                          <MapPin className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">
+                            {orderLocationLabel[entry.appointment.locationCode]}
+                          </span>
+                        </p>
                       </button>
                     ))}
                   </div>
