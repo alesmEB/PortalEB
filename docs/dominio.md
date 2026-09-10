@@ -112,7 +112,8 @@ puede crear y editar; los técnicos ven el calendario sin tocarlo.
 Cada ficha de la vista Mes se lee igual sea orden o cita: la embarcación, lo
 que hay que hacer debajo (las tareas de la orden, o el "qué hay que hacer" de
 la cita) y la localización. Una cita sin embarcación sube el trabajo a la
-primera línea.
+primera línea. La vista Semana añade cliente, código, estado y técnicos, y
+muestra también la localización de cada orden.
 
 ## Lo que no está en PostgreSQL
 

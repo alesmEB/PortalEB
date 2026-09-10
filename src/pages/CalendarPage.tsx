@@ -469,6 +469,13 @@ export function CalendarPage() {
                               <p className="text-xs text-slate-600">
                                 {order.customer.name} · <span className="font-mono">{order.code}</span>
                               </p>
+                              <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                <span>
+                                  {orderLocationLabel[order.locationCode]}
+                                  {order.assetLocation && ` · ${order.assetLocation}`}
+                                </span>
+                              </p>
                             </button>
                             {canManage && editable && (
                               <button
