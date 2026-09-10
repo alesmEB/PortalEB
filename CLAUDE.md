@@ -95,6 +95,14 @@ datos reales**. Antes de probar algo destructivo:
   quedan restos.
 - Apunta los valores originales antes de tocarlos, para poder restaurarlos.
 
+Para probar **cómo se ve un fallo del servidor** sin tocar nada real, sustituye
+`window.fetch` en la página por uno que rechace (con un retraso, para ver
+también la espera) toda URL que no sea `location.origin`. Las callables usan
+`window.fetch` en cada llamada, así que se cortan antes de salir; cuenta las
+URLs bloqueadas para confirmarlo. **Data Connect no se deja**: guarda su propia
+referencia a `fetch` al arrancar, y los estados de carga/error de las listas no
+se pueden provocar así. Restaura el `fetch` original al terminar.
+
 Una vez borré un registro real de producción durante una prueba. Si pasa algo
 así, dilo claramente en vez de dejarlo pasar.
 
@@ -106,3 +114,27 @@ así, dilo claramente en vez de dejarlo pasar.
 - Nada de comentarios de relleno ni de anunciar lo que hace la línea siguiente.
 - Confirmaciones antes de acciones irreversibles, y mensajes de error visibles:
   un diálogo que se queda quieto tras fallar es un fallo en sí.
+
+## Esperas y errores en pantalla
+
+Ninguna llamada al servidor puede dejar la pantalla callada, ni mientras
+espera ni cuando falla.
+
+- **Listas**: `null` mientras cargan → "Cargando..."; si la carga falla, aviso
+  en rojo con "Reintentar". Sin el `.catch`, una lista que falla se queda en
+  blanco para siempre.
+- **Acciones**: `useBusyAction` (`src/hooks/useBusyAction.ts`) +
+  `<BusyOverlay label={busyLabel} />`. Envuelve la mutación **y** la relectura
+  posterior, con una etiqueta que diga qué pasa ("Empezando turno...",
+  "Subiendo fotos y terminando la orden..."). `runBusy` relanza el error.
+- **Dónde va el error**: si la acción nace en un diálogo, el diálogo se queda
+  abierto y lo muestra dentro, conservando lo que el usuario había elegido
+  (las fotos, por ejemplo). Si nace de un botón de la página, va a un aviso
+  flotante que se puede cerrar (`runPageAction` en `OrderDetailPage.tsx`).
+- **El texto del error**: `actionErrorMessage` en `OrderDetailPage.tsx`. Una
+  callable que no llega al servidor devuelve el código pelado como mensaje
+  ("internal"); se traduce a "No se ha podido contactar con el servidor...".
+  Los `HttpsError` del servidor ya traen una frase en español y se muestran
+  tal cual.
+- Un `confirm()` va **antes** de `runBusy`, no dentro: si no, el velo de espera
+  queda debajo del diálogo de confirmación.
