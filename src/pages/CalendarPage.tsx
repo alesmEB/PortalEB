@@ -73,6 +73,11 @@ function TaskList({ tasks }: { tasks: { description: string; isCompleted: boolea
   )
 }
 
+function dateFromKey(key: string) {
+  const [year, month, day] = key.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 function isWeekend(date: Date) {
   const day = date.getDay()
   return day === 0 || day === 6
@@ -91,6 +96,9 @@ export function CalendarPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [appointmentEntries, setAppointmentEntries] = useState<AppointmentEntry[]>([])
   const [editingAppointment, setEditingAppointment] = useState<Appointment | 'new' | null>(null)
+  // Set when the new-appointment dialog was opened by clicking a day in the
+  // month view, so the appointment lands on that day instead of unscheduled.
+  const [newAppointmentDay, setNewAppointmentDay] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [showClosedAppointments, setShowClosedAppointments] = useState(false)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
@@ -166,6 +174,11 @@ export function CalendarPage() {
     }
   }
 
+  function openNewAppointment(dateKey: string | null) {
+    setNewAppointmentDay(dateKey)
+    setEditingAppointment('new')
+  }
+
   async function handleCloseAppointment(appointmentId: string, closed: boolean) {
     await setCalendarAppointmentClosed(appointmentId, closed)
     load()
@@ -198,7 +211,7 @@ export function CalendarPage() {
   }
 
   return (
-    <div className="flex-1 p-4">
+    <div className="flex flex-1 flex-col p-4">
       <BackButton to="/" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -289,7 +302,7 @@ export function CalendarPage() {
       )}
 
       {assignedOrders !== null && scheduledEntries !== null && view === 'month' && (
-        <div className="mt-4">
+        <div className="mt-4 flex flex-1 flex-col">
           <div
             className={`grid ${monthGridColsClass} gap-px overflow-hidden rounded-t-xl border border-slate-200 bg-slate-200 text-center text-[11px] font-semibold text-slate-500`}
           >
@@ -299,8 +312,10 @@ export function CalendarPage() {
               </div>
             ))}
           </div>
+          {/* flex-1 + equal auto rows: the weeks stretch to fill the screen,
+              and a busy day still grows past its share instead of clipping. */}
           <div
-            className={`grid ${monthGridColsClass} gap-px overflow-hidden rounded-b-xl border border-t-0 border-slate-200 bg-slate-200`}
+            className={`grid flex-1 auto-rows-[1fr] ${monthGridColsClass} gap-px overflow-hidden rounded-b-xl border border-t-0 border-slate-200 bg-slate-200`}
           >
             {visibleMonthDays.map((day) => {
               const key = toDateKey(day)
@@ -310,24 +325,47 @@ export function CalendarPage() {
               return (
                 <div
                   key={key}
+                  onClick={canManage ? () => openNewAppointment(key) : undefined}
+                  title={canManage ? 'Añadir una cita este día' : undefined}
                   className={`min-h-[80px] bg-white/90 p-1 ${!inMonth ? 'opacity-40' : ''} ${
                     isToday ? 'ring-2 ring-inset ring-eb-blue' : ''
-                  }`}
+                  } ${canManage ? 'cursor-pointer transition-colors hover:bg-amber-50/70' : ''}`}
                 >
-                  <p
-                    className={`text-[11px] font-semibold ${
-                      isToday ? 'text-eb-blue-dark' : 'text-slate-500'
-                    }`}
-                  >
-                    {day.getDate()}
-                  </p>
+                  {canManage ? (
+                    // The day number doubles as the keyboard entry point, so the
+                    // cell can stay a plain click target without nesting buttons.
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openNewAppointment(key)
+                      }}
+                      aria-label={`Añadir una cita el ${formatDayLabel(day)}`}
+                      className={`rounded px-0.5 text-[11px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-eb-blue ${
+                        isToday ? 'text-eb-blue-dark' : 'text-slate-500'
+                      }`}
+                    >
+                      {day.getDate()}
+                    </button>
+                  ) : (
+                    <p
+                      className={`text-[11px] font-semibold ${
+                        isToday ? 'text-eb-blue-dark' : 'text-slate-500'
+                      }`}
+                    >
+                      {day.getDate()}
+                    </p>
+                  )}
                   <div className="mt-1 space-y-1">
                     {dayEntries.map((entry) => {
                       const completed = entry.workOrder.status === WorkOrderStatus.COMPLETED
                       return (
                         <button
                           key={entry.workOrder.id}
-                          onClick={() => navigate(`/orders/${entry.workOrder.id}`)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/orders/${entry.workOrder.id}`)
+                          }}
                           title={`${entry.workOrder.code} · ${entry.workOrder.customer.name}`}
                           className={`block w-full rounded px-1 py-0.5 text-left text-[9px] ${
                             completed
@@ -341,15 +379,21 @@ export function CalendarPage() {
                       )
                     })}
                     {(appointmentsByDate.get(key) ?? []).map((entry) => (
-                      <div
+                      <button
+                        type="button"
                         key={entry.appointment.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const full = appointments.find((a) => a.id === entry.appointment.id)
+                          if (canManage && full) setEditingAppointment(full)
+                        }}
                         title={`Cita · ${orderLocationLabel[entry.appointment.locationCode]}${
                           entry.appointment.boatDetails ? ` · ${entry.appointment.boatDetails}` : ''
                         }`}
-                        className="rounded border border-dashed border-amber-400 bg-amber-50 px-1 py-0.5 text-[9px] text-amber-900"
+                        className="block w-full rounded border border-dashed border-amber-400 bg-amber-50 px-1 py-0.5 text-left text-[9px] text-amber-900"
                       >
                         <p className="truncate font-semibold">{entry.appointment.title}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -558,7 +602,7 @@ export function CalendarPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setEditingAppointment('new')}
+                  onClick={() => openNewAppointment(null)}
                   className="shrink-0 rounded-lg bg-eb-teal px-3 py-1.5 text-sm font-semibold text-white"
                 >
                   + Nueva cita
@@ -706,6 +750,7 @@ export function CalendarPage() {
       {editingAppointment && (
         <AppointmentModal
           appointment={editingAppointment === 'new' ? null : editingAppointment}
+          scheduleOn={editingAppointment === 'new' ? newAppointmentDay : null}
           onClose={() => setEditingAppointment(null)}
           onSaved={() => {
             setEditingAppointment(null)
@@ -721,10 +766,13 @@ export function CalendarPage() {
  * because these are visits to boats the system has no record of yet. */
 function AppointmentModal({
   appointment,
+  scheduleOn,
   onClose,
   onSaved,
 }: {
   appointment: Appointment | null
+  /** "YYYY-MM-DD" to schedule a new appointment on right after creating it. */
+  scheduleOn: string | null
   onClose: () => void
   onSaved: () => void
 }) {
@@ -750,8 +798,12 @@ function AppointmentModal({
         locationCode,
         notes: notes.trim() || undefined,
       }
-      if (appointment) await updateCalendarAppointment(appointment.id, input)
-      else await createCalendarAppointment(input)
+      if (appointment) {
+        await updateCalendarAppointment(appointment.id, input)
+      } else {
+        const { appointmentId } = await createCalendarAppointment(input)
+        if (scheduleOn) await setCalendarAppointmentScheduledDate(appointmentId, scheduleOn, true)
+      }
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar la cita.')
@@ -764,7 +816,11 @@ function AppointmentModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
       <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-xl">
         <h2 className="text-sm font-semibold text-eb-blue-dark">
-          {appointment ? 'Editar cita' : 'Nueva cita'}
+          {appointment
+            ? 'Editar cita'
+            : scheduleOn
+              ? `Nueva cita · ${formatDayLabel(dateFromKey(scheduleOn))}`
+              : 'Nueva cita'}
         </h2>
         <p className="mt-0.5 text-xs text-slate-500">
           Una visita sin orden de trabajo, del estilo "Mirar problema barco X".
