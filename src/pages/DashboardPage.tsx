@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserRole, getMyEbClient } from '@dataconnect/generated'
-import logoElias from '../assets/branding/logo-elias.png'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
 import { FRESH } from '../lib/dataConnectOptions'
 
 export function DashboardPage() {
-  const { profile, permissions, signOut } = useAuth()
+  const { profile, permissions } = useAuth()
   const navigate = useNavigate()
   // Blocks rendering the regular dashboard for CLIENT-role users until we
   // know whether they're an EB Engineering client - if so, they're sent
@@ -38,16 +37,6 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur-sm">
-        <img src={logoElias} alt="Elías Blanco naval · industrial" className="h-8 w-auto" />
-        <button
-          onClick={() => signOut()}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue hover:text-eb-blue"
-        >
-          Salir
-        </button>
-      </header>
-
       <main className="flex-1 p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <HasPermission permission="orders:create">

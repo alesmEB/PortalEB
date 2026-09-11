@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { getMyEbClient, listMyEbClientProducts, type ListMyEbClientProductsData } from '@dataconnect/generated'
 import { EbAssignedCablesSection, EbControllerProductCard } from '../components/EbControllerProductCard'
-import { useAuth } from '../contexts/AuthContext'
 import { FRESH } from '../lib/dataConnectOptions'
 import { EB_LANGUAGES, EB_LANGUAGE_LABEL, ebT, useEbLanguage } from '../lib/ebI18n'
 import { EbFaqTab } from './eb/EbFaqTab'
@@ -36,7 +35,6 @@ function TabButton({
  * access to Noticias/FAQ - the same content admins manage under EB
  * Engineering > Productos/Noticias/FAQ, just without the edit controls. */
 export function EbMyProductsPage() {
-  const { signOut } = useAuth()
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [products, setProducts] = useState<ProductRow[] | null>(null)
   const [lang, setLang] = useEbLanguage()
@@ -75,12 +73,6 @@ export function EbMyProductsPage() {
               </option>
             ))}
           </select>
-          <button
-            onClick={() => signOut()}
-            className="rounded-lg border border-slate-300 bg-white/90 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-eb-blue hover:text-eb-blue"
-          >
-            {ebT(lang, 'signOut')}
-          </button>
         </div>
       </div>
 
