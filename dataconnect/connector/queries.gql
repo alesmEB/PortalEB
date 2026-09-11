@@ -279,6 +279,10 @@ query ListCalendarAppointments @auth(level: USER) {
     locationCode
     notes
     closedAt
+    workOrderId
+    workOrder {
+      code
+    }
     createdAt
     scheduledDates: calendarAppointmentDates_on_appointment(orderBy: { date: ASC }) {
       date
@@ -299,6 +303,10 @@ query ListCalendarAppointmentDates @auth(level: USER) {
       locationCode
       notes
       closedAt
+      workOrderId
+      workOrder {
+        code
+      }
     }
   }
 }

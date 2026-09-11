@@ -47,7 +47,7 @@ servidor**; que la interfaz esconda un botón no es la protección.
 
 | Función | Exige |
 |---|---|
-| `createWorkOrder` | `orders:create` o `admin:lab` |
+| `createWorkOrder` | `orders:create` o `admin:lab`; con `appointmentId` completa y enlaza esa cita, así que es el mismo permiso el que decide quién puede completar una cita "con orden" |
 | `updateWorkOrderTasks` | `orders:create` o `admin:lab`, y orden no completada ni cancelada |
 | `addQuote` | `quotes:upload` o `admin:lab` |
 | `acceptQuote` | `quotes:approve` |
@@ -75,6 +75,12 @@ servidor**; que la interfaz esconda un botón no es la protección.
 `setCalendarAppointmentClosed`, `deleteCalendarAppointment`,
 `setCalendarAppointmentScheduledDate`) exigen rol ADMIN o `admin:lab`. Los
 técnicos ven el calendario pero no lo editan.
+
+Completar una cita **sin orden** usa `setCalendarAppointmentClosed` (ADMIN o
+`admin:lab`). Completarla **con orden** además exige `orders:create`: la
+opción ni aparece sin él, y es `createWorkOrder` quien completa la cita al
+guardar. Una cita ya enlazada a una orden no se puede reabrir ni eliminar; el
+servidor lo rechaza aunque alguien lo intente saltándose la interfaz.
 
 ### EB Engineering
 

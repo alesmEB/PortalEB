@@ -28,6 +28,7 @@ import {
 } from '../lib/calendar'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
+import type { OrderFromAppointment } from '../lib/orderCreation'
 import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 import {
   addDays,
@@ -83,6 +84,31 @@ function isWeekend(date: Date) {
   return day === 0 || day === 6
 }
 
+// Amber while pending; once completed, purple if the visit became a work
+// order and grey if it was done with nothing to bill. In one place so the
+// month chip, the week card and the panel can't drift apart.
+type AppointmentStatus = 'open' | 'order' | 'done'
+
+function appointmentStatus(appointment: {
+  closedAt?: string | null
+  workOrderId?: string | null
+}): AppointmentStatus {
+  if (appointment.workOrderId) return 'order'
+  return appointment.closedAt ? 'done' : 'open'
+}
+
+const appointmentCardClass: Record<AppointmentStatus, string> = {
+  open: 'border-dashed border-amber-400 bg-amber-50 text-amber-900',
+  order: 'border-purple-300 bg-purple-500/15 text-purple-900',
+  done: 'border-slate-300 bg-slate-100 text-slate-600',
+}
+
+const appointmentPillClass: Record<AppointmentStatus, string> = {
+  open: 'bg-amber-200/70',
+  order: 'bg-purple-200/70',
+  done: 'bg-slate-200',
+}
+
 export function CalendarPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -91,6 +117,9 @@ export function CalendarPage() {
   // admins (and lab, as the usual bypass for testing) can edit it.
   const canView = profile?.role === UserRole.ADMIN || profile?.role === UserRole.TECHNICIAN || isLab
   const canManage = profile?.role === UserRole.ADMIN || isLab
+  // Same gate as createWorkOrder itself - completing an appointment "con orden"
+  // only makes sense for someone who can then create the order.
+  const canCreateOrders = usePermission('orders:create') || isLab
   const [assignedOrders, setAssignedOrders] = useState<AssignedOrder[] | null>(null)
   const [scheduledEntries, setScheduledEntries] = useState<ScheduledEntry[] | null>(null)
   const [appointments, setAppointments] = useState<Appointment[]>([])
@@ -100,6 +129,7 @@ export function CalendarPage() {
   // month view, so the appointment lands on that day instead of unscheduled.
   const [newAppointmentDay, setNewAppointmentDay] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const [completingAppointment, setCompletingAppointment] = useState<Appointment | null>(null)
   const [showClosedAppointments, setShowClosedAppointments] = useState(false)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()))
@@ -154,7 +184,7 @@ export function CalendarPage() {
     return map
   }, [appointmentEntries])
 
-  // Closed appointments stay out of the panel but keep their days on the
+  // Completed appointments stay out of the panel but keep their days on the
   // calendar, same as a completed order's past days.
   const openAppointments = appointments.filter((a) => !a.closedAt)
   const closedAppointments = appointments.filter((a) => a.closedAt)
@@ -182,6 +212,17 @@ export function CalendarPage() {
   async function handleCloseAppointment(appointmentId: string, closed: boolean) {
     await setCalendarAppointmentClosed(appointmentId, closed)
     load()
+  }
+
+  function createOrderFromAppointment(appointment: Appointment) {
+    const fromAppointment: OrderFromAppointment = {
+      id: appointment.id,
+      title: appointment.title,
+      boatDetails: appointment.boatDetails,
+      locationCode: appointment.locationCode,
+      notes: appointment.notes,
+    }
+    navigate('/orders/new', { state: { fromAppointment } })
   }
 
   async function handleDeleteAppointment(appointmentId: string) {
@@ -391,13 +432,21 @@ export function CalendarPage() {
                         key={entry.appointment.id}
                         onClick={(e) => {
                           e.stopPropagation()
+                          if (entry.appointment.workOrderId) {
+                            navigate(`/orders/${entry.appointment.workOrderId}`)
+                            return
+                          }
                           const full = appointments.find((a) => a.id === entry.appointment.id)
                           if (canManage && full) setEditingAppointment(full)
                         }}
                         title={`Cita · ${entry.appointment.title}${
                           entry.appointment.boatDetails ? ` · ${entry.appointment.boatDetails}` : ''
-                        } · ${orderLocationLabel[entry.appointment.locationCode]}`}
-                        className="block w-full rounded border border-dashed border-amber-400 bg-amber-50 px-1 py-0.5 text-left text-[9px] text-amber-900"
+                        } · ${orderLocationLabel[entry.appointment.locationCode]}${
+                          entry.appointment.workOrder ? ` · Orden ${entry.appointment.workOrder.code}` : ''
+                        }`}
+                        className={`block w-full rounded border px-1 py-0.5 text-left text-[9px] ${
+                          appointmentCardClass[appointmentStatus(entry.appointment)]
+                        }`}
                       >
                         {/* Same reading order as an order's chip - boat, then the
                             job, then where - so both kinds scan alike. The boat is
@@ -505,21 +554,21 @@ export function CalendarPage() {
                     {(appointmentsByDate.get(key) ?? []).map((entry) => {
                       const appointment = entry.appointment
                       const saving = savingKey === `cita-${appointment.id}-${key}`
+                      const status = appointmentStatus(appointment)
+                      const full = appointments.find((a) => a.id === appointment.id)
                       return (
                         <div
                           key={appointment.id}
-                          className="rounded-lg border border-dashed border-amber-400 bg-amber-50 p-2 text-left"
+                          className={`rounded-lg border p-2 text-left ${appointmentCardClass[status]}`}
                         >
                           <div className="flex items-start justify-between gap-1">
                             <div className="flex-1">
-                              <p className="text-xs font-semibold text-amber-900">
-                                {appointment.title}
-                              </p>
+                              <p className="text-xs font-semibold">{appointment.title}</p>
                               {appointment.boatDetails && (
-                                <p className="text-xs text-amber-800">{appointment.boatDetails}</p>
+                                <p className="text-xs opacity-90">{appointment.boatDetails}</p>
                               )}
                             </div>
-                            {canManage && !appointment.closedAt && (
+                            {canManage && status === 'open' && (
                               <button
                                 disabled={saving}
                                 onClick={() => handleToggleAppointment(appointment.id, key, false)}
@@ -530,11 +579,31 @@ export function CalendarPage() {
                               </button>
                             )}
                           </div>
-                          <span className="mt-1 inline-block rounded-full bg-amber-200/70 px-2 py-0.5 text-[10px] text-amber-900">
-                            Cita · {orderLocationLabel[appointment.locationCode]}
-                          </span>
+                          {status === 'order' && appointment.workOrderId ? (
+                            <button
+                              onClick={() => navigate(`/orders/${appointment.workOrderId}`)}
+                              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] hover:underline ${appointmentPillClass[status]}`}
+                            >
+                              Orden {appointment.workOrder?.code} · {orderLocationLabel[appointment.locationCode]}
+                            </button>
+                          ) : (
+                            <span
+                              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] ${appointmentPillClass[status]}`}
+                            >
+                              {status === 'done' ? 'Completada' : 'Cita'} ·{' '}
+                              {orderLocationLabel[appointment.locationCode]}
+                            </span>
+                          )}
                           {appointment.notes && (
-                            <p className="mt-1 text-[11px] text-amber-800">{appointment.notes}</p>
+                            <p className="mt-1 text-[11px] opacity-90">{appointment.notes}</p>
+                          )}
+                          {canManage && status === 'open' && full && (
+                            <button
+                              onClick={() => setCompletingAppointment(full)}
+                              className="mt-2 w-full rounded-md border border-amber-400 bg-white/60 py-1 text-[11px] font-semibold text-amber-900 hover:bg-white"
+                            >
+                              Completar
+                            </button>
                           )}
                         </div>
                       )
@@ -660,11 +729,11 @@ export function CalendarPage() {
                         </button>
                         <div className="flex shrink-0 items-center gap-2">
                           <button
-                            onClick={() => handleCloseAppointment(appointment.id, true)}
-                            title="Cerrar la cita - deja de aparecer aquí pero se mantiene en los días"
+                            onClick={() => setCompletingAppointment(appointment)}
+                            title="Completar la cita - deja de aparecer aquí pero se mantiene en los días"
                             className="rounded-lg border border-amber-400 px-2 py-1 text-xs text-amber-800"
                           >
-                            Cerrar
+                            Completar
                           </button>
                           <button
                             onClick={() => setConfirmingDeleteId(appointment.id)}
@@ -745,7 +814,7 @@ export function CalendarPage() {
                     onClick={() => setShowClosedAppointments((open) => !open)}
                     className="text-xs text-slate-500 underline"
                   >
-                    {showClosedAppointments ? 'Ocultar' : 'Ver'} citas cerradas (
+                    {showClosedAppointments ? 'Ocultar' : 'Ver'} citas completadas (
                     {closedAppointments.length})
                   </button>
                   {showClosedAppointments && (
@@ -755,15 +824,31 @@ export function CalendarPage() {
                           key={appointment.id}
                           className="flex items-center justify-between gap-2 text-xs text-slate-500"
                         >
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${
+                              appointment.workOrderId ? 'bg-purple-400' : 'bg-slate-400'
+                            }`}
+                          />
                           <span className="flex-1 truncate">
                             {appointment.title} · {orderLocationLabel[appointment.locationCode]}
                           </span>
-                          <button
-                            onClick={() => handleCloseAppointment(appointment.id, false)}
-                            className="shrink-0 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600"
-                          >
-                            Reabrir
-                          </button>
+                          {/* One that became an order can't be reopened (the server
+                              refuses too) - it points at its order instead. */}
+                          {appointment.workOrderId ? (
+                            <button
+                              onClick={() => navigate(`/orders/${appointment.workOrderId}`)}
+                              className="shrink-0 rounded-lg border border-purple-300 px-2 py-1 text-xs text-purple-800"
+                            >
+                              Orden {appointment.workOrder?.code}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleCloseAppointment(appointment.id, false)}
+                              className="shrink-0 rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600"
+                            >
+                              Reabrir
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -779,9 +864,30 @@ export function CalendarPage() {
         <AppointmentModal
           appointment={editingAppointment === 'new' ? null : editingAppointment}
           scheduleOn={editingAppointment === 'new' ? newAppointmentDay : null}
+          onComplete={
+            editingAppointment !== 'new' && !editingAppointment.closedAt
+              ? () => {
+                  setEditingAppointment(null)
+                  setCompletingAppointment(editingAppointment)
+                }
+              : undefined
+          }
           onClose={() => setEditingAppointment(null)}
           onSaved={() => {
             setEditingAppointment(null)
+            load()
+          }}
+        />
+      )}
+
+      {completingAppointment && (
+        <CompleteAppointmentModal
+          appointment={completingAppointment}
+          canCreateOrder={canCreateOrders}
+          onClose={() => setCompletingAppointment(null)}
+          onCreateOrder={() => createOrderFromAppointment(completingAppointment)}
+          onCompleted={() => {
+            setCompletingAppointment(null)
             load()
           }}
         />
@@ -795,12 +901,15 @@ export function CalendarPage() {
 function AppointmentModal({
   appointment,
   scheduleOn,
+  onComplete,
   onClose,
   onSaved,
 }: {
   appointment: Appointment | null
   /** "YYYY-MM-DD" to schedule a new appointment on right after creating it. */
   scheduleOn: string | null
+  /** Only for an open appointment being edited - hands over to the complete dialog. */
+  onComplete?: () => void
   onClose: () => void
   onSaved: () => void
 }) {
@@ -894,6 +1003,17 @@ function AppointmentModal({
 
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
+        {onComplete && (
+          <button
+            type="button"
+            onClick={onComplete}
+            disabled={submitting}
+            className="mt-3 w-full rounded-lg border border-amber-400 py-2 text-sm font-semibold text-amber-900 disabled:opacity-50"
+          >
+            Completar cita
+          </button>
+        )}
+
         <div className="mt-4 flex gap-2">
           <button
             onClick={onClose}
@@ -910,6 +1030,96 @@ function AppointmentModal({
             {submitting ? 'Guardando...' : appointment ? 'Guardar cambios' : 'Crear cita'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** Asks how an appointment ended. "Sin orden" just completes it (grey).
+ * "Crea orden" hands its details to the new-order form and leaves it open:
+ * createWorkOrder completes it (purple) only once the order is saved, so
+ * backing out of the form half-way changes nothing here. */
+function CompleteAppointmentModal({
+  appointment,
+  canCreateOrder,
+  onClose,
+  onCreateOrder,
+  onCompleted,
+}: {
+  appointment: Appointment
+  canCreateOrder: boolean
+  onClose: () => void
+  onCreateOrder: () => void
+  onCompleted: () => void
+}) {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleCompleteWithoutOrder() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await setCalendarAppointmentClosed(appointment.id, true)
+      onCompleted()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo completar la cita.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">Completar cita</h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {appointment.title}
+          {appointment.boatDetails && ` · ${appointment.boatDetails}`}
+        </p>
+        <p className="mt-3 text-sm text-slate-700">¿Esta cita genera una orden de trabajo nueva?</p>
+
+        <div className="mt-3 space-y-2">
+          {canCreateOrder ? (
+            <button
+              onClick={onCreateOrder}
+              disabled={submitting}
+              className="w-full rounded-lg border border-purple-300 bg-purple-50 p-3 text-left hover:bg-purple-100 disabled:opacity-50"
+            >
+              <p className="text-sm font-semibold text-purple-900">Sí, crear orden de trabajo</p>
+              <p className="mt-0.5 text-xs text-purple-800">
+                Se abre el formulario con los datos de la cita. Quedará en morado cuando guardes la
+                orden.
+              </p>
+            </button>
+          ) : (
+            <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+              Crear una orden desde la cita requiere el permiso de crear órdenes.
+            </p>
+          )}
+          <button
+            onClick={handleCompleteWithoutOrder}
+            disabled={submitting}
+            className="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 text-left hover:bg-slate-100 disabled:opacity-50"
+          >
+            <p className="text-sm font-semibold text-slate-700">
+              {submitting ? 'Completando...' : 'No, completar sin orden'}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Se queda en el calendario, en gris, y sale del panel de citas.
+            </p>
+          </button>
+        </div>
+
+        {error && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+        )}
+
+        <button
+          onClick={onClose}
+          disabled={submitting}
+          className="mt-3 w-full rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+        >
+          Cancelar
+        </button>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
   listBoats,
@@ -10,7 +10,7 @@ import {
 import { BackButton } from '../components/BackButton'
 import { FRESH } from '../lib/dataConnectOptions'
 import { orderLocationLabel } from '../lib/orderCode'
-import { createWorkOrder } from '../lib/orderCreation'
+import { createWorkOrder, type OrderFromAppointment } from '../lib/orderCreation'
 
 interface EngineDraft {
   engineType: string
@@ -22,26 +22,33 @@ const emptyEngine: EngineDraft = { engineType: '', chassisNumber: '', propellerS
 
 export function NewOrderPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  // Read once on mount - without it the form is just a normal new order.
+  const [fromAppointment] = useState<OrderFromAppointment | null>(
+    () => (location.state as { fromAppointment?: OrderFromAppointment } | null)?.fromAppointment ?? null,
+  )
 
   const [customers, setCustomers] = useState<ListCustomersData['customers']>([])
   const [boats, setBoats] = useState<ListBoatsData['boats']>([])
 
-  const [locationCode, setLocationCode] = useState<OrderLocation | ''>('')
+  const [locationCode, setLocationCode] = useState<OrderLocation | ''>(
+    fromAppointment?.locationCode ?? '',
+  )
 
   const [customerName, setCustomerName] = useState('')
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [contactName, setContactName] = useState('')
   const [phone, setPhone] = useState('')
 
-  const [boatName, setBoatName] = useState('')
+  const [boatName, setBoatName] = useState(fromAppointment?.boatDetails ?? '')
   const [selectedBoatId, setSelectedBoatId] = useState<string | null>(null)
   const [registrationNumber, setRegistrationNumber] = useState('')
   const [existingEngines, setExistingEngines] = useState<EngineDraft[]>([])
   const [newEngines, setNewEngines] = useState<EngineDraft[]>([{ ...emptyEngine }])
 
   const [assetLocation, setAssetLocation] = useState('')
-  const [tasks, setTasks] = useState<string[]>([''])
-  const [comments, setComments] = useState('')
+  const [tasks, setTasks] = useState<string[]>([fromAppointment?.title ?? ''])
+  const [comments, setComments] = useState(fromAppointment?.notes ?? '')
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -52,6 +59,18 @@ export function NewOrderPage() {
     listCustomers(FRESH).then((res) => setCustomers(res.data.customers))
     listBoats(FRESH).then((res) => setBoats(res.data.boats))
   }, [])
+
+  // The appointment's boat is free text. Once both lists arrive, run it
+  // through the same matching as typing it, so a boat we already have picks
+  // up its owner and engines instead of being registered a second time.
+  const matchedPrefilledBoat = useRef(false)
+  useEffect(() => {
+    if (matchedPrefilledBoat.current || !fromAppointment?.boatDetails) return
+    if (boats.length === 0 || customers.length === 0) return
+    matchedPrefilledBoat.current = true
+    handleBoatNameChange(fromAppointment.boatDetails)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boats, customers])
 
   function handleCustomerNameChange(value: string) {
     setCustomerName(value)
@@ -165,6 +184,7 @@ export function NewOrderPage() {
         assetLocation: assetLocation.trim(),
         description: comments.trim() || undefined,
         tasks: filledTasks,
+        appointmentId: fromAppointment?.id,
         pdfData: {
           customerName: customerName.trim(),
           contactName: contactName.trim(),
@@ -178,8 +198,15 @@ export function NewOrderPage() {
 
       setSuccessReportUrl(finalReportUrl)
       setSuccessCode(code)
-    } catch {
-      setError('No se pudo crear la orden. Inténtalo de nuevo.')
+    } catch (err) {
+      // The server's own sentences (the appointment was completed or deleted
+      // meanwhile, say) are worth showing; a bare SDK code like "internal" isn't.
+      const code = (err as { code?: unknown }).code
+      const isServerSentence =
+        err instanceof Error && typeof code === 'string' && err.message !== code.replace('functions/', '')
+      setError(
+        isServerSentence ? (err as Error).message : 'No se pudo crear la orden. Inténtalo de nuevo.',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -206,10 +233,10 @@ export function NewOrderPage() {
           </a>
         )}
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate(fromAppointment ? '/calendar' : '/')}
           className="rounded-lg bg-eb-blue px-4 py-2 text-sm font-semibold text-white"
         >
-          Volver al panel
+          {fromAppointment ? 'Volver al calendario' : 'Volver al panel'}
         </button>
       </div>
     )
@@ -217,8 +244,15 @@ export function NewOrderPage() {
 
   return (
     <div className="flex-1 p-4">
-      <BackButton to="/" />
+      <BackButton to={fromAppointment ? '/calendar' : '/'} />
       <h1 className="text-lg font-semibold text-eb-blue-dark">Nueva orden de trabajo</h1>
+      {fromAppointment && (
+        <p className="mt-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
+          Datos traídos de la cita «{fromAppointment.title}». Revisa y completa lo que falta: al
+          crear la orden, la cita quedará completada en el calendario, en morado. Si sales sin
+          crearla, la cita sigue pendiente.
+        </p>
+      )}
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
         <h2 className="text-sm font-semibold text-eb-teal-dark">Localización</h2>

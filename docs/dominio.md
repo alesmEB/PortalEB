@@ -100,7 +100,7 @@ Dos cosas distintas comparten la rejilla:
 - Las **órdenes con técnicos asignados**, mediante `WorkOrderScheduledDate`.
 - Las **CalendarAppointment**: visitas sin orden detrás ("Mirar problema barco
   X"), con la embarcación en texto libre porque son barcos de los que aún no
-  hay ficha. Cerrarlas las saca del panel pero mantiene sus días;
+  hay ficha. Completarlas las saca del panel pero mantiene sus días;
   **CalendarAppointmentDate** guarda un día por fila, igual que las órdenes.
 
 Una cita nace de dos formas: desde el panel "Citas sin orden", sin día, y se
@@ -108,6 +108,18 @@ coloca después con los chips de la semana; o pulsando un día en la vista Mes,
 que la crea ya colocada en ese día. En esa vista, pulsar una orden la abre y
 pulsar una cita la abre para editarla. Solo administración (o `admin:lab`)
 puede crear y editar; los técnicos ven el calendario sin tocarlo.
+
+Al **completar** una cita se elige cómo acabó, y su ficha cambia de color
+(ámbar mientras está pendiente):
+
+- **Sin orden**: pasa a gris. Se puede reabrir desde "Ver citas completadas".
+- **Con orden** (solo quien tiene `orders:create`): se abre Nueva orden
+  rellenada con la localización, la embarcación, el trabajo como primera tarea
+  y los comentarios. La cita no cambia hasta que esa orden se guarda: entonces
+  `createWorkOrder` la completa y la enlaza (`workOrderId`), pasa a morado y su
+  ficha lleva a la orden. Si se sale del formulario sin crearla, la cita sigue
+  pendiente. Una cita con orden no se puede reabrir ni eliminar, y el
+  historial de la orden anota de qué cita salió (metadata de `ORDER_CREATED`).
 
 Cada ficha de la vista Mes se lee igual sea orden o cita: la embarcación, lo
 que hay que hacer debajo (las tareas de la orden, o el "qué hay que hacer" de

@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Vida de una cita sin orden",
+    "subtitle": "PortalEB · visitas del calendario que aun no tienen orden de trabajo",
+    "viewBox": [980, 680],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "con-orden",
+        "label": "Completar con orden",
+        "focus": ["abierta", "completar", "formulario", "conorden"],
+        "note": "La cita solo pasa a morado cuando la orden se guarda; si se sale del formulario, sigue pendiente."
+      },
+      {
+        "id": "sin-orden",
+        "label": "Sin orden o eliminada",
+        "focus": ["abierta", "completar", "gris", "borrada"],
+        "note": "Sin orden queda en gris y se puede reabrir; eliminar solo se puede mientras esta abierta."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "main", "label": "En el calendario" },
+    { "id": "sinorden", "label": "Completada sin orden" },
+    { "id": "terminal", "label": "Eliminada" }
+  ],
+  "states": [
+    {
+      "id": "nueva",
+      "type": "start",
+      "label": "Nueva cita",
+      "sublabel": "panel o dia del mes",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "ambar"
+    },
+    {
+      "id": "abierta",
+      "type": "active",
+      "label": "Abierta",
+      "sublabel": "en el panel",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "dias libres"
+    },
+    {
+      "id": "completar",
+      "type": "decision",
+      "label": "Completar",
+      "sublabel": "genera orden?",
+      "lane": "main",
+      "col": 2,
+      "step": "03"
+    },
+    {
+      "id": "formulario",
+      "type": "waiting",
+      "label": "Nueva orden",
+      "sublabel": "rellena con la cita",
+      "lane": "main",
+      "col": 3,
+      "tag": "orders:create"
+    },
+    {
+      "id": "conorden",
+      "type": "success",
+      "label": "Con orden",
+      "sublabel": "enlazada al guardar",
+      "lane": "main",
+      "col": 4,
+      "step": "04",
+      "tag": "morado"
+    },
+    {
+      "id": "gris",
+      "type": "neutral",
+      "label": "Sin orden",
+      "sublabel": "se puede reabrir",
+      "lane": "sinorden",
+      "col": 0,
+      "tag": "gris"
+    },
+    {
+      "id": "borrada",
+      "type": "failure",
+      "label": "Eliminada",
+      "sublabel": "con sus dias",
+      "lane": "terminal",
+      "col": 0,
+      "tag": "sin historial"
+    }
+  ],
+  "transitions": [
+    { "from": "nueva", "to": "abierta", "route": "straight" },
+    { "from": "abierta", "to": "completar", "route": "straight" },
+    { "from": "completar", "to": "formulario", "route": "straight" },
+    { "from": "formulario", "to": "conorden", "variant": "emphasis", "route": "straight" },
+    {
+      "from": "completar",
+      "to": "gris",
+      "variant": "dashed",
+      "route": "straight",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "from": "abierta",
+      "to": "borrada",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Como nace",
+      "items": [
+        "Desde el panel Citas sin orden, sin ningun dia",
+        "Pulsando un dia del mes: se crea ya colocada en ese dia",
+        "Crear, editar y completar: administracion o admin:lab"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Completar con orden",
+      "items": [
+        "Solo quien tiene orders:create ve esta opcion",
+        "Abre Nueva orden con localizacion, barco, trabajo y comentarios",
+        "createWorkOrder completa y enlaza la cita al guardar; si no, sigue pendiente"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Despues",
+      "items": [
+        "Sin orden: gris, sale del panel y se puede reabrir",
+        "Con orden: no se reabre ni se borra, y su ficha lleva a la orden",
+        "Eliminar solo mientras esta abierta, con confirmacion y sin historial"
+      ]
+    }
+  ]
+}

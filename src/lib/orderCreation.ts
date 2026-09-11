@@ -19,6 +19,9 @@ export interface CreateWorkOrderInput {
   assetLocation: string
   description?: string
   tasks: string[]
+  /** The calendar appointment this order comes from - on save the server
+   * completes it and links it, which turns its calendar chip purple. */
+  appointmentId?: string
   /** Skips straight to AWAITING_ASSIGNMENT - requires admin:lab. */
   skipQuote?: boolean
   /** Omit to skip report generation entirely (used by the lab quick-create shortcut). */
@@ -31,6 +34,17 @@ export interface CreateWorkOrderInput {
     engines: EngineInput[]
     locationLabel: string
   }
+}
+
+/** What the calendar hands the new-order form when an appointment is completed
+ * as "crea orden" - it only prefills the form; the order is still created by
+ * hand, and the appointment only completes once it is. */
+export interface OrderFromAppointment {
+  id: string
+  title: string
+  boatDetails?: string | null
+  locationCode: OrderLocation
+  notes?: string | null
 }
 
 interface CreateWorkOrderResult {

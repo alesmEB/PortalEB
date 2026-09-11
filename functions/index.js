@@ -765,6 +765,7 @@ exports.createWorkOrder = onCall(async (request) => {
     tasks,
     skipQuote,
     pdfData,
+    appointmentId,
   } = request.data ?? {}
 
   if (
@@ -778,6 +779,23 @@ exports.createWorkOrder = onCall(async (request) => {
   }
   if (skipQuote && !permissions.includes('admin:lab')) {
     throw new HttpsError('permission-denied', 'skipQuote requiere admin:lab.')
+  }
+
+  // Checked before anything gets created: an order can't be un-created, and
+  // one made from an appointment that's gone or already completed would leave
+  // the calendar pointing at the wrong thing.
+  let fromAppointment = null
+  if (appointmentId !== undefined) {
+    if (typeof appointmentId !== 'string') {
+      throw new HttpsError('invalid-argument', 'Cita inválida.')
+    }
+    fromAppointment = await getCalendarAppointment(appointmentId)
+    if (!fromAppointment) {
+      throw new HttpsError('not-found', 'La cita de la que sale esta orden ya no existe.')
+    }
+    if (fromAppointment.closedAt) {
+      throw new HttpsError('failed-precondition', 'Esa cita ya está completada.')
+    }
   }
 
   const callerUid = request.auth.uid
@@ -839,8 +857,24 @@ exports.createWorkOrder = onCall(async (request) => {
   }
 
   await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
-    variables: { workOrderId, actorId: callerUid, eventType: 'ORDER_CREATED' },
+    variables: {
+      workOrderId,
+      actorId: callerUid,
+      eventType: 'ORDER_CREATED',
+      metadata: fromAppointment
+        ? { fromAppointment: { id: fromAppointment.id, title: fromAppointment.title } }
+        : null,
+    },
   })
+
+  // Completing the appointment here, with the order, is what turns its
+  // calendar chip purple - so the calendar never shows one without the other,
+  // and leaving the new-order form half-filled changes nothing.
+  if (fromAppointment) {
+    await dataConnect.executeGraphql(LINK_CALENDAR_APPOINTMENT_ORDER_MUTATION, {
+      variables: { id: fromAppointment.id, workOrderId, closedAt: new Date().toISOString() },
+    })
+  }
 
   if (skipQuote) {
     await dataConnect.executeGraphql(UPDATE_WORK_ORDER_STATUS_MUTATION, {
@@ -2294,8 +2328,30 @@ const DELETE_CALENDAR_APPOINTMENT_DATE_MUTATION = `
     calendarAppointmentDate_delete(key: { appointmentId: $appointmentId, date: $date })
   }
 `
+const GET_CALENDAR_APPOINTMENT_QUERY = `
+  query GetCalendarAppointmentAdmin($id: UUID!) {
+    calendarAppointment(id: $id) {
+      id
+      title
+      closedAt
+      workOrderId
+    }
+  }
+`
+const LINK_CALENDAR_APPOINTMENT_ORDER_MUTATION = `
+  mutation LinkCalendarAppointmentOrderAdmin($id: UUID!, $workOrderId: UUID!, $closedAt: Timestamp!) {
+    calendarAppointment_update(id: $id, data: { workOrderId: $workOrderId, closedAt: $closedAt })
+  }
+`
 
 const ORDER_LOCATIONS = ['ALGECIRAS', 'LA_LINEA', 'SOTOGRANDE']
+
+async function getCalendarAppointment(appointmentId) {
+  const res = await dataConnect.executeGraphqlRead(GET_CALENDAR_APPOINTMENT_QUERY, {
+    variables: { id: appointmentId },
+  })
+  return res.data.calendarAppointment
+}
 
 function appointmentFields(data) {
   const { title, boatDetails, locationCode, notes } = data ?? {}
@@ -2344,6 +2400,18 @@ exports.setCalendarAppointmentClosed = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
 
+  // One that became an order stays completed: reopening it would leave the
+  // order standing next to an appointment that claims to still be pending.
+  if (!closed) {
+    const appointment = await getCalendarAppointment(appointmentId)
+    if (appointment?.workOrderId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Esta cita ya generó una orden de trabajo; no se puede reabrir.',
+      )
+    }
+  }
+
   await dataConnect.executeGraphql(SET_CALENDAR_APPOINTMENT_CLOSED_MUTATION, {
     variables: { id: appointmentId, closedAt: closed ? new Date().toISOString() : null },
   })
@@ -2359,6 +2427,14 @@ exports.deleteCalendarAppointment = onCall(async (request) => {
   const { appointmentId } = request.data ?? {}
   if (typeof appointmentId !== 'string') {
     throw new HttpsError('invalid-argument', 'Falta el identificador de la cita.')
+  }
+
+  const appointment = await getCalendarAppointment(appointmentId)
+  if (appointment?.workOrderId) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Esta cita generó una orden de trabajo; no se puede eliminar.',
+    )
   }
 
   await dataConnect.executeGraphql(DELETE_CALENDAR_APPOINTMENT_DATES_MUTATION, {

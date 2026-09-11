@@ -57,7 +57,9 @@ const callSetCalendarAppointmentClosed = httpsCallable<
   { success: boolean }
 >(functions, 'setCalendarAppointmentClosed')
 
-/** Closing keeps the appointment's days in the calendar but drops it from the panel. */
+/** Completing (closed: true) keeps the appointment's days in the calendar but
+ * drops it from the panel - this is the "sin orden" path, shown grey. The
+ * "crea orden" path completes it from createWorkOrder instead. */
 export async function setCalendarAppointmentClosed(appointmentId: string, closed: boolean) {
   const res = await callSetCalendarAppointmentClosed({ appointmentId, closed })
   return res.data

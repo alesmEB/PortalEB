@@ -264,8 +264,8 @@ type WorkOrderScheduledDate
 # X": a visit agreed with a client before there's an order, so the boat is free
 # text instead of a real Boat row and there's no customer, quote, assignment or
 # code. It only ever lives in the calendar (CalendarPage.tsx); if the visit
-# turns into actual work, a normal WorkOrder gets created and the appointment
-# is closed.
+# turns into actual work, a normal WorkOrder is created from it (the new-order
+# form comes prefilled) and linked below.
 type CalendarAppointment @table(name: "calendar_appointments") {
   id: UUID! @default(expr: "uuidV4()")
   title: String!
@@ -273,10 +273,15 @@ type CalendarAppointment @table(name: "calendar_appointments") {
   boatDetails: String
   locationCode: OrderLocation!
   notes: String
-  # Closed appointments drop out of the "citas" panel but keep the days they
-  # were scheduled on visible in the calendar, same as a COMPLETED order's
-  # past days - deleting is for entries created by mistake.
+  # Completed appointments drop out of the "citas" panel but keep the days
+  # they were scheduled on visible in the calendar, same as a COMPLETED
+  # order's past days - deleting is for entries created by mistake.
   closedAt: Timestamp
+  # Set when the visit turned into a work order - createWorkOrder fills it and
+  # closedAt together, only once that order is actually saved. Completed
+  # without it means nothing to bill: grey in the calendar, purple with it.
+  workOrderId: UUID
+  workOrder: WorkOrder @ref(fields: ["workOrderId"])
   createdById: String!
   createdBy: User! @ref(fields: ["createdById"])
   createdAt: Timestamp! @default(expr: "request.time")

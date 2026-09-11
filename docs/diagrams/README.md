@@ -13,6 +13,7 @@ el repo.
 | `informe-pdf.dataflow.json` | Cómo se genera el PDF de la orden y por qué se rehace al corregir los trabajos |
 | `registro-de-cable.sequence.json` | Qué ocurre cuando el comprobador ESP32 registra un cable |
 | `venta-ebcontroller.lifecycle.json` | La vida de una unidad EBcontroller: stock, venta, reventa, uso interno y baja |
+| `cita-calendario.lifecycle.json` | La vida de una cita sin orden: cómo nace, completarla con orden (morado) o sin ella (gris), y eliminarla |
 
 ## Regenerar
 
