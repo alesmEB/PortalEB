@@ -122,22 +122,23 @@ export function DashboardPage() {
 
         </div>
 
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-          <p className="text-sm font-medium text-eb-blue-dark">Permisos concedidos</p>
-          <ul className="mt-2 flex flex-wrap gap-2">
-            {permissions.map((permission) => (
-              <li
-                key={permission}
-                className="rounded-full bg-eb-blue/10 px-2.5 py-1 text-xs text-eb-blue-dark"
-              >
-                {permission}
-              </li>
-            ))}
-            {permissions.length === 0 && (
-              <li className="text-xs text-slate-400">Ninguno</li>
-            )}
-          </ul>
-        </div>
+        {/* A debugging aid for checking claims after a permission change - it
+            means nothing to the rest of the users, so only lab sees it. */}
+        <HasPermission permission="admin:lab">
+          <div className="mt-6 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+            <p className="text-sm font-medium text-eb-blue-dark">Permisos concedidos</p>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {permissions.map((permission) => (
+                <li
+                  key={permission}
+                  className="rounded-full bg-eb-blue/10 px-2.5 py-1 text-xs text-eb-blue-dark"
+                >
+                  {permission}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </HasPermission>
       </main>
     </div>
   )
