@@ -785,7 +785,10 @@ exports.createWorkOrder = onCall(async (request) => {
   // one made from an appointment that's gone or already completed would leave
   // the calendar pointing at the wrong thing.
   let fromAppointment = null
-  if (appointmentId !== undefined) {
+  // Absent and null both mean "not from an appointment": the callable SDK
+  // encodes an undefined field as null and still sends the key, so a plain
+  // new order arrives here with appointmentId === null.
+  if (appointmentId !== undefined && appointmentId !== null) {
     if (typeof appointmentId !== 'string') {
       throw new HttpsError('invalid-argument', 'Cita inválida.')
     }

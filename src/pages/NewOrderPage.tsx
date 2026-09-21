@@ -184,7 +184,7 @@ export function NewOrderPage() {
         assetLocation: assetLocation.trim(),
         description: comments.trim() || undefined,
         tasks: filledTasks,
-        appointmentId: fromAppointment?.id,
+        ...(fromAppointment ? { appointmentId: fromAppointment.id } : {}),
         pdfData: {
           customerName: customerName.trim(),
           contactName: contactName.trim(),
