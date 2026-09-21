@@ -7,6 +7,7 @@
 | [despliegue.md](despliegue.md) | Qué se despliega, en qué orden y qué mirar después |
 | [integraciones.md](integraciones.md) | Lo que vive fuera de la base de datos: dispositivo de cables, valoraciones, traducciones, notificaciones y archivos |
 | [diagrams/](diagrams/) | Los mismos flujos en diagramas interactivos |
+| [../CHANGELOG.md](../CHANGELOG.md) | Qué ha cambiado en la app y cuándo |
 
 Para trabajar en el código, el punto de entrada es [`CLAUDE.md`](../CLAUDE.md) en
 la raíz: convenciones, trampas conocidas y cómo se despliega.

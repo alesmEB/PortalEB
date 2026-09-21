@@ -47,6 +47,15 @@ npm run lint     # oxlint
   hash con `git log --oneline -1`; un `+` indica que se compiló con cambios sin
   commitear, así que **commitea antes de compilar para desplegar**.
 
+## Historial de cambios
+
+`CHANGELOG.md` es el historial legible para el taller. Todo cambio que se note
+en la app añade su línea **en el mismo commit**: en español, en lenguaje de
+usuario (qué puede hacer ahora, no qué función cambió), bajo la fecha del día.
+Lo interno (refactors, dependencias, documentación) no entra, salvo si arregla
+algo que el usuario notaba. Sin hash en la línea: el commit aún no existe al
+escribirla, y el pie ya muestra la fecha de la compilación.
+
 ## Data Connect: cosas que muerden
 
 - **El límite por defecto es 100 filas y corta en silencio.** Toda consulta de
