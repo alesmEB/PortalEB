@@ -234,6 +234,7 @@ const UPDATE_WORK_ORDER_STATUS_AND_ATTEMPTS_MUTATION = `
 const GET_ORDER_QUOTE_INFO_QUERY = `
   query GetOrderQuoteInfoAdmin($id: UUID!) {
     workOrder(id: $id) {
+      status
       quoteAttempts
       quotes: quotes_on_workOrder(orderBy: { attemptNumber: DESC }, limit: 1) {
         id
@@ -1122,6 +1123,62 @@ exports.acceptQuote = onCall(async (request) => {
   })
   await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
     variables: { workOrderId, actorId: callerUid, eventType: 'QUOTE_ACCEPTED' },
+  })
+
+  return { success: true }
+})
+
+// Requires quotes:reject, a permission of its own: rejecting records what the
+// client decided, and shouldn't ride along with whoever can approve. A second
+// rejection just leaves the order here again - it is never cancelled on its own.
+exports.rejectQuote = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+  const permissions = Array.isArray(request.auth.token?.permissions) ? request.auth.token.permissions : []
+  if (!permissions.includes('quotes:reject')) {
+    throw new HttpsError('permission-denied', 'No tienes permiso para rechazar presupuestos.')
+  }
+
+  const { workOrderId } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'workOrderId es obligatorio.')
+  }
+
+  const callerUid = request.auth.uid
+  const orderRes = await dataConnect.executeGraphqlRead(GET_ORDER_QUOTE_INFO_QUERY, {
+    variables: { id: workOrderId },
+  })
+  const order = orderRes.data.workOrder
+  if (!order) {
+    throw new HttpsError('not-found', 'Orden no encontrada.')
+  }
+  // Read the state from the server instead of the screen the click came from:
+  // the quote may have been accepted, or a newer one uploaded, meanwhile.
+  if (order.status !== 'PENDING_QUOTE') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Esta orden no tiene un presupuesto pendiente de decisión.',
+    )
+  }
+  const latestQuote = order.quotes[0]
+  if (!latestQuote) {
+    throw new HttpsError('failed-precondition', 'Esta orden no tiene ningún presupuesto que rechazar.')
+  }
+
+  await dataConnect.executeGraphql(DECIDE_QUOTE_MUTATION, {
+    variables: { id: latestQuote.id, decision: 'REJECTED', decidedAt: new Date().toISOString() },
+  })
+  await dataConnect.executeGraphql(UPDATE_WORK_ORDER_STATUS_MUTATION, {
+    variables: { id: workOrderId, status: 'QUOTE_REJECTED' },
+  })
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: {
+      workOrderId,
+      actorId: callerUid,
+      eventType: 'QUOTE_REJECTED',
+      metadata: { attemptNumber: order.quoteAttempts },
+    },
   })
 
   return { success: true }

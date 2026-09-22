@@ -27,6 +27,18 @@ export async function acceptQuote(workOrderId: string) {
   return res.data
 }
 
+const callRejectQuote = httpsCallable<{ workOrderId: string }, { success: boolean }>(
+  functions,
+  'rejectQuote',
+)
+
+/** Requires "quotes:reject". Leaves the order in QUOTE_REJECTED, ready for a
+ * second quote - it never cancels the order by itself. */
+export async function rejectQuote(workOrderId: string) {
+  const res = await callRejectQuote({ workOrderId })
+  return res.data
+}
+
 interface AssignTechniciansInput {
   workOrderId: string
   code: string

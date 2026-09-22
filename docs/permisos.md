@@ -31,7 +31,8 @@ exige volver a iniciar sesión**.
 | `admin:manage` | Gestionar usuarios, permisos, clientes, embarcaciones, motores y turnos |
 | `admin:lab` | Acceso a pruebas en producción; hace de bypass del rol ADMIN |
 | `quotes:upload` | Subir presupuestos |
-| `quotes:approve` | Aceptar o rechazar un presupuesto |
+| `quotes:approve` | Aceptar un presupuesto |
+| `quotes:reject` | Rechazar un presupuesto |
 | `hours:log` | Fichar horas en una orden |
 | `photos:upload` | Subir fotos de la orden |
 | `chat:write` | Escribir en el chat de la orden |
@@ -51,6 +52,7 @@ servidor**; que la interfaz esconda un botón no es la protección.
 | `updateWorkOrderTasks` | `orders:create` o `admin:lab`, y orden no completada ni cancelada |
 | `addQuote` | `quotes:upload` o `admin:lab` |
 | `acceptQuote` | `quotes:approve` |
+| `rejectQuote` | `quotes:reject` |
 | `assignTechnicians` | `admin:assigntechnicians`, más el estado correcto de la orden |
 | `startOrder`, `completeOrder` | estar asignado con `isAllowed` o `isLead` |
 | `reportIncident`, `toggleWorkOrderTask` | estar asignado a la orden |

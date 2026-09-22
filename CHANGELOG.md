@@ -8,6 +8,9 @@ tu versión.
 
 ## 22 de septiembre de 2026
 
+- Se puede rechazar un presupuesto desde la orden, con el permiso nuevo
+  `quotes:reject`. La orden queda en "Presupuesto rechazado", con el rechazo
+  en su historial, y admite un segundo presupuesto.
 - La lista de órdenes muestra los trabajos de cada orden en su tarjeta, con
   los ya hechos tachados.
 - En la vista semanal del calendario, cada cita pendiente tiene un botón para

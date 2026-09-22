@@ -43,6 +43,7 @@ import {
   forceCompleteOrder,
   invoiceOrder,
   recordServiceProtocol,
+  rejectQuote,
   reportIncident,
   revertAdminProcessStep,
   setWorkOrderExternalCode,
@@ -1137,6 +1138,7 @@ export function OrderDetailPage() {
   const [adminStepModal, setAdminStepModal] = useState<'adjust' | 'protocol' | 'invoice' | null>(null)
   const [editingTasks, setEditingTasks] = useState(false)
   const [revertStepModal, setRevertStepModal] = useState<AdminProcessStep | null>(null)
+  const [rejectingQuote, setRejectingQuote] = useState(false)
   const { busyLabel, runBusy } = useBusyAction()
   const busy = busyLabel !== null
   const [actionError, setActionError] = useState<string | null>(null)
@@ -1424,6 +1426,17 @@ export function OrderDetailPage() {
               className="rounded-lg bg-eb-blue px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               Aceptar presupuesto
+            </button>
+          </HasPermission>
+        )}
+        {order.status === WorkOrderStatus.PENDING_QUOTE && (
+          <HasPermission permission="quotes:reject">
+            <button
+              disabled={busy || order.quoteAttempts === 0}
+              onClick={() => setRejectingQuote(true)}
+              className="rounded-lg border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-600 disabled:opacity-50"
+            >
+              Rechazar presupuesto
             </button>
           </HasPermission>
         )}
@@ -1892,6 +1905,27 @@ export function OrderDetailPage() {
           stage={PhotoStage.FINAL}
           onClose={() => setCompletingOrder(false)}
           onConfirm={handleCompleteOrder}
+        />
+      )}
+
+      {rejectingQuote && order.quotes.length > 0 && (
+        <AdminStepModal
+          title="Rechazar presupuesto"
+          description={`¿El cliente ha rechazado el presupuesto ${order.quoteAttempts} de la orden ${order.code}? Quedará registrado en el historial, y después podrás subir otro presupuesto.`}
+          onClose={() => setRejectingQuote(false)}
+          actions={[
+            {
+              label: 'Sí, rechazado',
+              variant: 'secondary',
+              onClick: async () => {
+                await runBusy('Rechazando presupuesto...', async () => {
+                  await rejectQuote(order.id)
+                  setRejectingQuote(false)
+                  await loadOrder()
+                })
+              },
+            },
+          ]}
         />
       )}
 
