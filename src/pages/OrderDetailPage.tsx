@@ -1911,7 +1911,11 @@ export function OrderDetailPage() {
       {rejectingQuote && order.quotes.length > 0 && (
         <AdminStepModal
           title="Rechazar presupuesto"
-          description={`¿El cliente ha rechazado el presupuesto ${order.quoteAttempts} de la orden ${order.code}? Quedará registrado en el historial, y después podrás subir otro presupuesto.`}
+          description={`¿El cliente ha rechazado el presupuesto ${order.quoteAttempts} de la orden ${order.code}? ${
+            order.quoteAttempts >= 2
+              ? 'Es el segundo y último intento: la orden se quedará en Presupuesto rechazado.'
+              : 'Quedará registrado en el historial, y después podrás subir otro presupuesto.'
+          }`}
           onClose={() => setRejectingQuote(false)}
           actions={[
             {
