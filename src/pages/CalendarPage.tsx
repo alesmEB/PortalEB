@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, X } from 'lucide-react'
+import { CalendarDays, MapPin, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -130,6 +130,7 @@ export function CalendarPage() {
   const [newAppointmentDay, setNewAppointmentDay] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [completingAppointment, setCompletingAppointment] = useState<Appointment | null>(null)
+  const [editingDaysId, setEditingDaysId] = useState<string | null>(null)
   const [showClosedAppointments, setShowClosedAppointments] = useState(false)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()))
@@ -188,6 +189,9 @@ export function CalendarPage() {
   // calendar, same as a completed order's past days.
   const openAppointments = appointments.filter((a) => !a.closedAt)
   const closedAppointments = appointments.filter((a) => a.closedAt)
+  // Read from the list rather than held in state, so the dialog redraws
+  // with the new days as soon as the refetch lands.
+  const appointmentBeingScheduled = appointments.find((a) => a.id === editingDaysId) ?? null
 
   async function handleToggleAppointment(
     appointmentId: string,
@@ -570,6 +574,15 @@ export function CalendarPage() {
                             </div>
                             {canManage && status === 'open' && (
                               <button
+                                onClick={() => setEditingDaysId(appointment.id)}
+                                title="Cambiar los días de esta cita"
+                                className="text-amber-500 hover:text-amber-700"
+                              >
+                                <CalendarDays className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            {canManage && status === 'open' && (
+                              <button
                                 disabled={saving}
                                 onClick={() => handleToggleAppointment(appointment.id, key, false)}
                                 title="Quitar este día"
@@ -880,6 +893,15 @@ export function CalendarPage() {
         />
       )}
 
+      {appointmentBeingScheduled && (
+        <AppointmentDaysModal
+          appointment={appointmentBeingScheduled}
+          weekDays={visibleDays}
+          onClose={() => setEditingDaysId(null)}
+          onChanged={load}
+        />
+      )}
+
       {completingAppointment && (
         <CompleteAppointmentModal
           appointment={completingAppointment}
@@ -1119,6 +1141,132 @@ function CompleteAppointmentModal({
           className="mt-3 w-full rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
         >
           Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** The days an appointment sits on, editable straight from its card in the
+ * week view: the ones it already has (whatever week they fall in), the days
+ * of the week on screen, and a date box for anything further out. */
+function AppointmentDaysModal({
+  appointment,
+  weekDays,
+  onClose,
+  onChanged,
+}: {
+  appointment: Appointment
+  weekDays: Date[]
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [savingDate, setSavingDate] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [extraDate, setExtraDate] = useState('')
+
+  const scheduled = new Set(appointment.scheduledDates.map((d) => d.date))
+
+  async function setDay(date: string, scheduledNow: boolean) {
+    setSavingDate(date)
+    setError(null)
+    try {
+      await setCalendarAppointmentScheduledDate(appointment.id, date, scheduledNow)
+      onChanged()
+      return true
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cambiar el día.')
+      return false
+    } finally {
+      setSavingDate(null)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">Días de la cita</h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {appointment.title}
+          {appointment.boatDetails && ` · ${appointment.boatDetails}`}
+        </p>
+
+        <p className="mt-3 text-xs font-medium text-slate-500">Días marcados</p>
+        {appointment.scheduledDates.length === 0 ? (
+          <p className="mt-1 text-xs text-slate-400">Ninguno todavía.</p>
+        ) : (
+          <ul className="mt-1 space-y-1">
+            {appointment.scheduledDates.map((d) => (
+              <li
+                key={d.date}
+                className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-2 py-1 text-xs capitalize text-amber-900"
+              >
+                {formatDayLabel(dateFromKey(d.date))}
+                <button
+                  disabled={savingDate === d.date}
+                  onClick={() => setDay(d.date, false)}
+                  title="Quitar este día"
+                  className="shrink-0 text-amber-500 hover:text-red-600 disabled:opacity-50"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <p className="mt-3 text-xs font-medium text-slate-500">Semana en pantalla</p>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {weekDays.map((day) => {
+            const key = toDateKey(day)
+            const checked = scheduled.has(key)
+            return (
+              <button
+                key={key}
+                disabled={savingDate === key}
+                onClick={() => setDay(key, !checked)}
+                className={`rounded-full border px-2.5 py-1 text-xs capitalize disabled:opacity-50 ${
+                  checked
+                    ? 'border-amber-500 bg-amber-500 text-white'
+                    : 'border-amber-300 text-amber-800'
+                }`}
+              >
+                {formatDayLabel(day)}
+              </button>
+            )
+          })}
+        </div>
+
+        <label className="mt-3 block text-xs font-medium text-slate-500">
+          Otro día
+          <div className="mt-1 flex gap-2">
+            <input
+              type="date"
+              value={extraDate}
+              onChange={(e) => setExtraDate(e.target.value)}
+              className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+            />
+            <button
+              disabled={!extraDate || scheduled.has(extraDate) || savingDate === extraDate}
+              onClick={async () => {
+                if (await setDay(extraDate, true)) setExtraDate('')
+              }}
+              className="rounded-lg bg-eb-blue px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Añadir
+            </button>
+          </div>
+        </label>
+
+        {error && (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+        )}
+
+        <button
+          onClick={onClose}
+          className="mt-4 w-full rounded-lg border border-slate-300 py-2 text-sm text-slate-600"
+        >
+          Cerrar
         </button>
       </div>
     </div>

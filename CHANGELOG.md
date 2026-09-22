@@ -6,6 +6,14 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 22 de septiembre de 2026
+
+- La lista de órdenes muestra los trabajos de cada orden en su tarjeta, con
+  los ya hechos tachados.
+- En la vista semanal del calendario, cada cita pendiente tiene un botón para
+  cambiar sus días: una ventana con los días que ya tiene, los de la semana en
+  pantalla y una casilla de fecha para cualquier otro día.
+
 ## 21 de septiembre de 2026
 
 - Corregido: no se podían crear órdenes nuevas que no salieran de una cita.

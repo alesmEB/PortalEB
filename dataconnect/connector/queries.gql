@@ -145,6 +145,10 @@ query ListWorkOrders @auth(level: USER) {
     incidents: incidents_on_workOrder {
       id
     }
+    tasks: workOrderTasks_on_workOrder {
+      description
+      isCompleted
+    }
   }
 }
 
@@ -166,6 +170,10 @@ query ListWorkOrdersForCustomer($customerId: UUID!) @auth(level: USER) {
     }
     boat {
       name
+    }
+    tasks: workOrderTasks_on_workOrder {
+      description
+      isCompleted
     }
   }
 }

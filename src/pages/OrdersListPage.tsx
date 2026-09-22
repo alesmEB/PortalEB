@@ -386,6 +386,25 @@ export function OrdersListPage() {
                 <p className="mt-1 text-xs text-slate-500">
                   {orderLocationLabel[order.locationCode]} · {order.assetLocation}
                 </p>
+                {order.tasks.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {order.tasks.map((task, i) => (
+                      <li
+                        key={i}
+                        className={`flex items-start gap-1.5 text-xs ${
+                          task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-600'
+                        }`}
+                      >
+                        <span
+                          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                            task.isCompleted ? 'bg-eb-teal' : 'bg-slate-300'
+                          }`}
+                        />
+                        {task.description}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </button>
               <HasPermission permission="chat:write">
                 <button
