@@ -6,6 +6,11 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 24 de septiembre de 2026
+
+- La lista de órdenes se actualiza sola: cada minuto mientras está a la vista,
+  y al volver a la pestaña. No se pierden los filtros ni el sitio donde estabas.
+
 ## 22 de septiembre de 2026
 
 - Se puede rechazar un presupuesto desde la orden, con el permiso nuevo

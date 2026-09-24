@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ChevronDown,
@@ -74,6 +74,7 @@ export function OrdersListPage() {
   const canChat = usePermission('chat:write')
   const canViewAdminProcess = usePermission('orders:closing')
   const [orders, setOrders] = useState<ListWorkOrdersData['workOrders'] | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const [unreadClientChatIds, setUnreadClientChatIds] = useState<Set<string>>(new Set())
   const [unreadTechnicianChatIds, setUnreadTechnicianChatIds] = useState<Set<string>>(new Set())
 
@@ -97,23 +98,46 @@ export function OrdersListPage() {
     (showDeleted ? 1 : 0) +
     (adminProcessFilter !== 'ALL' ? 1 : 0)
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!profile) return
     if (profile.role !== UserRole.CLIENT) {
-      listWorkOrders(FRESH).then((res) => setOrders(res.data.workOrders))
+      const res = await listWorkOrders(FRESH)
+      setOrders(res.data.workOrders)
       return
     }
-    getMyLinkedCustomer(FRESH).then((res) => {
-      const customerId = res.data.customers[0]?.id
-      if (!customerId) {
-        setOrders([])
-        return
-      }
-      listWorkOrdersForCustomer({ customerId }, FRESH).then((res2) =>
-        setOrders(res2.data.workOrders.map((order) => ({ ...order, incidents: [] }))),
-      )
-    })
+    const res = await getMyLinkedCustomer(FRESH)
+    const customerId = res.data.customers[0]?.id
+    if (!customerId) {
+      setOrders([])
+      return
+    }
+    const res2 = await listWorkOrdersForCustomer({ customerId }, FRESH)
+    setOrders(res2.data.workOrders.map((order) => ({ ...order, incidents: [] })))
   }, [profile])
+
+  useEffect(() => {
+    setLoadError(false)
+    load().catch(() => setLoadError(true))
+  }, [load])
+
+  // This screen gets left open all day to watch orders move, so it refreshes
+  // itself: every minute while it's on screen, and again the moment the tab
+  // comes back. A failed background refresh keeps the rows already on screen
+  // rather than blanking them - the next attempt is a minute away.
+  useEffect(() => {
+    if (!profile) return
+    const refresh = () => {
+      if (document.visibilityState === 'visible') load().catch(() => {})
+    }
+    const interval = setInterval(refresh, 60_000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [profile, load])
 
   useEffect(() => {
     if (!orders || !profile || !canChat) return
@@ -308,7 +332,23 @@ export function OrdersListPage() {
         )}
       </div>
 
-      {orders === null && <p className="mt-4 text-sm text-slate-500">Cargando...</p>}
+      {loadError && orders === null && (
+        <div className="mt-4 flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          <span>No se han podido cargar las órdenes.</span>
+          <button
+            onClick={() => {
+              setLoadError(false)
+              load().catch(() => setLoadError(true))
+            }}
+            className="shrink-0 font-semibold underline"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+      {orders === null && !loadError && (
+        <p className="mt-4 text-sm text-slate-500">Cargando...</p>
+      )}
 
       {orders !== null && orders.length === 0 && (
         <p className="mt-4 text-sm text-slate-500">Todavía no hay órdenes creadas.</p>
