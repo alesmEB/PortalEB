@@ -345,6 +345,10 @@ type TimeLog @table(name: "time_logs") {
   technicianId: String!
   technician: User! @ref(fields: ["technicianId"])
   clockIn: Timestamp! @default(expr: "request.time")
+  # True when the app replayed this shift from its offline queue: the
+  # times come from the technician's phone, not from the server, so
+  # the office can tell which ones to double-check.
+  recordedOffline: Boolean! @default(value: false)
   clockOut: Timestamp
   durationMinutes: Int
   notes: String

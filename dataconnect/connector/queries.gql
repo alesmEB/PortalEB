@@ -416,6 +416,7 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       clockIn
       clockOut
       durationMinutes
+      recordedOffline
       technician {
         displayName
       }

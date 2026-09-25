@@ -56,6 +56,35 @@ Lo interno (refactors, dependencias, documentación) no entra, salvo si arregla
 algo que el usuario notaba. Sin hash en la línea: el commit aún no existe al
 escribirla, y el pie ya muestra la fecha de la compilación.
 
+## Sin cobertura
+
+Los técnicos trabajan en pantalanes donde no hay señal, así que dos cosas
+funcionan sin ella. Data Connect no guarda nada en el móvil, de modo que todo
+esto es nuestro:
+
+- **Leer**: cada lectura buena de Asignaciones y de una orden se guarda en
+  `localStorage` (`src/lib/offlineStore.ts`), separada por usuario. Si la
+  lectura falla, la pantalla usa esa copia y avisa de su hora. Sin copia,
+  sigue saliendo el error con "Reintentar".
+- **Escribir**: solo fichar entrada/salida y marcar trabajos
+  (`src/lib/offlineQueue.ts`). Se encolan con la hora del móvil, la pantalla se
+  actualiza como si hubieran entrado, y se envían al volver la señal, en orden
+  y reintentando cada minuto. Lo demás sigue exigiendo servidor.
+- **Qué se reintenta y qué no**: un error de red mantiene la acción en la cola;
+  una respuesta del servidor (permiso, estado, hora inválida) la descarta y la
+  muestra en rojo al técnico. Distinguirlos es `isConnectivityError`.
+- **Duplicados**: `startWorking` ignora un fichaje con el mismo técnico, orden
+  y hora; `stopWorking` replicado sobre un turno ya cerrado responde
+  `{ skipped: true }` en vez de fallar; marcar un trabajo es idempotente. No
+  hace falta tabla de control.
+- **La hora la pone el móvil** cuando viene de la cola, y el turno queda con
+  `TimeLog.recordedOffline` a true para que administración lo vea en Turnos.
+  El servidor solo la acota: nada del futuro ni de hace más de una semana.
+
+Al tocar esto, prueba con la orden de lab `A-000003` y recuerda que
+`navigator.onLine` se puede forzar desde la consola del navegador
+(`Object.defineProperty`) para simular la falta de cobertura.
+
 ## Data Connect: cosas que muerden
 
 - **El límite por defecto es 100 filas y corta en silencio.** Toda consulta de

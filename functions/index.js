@@ -367,10 +367,68 @@ const GET_MY_ACTIVE_TIME_LOG_QUERY = `
   }
 `
 const CLOCK_IN_MUTATION = `
-  mutation ClockInAdmin($workOrderId: UUID!, $technicianId: String!) {
-    timeLog_insert(data: { workOrderId: $workOrderId, technicianId: $technicianId })
+  mutation ClockInAdmin(
+    $workOrderId: UUID!
+    $technicianId: String!
+    $clockIn: Timestamp!
+    $recordedOffline: Boolean!
+  ) {
+    timeLog_insert(
+      data: {
+        workOrderId: $workOrderId
+        technicianId: $technicianId
+        clockIn: $clockIn
+        recordedOffline: $recordedOffline
+      }
+    )
   }
 `
+// Same as CLOCK_OUT_MUTATION, but flags the shift: a clock-out replayed from
+// the queue carries the phone's clock, so admin can tell it apart.
+const CLOCK_OUT_OFFLINE_MUTATION = `
+  mutation ClockOutOfflineAdmin($timeLogId: UUID!, $clockOut: Timestamp!, $durationMinutes: Int!) {
+    timeLog_update(
+      id: $timeLogId
+      data: { clockOut: $clockOut, durationMinutes: $durationMinutes, recordedOffline: true }
+    )
+  }
+`
+const GET_TIME_LOG_AT_QUERY = `
+  query GetTimeLogAtAdmin($technicianId: String!, $workOrderId: UUID!, $clockIn: Timestamp!) {
+    timeLogs(
+      where: {
+        technicianId: { eq: $technicianId }
+        workOrderId: { eq: $workOrderId }
+        clockIn: { eq: $clockIn }
+      }
+    ) {
+      id
+    }
+  }
+`
+function minutesBetween(fromIso, to) {
+  return Math.round((to.getTime() - new Date(fromIso).getTime()) / 60000)
+}
+
+// A queued offline action carries the phone's clock instead of the server's,
+// on purpose: a shift sent an hour late has to keep the hour it happened.
+// Bounded all the same - a time from the future, or from last week, is a
+// broken clock rather than a shift, and someone would have to unpick it by
+// hand afterwards.
+function clientTimestamp(value, label) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    throw new HttpsError('invalid-argument', `${label} no es válida.`)
+  }
+  const now = Date.now()
+  if (date.getTime() > now + 10 * 60 * 1000) {
+    throw new HttpsError('invalid-argument', `${label} está en el futuro.`)
+  }
+  if (date.getTime() < now - 7 * 24 * 60 * 60 * 1000) {
+    throw new HttpsError('invalid-argument', `${label} es de hace más de una semana.`)
+  }
+  return date
+}
 
 function durationMinutesSince(isoTime) {
   return Math.round((Date.now() - new Date(isoTime).getTime()) / 60000)
@@ -2063,26 +2121,55 @@ exports.startWorking = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
   }
-  const { workOrderId } = request.data ?? {}
+  const { workOrderId, clockIn: clientClockIn } = request.data ?? {}
   if (typeof workOrderId !== 'string') {
     throw new HttpsError('invalid-argument', 'workOrderId es obligatorio.')
   }
+  // Only the offline queue sends a time; a live clock-in is stamped here.
+  const recordedOffline = clientClockIn !== undefined && clientClockIn !== null
+  const clockIn = recordedOffline
+    ? clientTimestamp(clientClockIn, 'La hora de entrada')
+    : new Date()
 
   const callerUid = request.auth.uid
+
+  // Same technician, same order, same instant: the queue is replaying an
+  // action that already went through, not opening a second shift.
+  const existingRes = await dataConnect.executeGraphqlRead(GET_TIME_LOG_AT_QUERY, {
+    variables: {
+      technicianId: callerUid,
+      workOrderId,
+      clockIn: clockIn.toISOString(),
+    },
+  })
+  if (existingRes.data.timeLogs.length > 0) {
+    return { skipped: true }
+  }
+
   const activeRes = await dataConnect.executeGraphqlRead(GET_MY_ACTIVE_TIME_LOG_QUERY, {
     variables: { technicianId: callerUid },
   })
   const active = activeRes.data.timeLogs[0]
   if (active) {
+    // The open shift ends where this one starts, not "now": a shift replayed
+    // late must not swallow the hours in between.
+    const previousEnd = new Date(Math.max(clockIn.getTime(), new Date(active.clockIn).getTime()))
     await dataConnect.executeGraphql(CLOCK_OUT_MUTATION, {
       variables: {
         timeLogId: active.id,
-        clockOut: new Date().toISOString(),
-        durationMinutes: durationMinutesSince(active.clockIn),
+        clockOut: previousEnd.toISOString(),
+        durationMinutes: minutesBetween(active.clockIn, previousEnd),
       },
     })
   }
-  await dataConnect.executeGraphql(CLOCK_IN_MUTATION, { variables: { workOrderId, technicianId: callerUid } })
+  await dataConnect.executeGraphql(CLOCK_IN_MUTATION, {
+    variables: {
+      workOrderId,
+      technicianId: callerUid,
+      clockIn: clockIn.toISOString(),
+      recordedOffline,
+    },
+  })
 
   // Best-effort "turno activo" push so a technician who isn't watching the
   // app still gets reminded which order they're clocked into (in-app, this
@@ -2109,22 +2196,38 @@ exports.stopWorking = onCall(async (request) => {
     throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
   }
 
+  const { clockOut: clientClockOut } = request.data ?? {}
+  const recordedOffline = clientClockOut !== undefined && clientClockOut !== null
+  const clockOut = recordedOffline
+    ? clientTimestamp(clientClockOut, 'La hora de salida')
+    : new Date()
+
   const callerUid = request.auth.uid
   const activeRes = await dataConnect.executeGraphqlRead(GET_MY_ACTIVE_TIME_LOG_QUERY, {
     variables: { technicianId: callerUid },
   })
   const active = activeRes.data.timeLogs[0]
   if (!active) {
+    // Replaying a clock-out whose shift is already closed is not a failure -
+    // it usually means the queue sent it twice. Pressed live, it still is.
+    if (recordedOffline) {
+      return { skipped: true }
+    }
     throw new HttpsError('failed-precondition', 'No tienes ningún turno activo.')
   }
 
-  await dataConnect.executeGraphql(CLOCK_OUT_MUTATION, {
-    variables: {
-      timeLogId: active.id,
-      clockOut: new Date().toISOString(),
-      durationMinutes: durationMinutesSince(active.clockIn),
+  // A phone clock running behind could close a shift before it started.
+  const end = new Date(Math.max(clockOut.getTime(), new Date(active.clockIn).getTime()))
+  await dataConnect.executeGraphql(
+    recordedOffline ? CLOCK_OUT_OFFLINE_MUTATION : CLOCK_OUT_MUTATION,
+    {
+      variables: {
+        timeLogId: active.id,
+        clockOut: end.toISOString(),
+        durationMinutes: minutesBetween(active.clockIn, end),
+      },
     },
-  })
+  )
 
   // Data-only message (no `notification` field) - the service worker
   // recognizes action: 'close' and closes the matching-tag notification

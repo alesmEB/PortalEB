@@ -217,20 +217,30 @@ export async function toggleWorkOrderTask(taskId: string, isCompleted: boolean) 
   return res.data
 }
 
-const callStartWorking = httpsCallable<{ workOrderId: string }, { switchedFrom: string | null }>(
+const callStartWorking = httpsCallable<
+  { workOrderId: string; clockIn?: string },
+  { switchedFrom?: string | null; skipped?: boolean }
+>(
   functions,
   'startWorking',
 )
 
-export async function startWorking(workOrderId: string) {
-  const res = await callStartWorking({ workOrderId })
+/** `clockIn` is only sent by the offline queue replaying a shift, and carries
+ * the phone's clock; a live clock-in lets the server stamp it. */
+export async function startWorking(workOrderId: string, clockIn?: string) {
+  const res = await callStartWorking({ workOrderId, ...(clockIn ? { clockIn } : {}) })
   return res.data
 }
 
-const callStopWorking = httpsCallable<undefined, { success: boolean }>(functions, 'stopWorking')
+const callStopWorking = httpsCallable<
+  { clockOut?: string } | undefined,
+  { success?: boolean; skipped?: boolean }
+>(functions, 'stopWorking')
 
-export async function stopWorking() {
-  const res = await callStopWorking()
+/** `clockOut` likewise comes from the offline queue. Replaying one whose
+ * shift is already closed comes back as { skipped: true }. */
+export async function stopWorking(clockOut?: string) {
+  const res = await callStopWorking(clockOut ? { clockOut } : undefined)
   return res.data
 }
 

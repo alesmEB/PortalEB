@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import { ActiveShiftBanner } from './components/ActiveShiftBanner'
 import { AppBackground } from './components/AppBackground'
 import { Footer } from './components/Footer'
+import { OfflineBanner } from './components/OfflineBanner'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { UserBar } from './components/UserBar'
 import { EbLanguageProvider } from './lib/ebI18n'
@@ -146,6 +147,7 @@ function App() {
           </Routes>
         </div>
 
+        <OfflineBanner />
         <ActiveShiftBanner />
         <Footer />
       </div>

@@ -6,6 +6,19 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 25 de septiembre de 2026
+
+- Los técnicos pueden trabajar sin cobertura:
+  - Sus asignaciones y las órdenes que hayan abierto se guardan en el móvil, y
+    sin señal se ven igual, avisando de a qué hora se leyeron.
+  - Fichar entrada y salida y marcar trabajos ya no fallan sin cobertura: se
+    guardan en el móvil y se envían solos al recuperar señal, **con la hora en
+    que se hicieron**, no con la de cuando se enviaron.
+  - Abajo se ve "Sin conexión" y cuántas acciones quedan por enviar. Si el
+    servidor rechaza alguna, se avisa de cuál y por qué.
+  - En la lista de Turnos de la orden, los fichajes que llegaron así salen
+    marcados como "sin conexión": llevan la hora del móvil del técnico.
+
 ## 24 de septiembre de 2026
 
 - La lista de órdenes se actualiza sola: cada minuto mientras está a la vista,

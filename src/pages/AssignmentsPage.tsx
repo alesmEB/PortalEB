@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
+import { formatSnapshotTime, readSnapshot, writeSnapshot } from '../lib/offlineStore'
 import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 
 type Assignment = ListMyAssignedWorkOrdersData['technicianAssignments'][number]
@@ -25,18 +26,34 @@ export function AssignmentsPage() {
   const [workingOrderId, setWorkingOrderId] = useState<string | null>(null)
   const [unreadOrderIds, setUnreadOrderIds] = useState<Set<string>>(new Set())
   const [loadError, setLoadError] = useState(false)
+  // Set when the list on screen is the copy kept in the phone, not a fresh read.
+  const [snapshotAt, setSnapshotAt] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setLoadError(false)
     listMyAssignedWorkOrders(FRESH)
-      .then((res) => setAssignments(res.data.technicianAssignments))
-      .catch(() => setLoadError(true))
+      .then((res) => {
+        setAssignments(res.data.technicianAssignments)
+        setSnapshotAt(null)
+        if (profile) writeSnapshot(profile.id, "assignments", res.data.technicianAssignments)
+      })
+      .catch(() => {
+        // Out of coverage the phone still has the last read: better their
+        // orders from this morning than an empty screen at the boat.
+        const snapshot = profile ? readSnapshot<Assignment[]>(profile.id, "assignments") : null
+        if (snapshot) {
+          setAssignments(snapshot.data)
+          setSnapshotAt(snapshot.at)
+        } else {
+          setLoadError(true)
+        }
+      })
     // Only highlights the order being worked on - if it fails the list is
     // still usable, so it doesn't get its own error.
     getMyActiveTimeLog(FRESH)
       .then((res) => setWorkingOrderId(res.data.timeLogs[0]?.workOrderId ?? null))
       .catch(() => {})
-  }, [])
+  }, [profile])
 
   useEffect(load, [load])
 
@@ -68,6 +85,12 @@ export function AssignmentsPage() {
               Reintentar
             </button>
           </div>
+        )}
+        {snapshotAt && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Sin conexión. Datos guardados del {formatSnapshotTime(snapshotAt)}. Puedes fichar y
+            marcar trabajos: se enviarán solos al recuperar cobertura.
+          </p>
         )}
         {assignments === null && !loadError && <p className="text-sm text-slate-500">Cargando...</p>}
         {pendingAssignments?.length === 0 && (

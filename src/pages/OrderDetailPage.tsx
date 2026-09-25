@@ -28,6 +28,8 @@ import {
   type ChatMessage,
 } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
+import { enqueue, isConnectivityError } from '../lib/offlineQueue'
+import { formatSnapshotTime, readSnapshot, writeSnapshot } from '../lib/offlineStore'
 import { mediaTypeOf, validateMediaFile } from '../lib/media'
 import { orderLocationLabel } from '../lib/orderCode'
 import { orderEventTypeLabel } from '../lib/orderEvent'
@@ -1143,6 +1145,8 @@ export function OrderDetailPage() {
   const busy = busyLabel !== null
   const [actionError, setActionError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState(false)
+  // Set when what is on screen is this phone's copy, not a fresh read.
+  const [snapshotAt, setSnapshotAt] = useState<string | null>(null)
   const quoteFileInputRef = useRef<HTMLInputElement>(null)
 
   // Both the report and, if the viewer can see quote PDFs, every quote
@@ -1160,16 +1164,37 @@ export function OrderDetailPage() {
     return docs
   }, [order, canViewQuotes])
 
+  const uid = profile?.id ?? null
+
   const loadOrder = useCallback(async () => {
     if (!id) return
-    const res = await getWorkOrderDetail({ id }, FRESH)
-    setOrder(res.data.workOrder)
-  }, [id])
+    try {
+      const res = await getWorkOrderDetail({ id }, FRESH)
+      setOrder(res.data.workOrder)
+      setSnapshotAt(null)
+      if (uid && res.data.workOrder) writeSnapshot(uid, `order:${id}`, res.data.workOrder)
+    } catch (err) {
+      // Out of coverage, fall back to this phone's copy of the order: at the
+      // boat, seeing the jobs and being able to clock in beats freshness.
+      const snapshot = uid ? readSnapshot<WorkOrder>(uid, `order:${id}`) : null
+      if (!snapshot) throw err
+      setOrder(snapshot.data)
+      setSnapshotAt(snapshot.at)
+    }
+  }, [id, uid])
 
   const loadMyActiveLog = useCallback(async () => {
-    const res = await getMyActiveTimeLog(FRESH)
-    setMyActiveLog(res.data.timeLogs[0] ?? null)
-  }, [])
+    try {
+      const res = await getMyActiveTimeLog(FRESH)
+      const active = res.data.timeLogs[0] ?? null
+      setMyActiveLog(active)
+      if (uid) writeSnapshot(uid, 'activeLog', active)
+    } catch (err) {
+      const snapshot = uid ? readSnapshot<ActiveTimeLog | null>(uid, 'activeLog') : null
+      if (!snapshot) throw err
+      setMyActiveLog(snapshot.data)
+    }
+  }, [uid])
 
   const retryLoadOrder = useCallback(() => {
     setLoadError(false)
@@ -1276,6 +1301,48 @@ export function OrderDetailPage() {
 
   // Individual clock in/out isn't logged to OrderTracking - the TimeLog
   // table (see the "Turnos" timeline below) is the authoritative record.
+  // With no coverage these three don't fail: they go into the phone's queue
+  // stamped with the moment they happened, and the screen updates as if they
+  // had gone through. The server takes that time when the queue drains, so a
+  // shift sent late keeps the hour it really started.
+  function queueStartWorking() {
+    if (!uid || !order) return
+    enqueue(uid, { kind: 'startWorking', workOrderId: order.id, orderCode: order.code })
+    const local = {
+      id: `pendiente-${Date.now()}`,
+      workOrderId: order.id,
+      clockIn: new Date().toISOString(),
+      workOrder: { code: order.code },
+    } as ActiveTimeLog
+    setMyActiveLog(local)
+    writeSnapshot(uid, 'activeLog', local)
+  }
+
+  function queueStopWorking() {
+    if (!uid || !order) return
+    enqueue(uid, { kind: 'stopWorking', workOrderId: order.id, orderCode: order.code })
+    setMyActiveLog(null)
+    writeSnapshot(uid, 'activeLog', null)
+  }
+
+  function queueToggleTask(taskId: string, description: string, isCompleted: boolean) {
+    if (!uid || !order) return
+    enqueue(uid, {
+      kind: 'toggleTask',
+      workOrderId: order.id,
+      orderCode: order.code,
+      taskId,
+      description,
+      isCompleted,
+    })
+    const updated = {
+      ...order,
+      tasks: order.tasks.map((task) => (task.id === taskId ? { ...task, isCompleted } : task)),
+    }
+    setOrder(updated)
+    writeSnapshot(uid, `order:${order.id}`, updated)
+  }
+
   async function handleStartWorking() {
     if (!order) return
     if (myActiveLog && myActiveLog.workOrderId !== order.id) {
@@ -1285,8 +1352,20 @@ export function OrderDetailPage() {
       )
       if (!proceed) return
     }
+    if (!navigator.onLine) {
+      queueStartWorking()
+      return
+    }
     await runPageAction('Empezando turno...', async () => {
-      await startWorking(order.id)
+      try {
+        await startWorking(order.id)
+      } catch (err) {
+        // The signal died between pressing and sending: queue it instead of
+        // making them press again with worse coverage than before.
+        if (!isConnectivityError(err)) throw err
+        queueStartWorking()
+        return
+      }
       await loadOrder()
       await loadMyActiveLog()
     })
@@ -1294,16 +1373,37 @@ export function OrderDetailPage() {
 
   async function handleStopWorking() {
     if (!order || !myActiveLog) return
+    if (!navigator.onLine) {
+      queueStopWorking()
+      return
+    }
     await runPageAction('Cerrando turno...', async () => {
-      await stopWorking()
+      try {
+        await stopWorking()
+      } catch (err) {
+        if (!isConnectivityError(err)) throw err
+        queueStopWorking()
+        return
+      }
       await loadOrder()
       await loadMyActiveLog()
     })
   }
 
   async function handleToggleTask(taskId: string, isCompleted: boolean) {
+    const description = order?.tasks.find((task) => task.id === taskId)?.description ?? ''
+    if (!navigator.onLine) {
+      queueToggleTask(taskId, description, isCompleted)
+      return
+    }
     await runPageAction(isCompleted ? 'Marcando trabajo como hecho...' : 'Desmarcando trabajo...', async () => {
-      await toggleWorkOrderTask(taskId, isCompleted)
+      try {
+        await toggleWorkOrderTask(taskId, isCompleted)
+      } catch (err) {
+        if (!isConnectivityError(err)) throw err
+        queueToggleTask(taskId, description, isCompleted)
+        return
+      }
       await loadOrder()
     })
   }
@@ -1389,6 +1489,13 @@ export function OrderDetailPage() {
       {order.deletedAt && (
         <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
           Esta orden está eliminada - solo es visible buscándola directamente.
+        </p>
+      )}
+
+      {snapshotAt && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Sin conexión. Datos guardados del {formatSnapshotTime(snapshotAt)}. Fichar y marcar
+          trabajos se guarda en el móvil y se envía solo al recuperar cobertura.
         </p>
       )}
 
@@ -1713,6 +1820,11 @@ export function OrderDetailPage() {
                             ? new Date(shift.clockOut).toLocaleString('es-ES')
                             : 'en curso'}
                           {shift.durationMinutes != null ? ` · ${shift.durationMinutes} min` : ''}
+                          {shift.recordedOffline && (
+                            <span title="Registrado sin cobertura: la hora viene del móvil del técnico">
+                              {' '}· sin conexión
+                            </span>
+                          )}
                         </span>
                         {shift.clockOut && (
                           <HasPermission permission="admin:manage">
