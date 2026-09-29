@@ -111,6 +111,17 @@ export function DashboardPage() {
             </button>
           )}
 
+          {/* Everyone's hours, behind their own permission; the server
+              checks the same one (listTimeLogs). */}
+          <HasPermission permission="admin:hourslog">
+            <button
+              onClick={() => navigate('/hours')}
+              className="w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark"
+            >
+              Registro de horas
+            </button>
+          </HasPermission>
+
           <HasPermission permission="ratings:view">
             <button
               onClick={() => navigate('/ratings')}

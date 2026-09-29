@@ -2390,6 +2390,129 @@ exports.adminDeleteTimeLog = onCall(async (request) => {
   return { success: true }
 })
 
+// Same fields for both ways into the hours log (a range of days, or one
+// order), so the page groups them the same way whichever was asked for.
+const HOURS_LOG_TIME_LOG_FIELDS = `
+  id
+  clockIn
+  clockOut
+  durationMinutes
+  recordedOffline
+  technicianId
+  technician {
+    displayName
+  }
+  workOrder {
+    id
+    code
+    deletedAt
+    boat {
+      name
+    }
+  }
+`
+const LIST_TIME_LOGS_IN_RANGE_QUERY = `
+  query ListTimeLogsInRangeAdmin($from: Timestamp!, $to: Timestamp!) {
+    timeLogs(where: { clockIn: { ge: $from, lt: $to } }, orderBy: { clockIn: ASC }, limit: 5000) {
+      ${HOURS_LOG_TIME_LOG_FIELDS}
+    }
+  }
+`
+const LIST_ORDER_TIME_LOGS_QUERY = `
+  query ListOrderTimeLogsAdmin($code: String!) {
+    workOrders(where: { code: { eq: $code } }, limit: 1) {
+      id
+      code
+      timeLogs: timeLogs_on_workOrder(orderBy: { clockIn: ASC }, limit: 2000) {
+        ${HOURS_LOG_TIME_LOG_FIELDS}
+      }
+    }
+  }
+`
+const LIST_ACTIVE_USERS_WITH_PERMISSIONS_QUERY = `
+  query ListActiveUsersWithPermissionsAdmin {
+    users(where: { isActive: { eq: true } }, orderBy: { displayName: ASC }, limit: 1000) {
+      id
+      displayName
+      userPermissions: userPermissions_on_user {
+        permission {
+          key
+        }
+      }
+    }
+  }
+`
+
+// A range this long already means thousands of shifts on one page; past it
+// the page stops being readable long before the query gets slow.
+const HOURS_LOG_MAX_DAYS = 93
+
+// Backs the "Registro de horas" page: every technician's shifts, either over
+// a range of days or for one order. The day boundaries come from the browser
+// (local midnight as ISO) because the office reads days in Spanish time, and
+// the server's clock is UTC. Everyone's hours, so it's gated on the server
+// too, not only by hiding the button, behind its own permission.
+exports.listTimeLogs = onCall(async (request) => {
+  requirePermission(request, 'admin:hourslog')
+
+  const { from, to, orderCode } = request.data ?? {}
+
+  let order = null
+  let timeLogs
+  if (typeof orderCode === 'string' && orderCode.trim()) {
+    const code = orderCode.trim().toUpperCase()
+    const res = await dataConnect.executeGraphqlRead(LIST_ORDER_TIME_LOGS_QUERY, { variables: { code } })
+    const found = res.data.workOrders[0]
+    if (!found) {
+      throw new HttpsError('not-found', `No existe ninguna orden con el código ${code}.`)
+    }
+    order = { id: found.id, code: found.code }
+    timeLogs = found.timeLogs
+  } else {
+    const fromDate = new Date(from)
+    const toDate = new Date(to)
+    if (typeof from !== 'string' || typeof to !== 'string' || Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+      throw new HttpsError('invalid-argument', 'Fechas no válidas.')
+    }
+    if (toDate.getTime() <= fromDate.getTime()) {
+      throw new HttpsError('invalid-argument', 'La fecha final es anterior a la inicial.')
+    }
+    // A day of slack for the hour lost or gained at a DST change.
+    if (toDate.getTime() - fromDate.getTime() > (HOURS_LOG_MAX_DAYS + 1) * 24 * 60 * 60 * 1000) {
+      throw new HttpsError('invalid-argument', `Elige como mucho ${HOURS_LOG_MAX_DAYS} días.`)
+    }
+    const res = await dataConnect.executeGraphqlRead(LIST_TIME_LOGS_IN_RANGE_QUERY, {
+      variables: { from: fromDate.toISOString(), to: toDate.toISOString() },
+    })
+    timeLogs = res.data.timeLogs
+  }
+
+  const usersRes = await dataConnect.executeGraphqlRead(LIST_ACTIVE_USERS_WITH_PERMISSIONS_QUERY, {})
+  const technicians = usersRes.data.users
+    .filter((user) => user.userPermissions.some((up) => up.permission.key === 'orders:assignable'))
+    .map((user) => ({ id: user.id, displayName: user.displayName }))
+
+  return {
+    technicians,
+    order,
+    timeLogs: timeLogs.map((log) => ({
+      id: log.id,
+      clockIn: log.clockIn,
+      clockOut: log.clockOut,
+      durationMinutes: log.durationMinutes,
+      recordedOffline: log.recordedOffline,
+      technicianId: log.technicianId,
+      technicianName: log.technician.displayName,
+      workOrder: {
+        id: log.workOrder.id,
+        code: log.workOrder.code,
+        boatName: log.workOrder.boat?.name ?? null,
+        deleted: !!log.workOrder.deletedAt,
+      },
+    })),
+  }
+})
+
 const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
 
 // Adds/removes one day a work order is placed on in the weekly calendar - a

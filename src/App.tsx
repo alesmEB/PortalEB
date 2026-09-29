@@ -13,6 +13,7 @@ import { ChatPage } from './pages/ChatPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EbEngineeringPage } from './pages/EbEngineeringPage'
 import { EbMyProductsPage } from './pages/EbMyProductsPage'
+import { HoursLogPage } from './pages/HoursLogPage'
 import { InterventionPage } from './pages/InterventionPage'
 import { InterventionsListPage } from './pages/InterventionsListPage'
 import { LoginPage } from './pages/LoginPage'
@@ -133,6 +134,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <InterventionsListPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/hours"
+              element={
+                <ProtectedRoute>
+                  <HoursLogPage />
                 </ProtectedRoute>
               }
             />

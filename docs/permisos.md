@@ -30,6 +30,7 @@ exige volver a iniciar sesión**.
 | `admin:reopen` | Revertir ajustada / protocolo / facturada |
 | `admin:manage` | Gestionar usuarios, permisos, clientes, embarcaciones, motores y turnos |
 | `admin:lab` | Acceso a pruebas en producción; hace de bypass del rol ADMIN |
+| `admin:hourslog` | Ver el Registro de horas: los turnos de todos los técnicos |
 | `quotes:upload` | Subir presupuestos |
 | `quotes:approve` | Aceptar un presupuesto |
 | `quotes:reject` | Rechazar un presupuesto |
@@ -62,6 +63,7 @@ servidor**; que la interfaz esconda un botón no es la protección.
 | `addOrderNote` | `orders:notes` |
 | `setWorkOrderExternalCode` | rol ADMIN o `admin:lab` |
 | `adminUpdateTimeLog`, `adminDeleteTimeLog` | `admin:manage` |
+| `listTimeLogs` (Registro de horas) | `admin:hourslog`, sin puente por rol ADMIN ni por `admin:lab`: son las horas de todos |
 
 ### Cierre administrativo
 

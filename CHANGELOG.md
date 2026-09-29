@@ -8,6 +8,12 @@ tu versión.
 
 ## 29 de septiembre de 2026
 
+- Nuevo "Registro de horas" en el inicio, con el permiso nuevo `admin:hourslog`:
+  los turnos de cada técnico, día a día, con la hora de entrada y salida y la
+  orden en la que estaba. Se puede ver un día, un rango de días (hasta 93) o
+  todos los turnos de una orden, y filtrar por técnico. Cada técnico lleva su
+  total del día; los que no ficharon salen como "Sin turnos". Pulsando el
+  código se abre la orden, y al volver se conserva la selección.
 - En las ventas de EBcontroller se puede añadir el fondo de pantalla de cada
   unidad, al registrar la venta o al editarla. Tiene que ser una imagen de
   480 × 272 píxeles: si mide otra cosa, se avisa y no se acepta. En la lista
