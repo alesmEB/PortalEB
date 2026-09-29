@@ -1109,7 +1109,10 @@ function EbControllerProductsTab() {
               }`}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-3">
+                {/* Takes all the free width, so the wallpaper thumbnail stays
+                    against the links instead of floating in the gap, which
+                    moved with the length of each sale's cable list. */}
+                <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div className="flex shrink-0 flex-col items-center pt-0.5">
                     {product.internalUse ? (
                       <span className="text-lg font-bold leading-none text-slate-300">—</span>
@@ -1179,8 +1182,11 @@ function EbControllerProductsTab() {
                     date lines, 52.5px). Its width is the other risk: it takes
                     ~90px from the text, and below 1024px that pushed the long
                     cable lists onto another line (7 cards at 966px, 15 at
-                    768px; none from 1024px up). So narrower screens get the
-                    icon next to the ✕ instead. */}
+                    768px). So narrower screens get the icon next to the ✕
+                    instead. From 1024px up the links column below has a fixed
+                    width so every thumbnail lines up; that costs a line on a
+                    few cards (8 at 1024px, 1 at 1280px, none from 1440px), a
+                    trade the office chose over thumbnails at three positions. */}
                 {product.wallpaperUrl && (
                   <a
                     href={product.wallpaperUrl}
@@ -1197,7 +1203,7 @@ function EbControllerProductsTab() {
                   </a>
                 )}
 
-                <div className="flex shrink-0 flex-col items-end gap-2">
+                <div className="flex shrink-0 flex-col items-end gap-2 lg:min-w-28">
                   <div className="flex items-center gap-2">
                     {product.wallpaperUrl && (
                       <a
