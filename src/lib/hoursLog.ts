@@ -40,3 +40,22 @@ export async function listTimeLogs(input: { from: string; to: string } | { order
   const res = await callListTimeLogs(input)
   return res.data
 }
+
+type HoursLogPdfInput = ({ fromDay: string; toDay: string } | { orderCode: string }) & {
+  technicianId?: string
+}
+
+const callExportTimeLogsPdf = httpsCallable<HoursLogPdfInput, { pdfBase64: string }>(
+  functions,
+  'exportTimeLogsPdf',
+)
+
+/**
+ * The same selection as the page, printed server-side. Days are "YYYY-MM-DD"
+ * (inclusive), read as Spanish days by the server. Requires "admin:hourslog".
+ */
+export async function exportTimeLogsPdf(input: HoursLogPdfInput) {
+  const res = await callExportTimeLogsPdf(input)
+  const bytes = Uint8Array.from(atob(res.data.pdfBase64), (c) => c.charCodeAt(0))
+  return new Blob([bytes], { type: 'application/pdf' })
+}

@@ -39,6 +39,11 @@ npm run lint     # oxlint
   (`--only functions:nombreA,functions:nombreB`), no el paquete entero.
 - Tras editar `schema.gql` o `queries.gql`: `npx firebase-tools@latest
   dataconnect:sdk:generate` antes de compilar.
+- Secretos de funciones (Secret Manager): `GEMINI_API_KEY`,
+  `CABLE_CHECK_DEVICE_SECRET` y `SMTP_PASSWORD` (la contraseña de
+  portal@eliasblanco.com, para el correo diario del registro de horas). Los
+  pone el usuario con `npx firebase-tools@latest functions:secrets:set NOMBRE`;
+  nunca van en el código ni pasan por mí.
 - La app es una PWA: **el service worker sirve la versión cacheada** tras cada
   despliegue. Hay que recargar dos veces para ver lo nuevo. Verifica lo
   publicado descargando `/assets/index-<hash>.js` y buscando el texto nuevo,

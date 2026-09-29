@@ -9,6 +9,17 @@ const sanitizeHtml = require('sanitize-html')
 const { GoogleGenAI, Type } = require('@google/genai')
 const { renderWorkOrderPdfBuffer } = require('./workOrderPdf')
 const { renderRatingsPdfBuffer } = require('./ratingsPdf')
+const nodemailer = require('nodemailer')
+const {
+  renderHoursLogPdfBuffer,
+  buildDays,
+  closedMinutes,
+  formatMinutes,
+  formatDayHeading,
+  madridDayKey,
+  madridMidnight,
+  addDaysToKey,
+} = require('./hoursLogPdf')
 
 admin.initializeApp()
 
@@ -2447,16 +2458,9 @@ const LIST_ACTIVE_USERS_WITH_PERMISSIONS_QUERY = `
 // the page stops being readable long before the query gets slow.
 const HOURS_LOG_MAX_DAYS = 93
 
-// Backs the "Registro de horas" page: every technician's shifts, either over
-// a range of days or for one order. The day boundaries come from the browser
-// (local midnight as ISO) because the office reads days in Spanish time, and
-// the server's clock is UTC. Everyone's hours, so it's gated on the server
-// too, not only by hiding the button, behind its own permission.
-exports.listTimeLogs = onCall(async (request) => {
-  requirePermission(request, 'admin:hourslog')
-
-  const { from, to, orderCode } = request.data ?? {}
-
+// Every technician's shifts, either between two instants or for one order -
+// what the "Registro de horas" page shows and its PDF prints.
+async function loadHoursLog({ from, to, orderCode }) {
   let order = null
   let timeLogs
   if (typeof orderCode === 'string' && orderCode.trim()) {
@@ -2511,7 +2515,134 @@ exports.listTimeLogs = onCall(async (request) => {
       },
     })),
   }
+}
+
+// Backs the "Registro de horas" page. The day boundaries come from the
+// browser (local midnight as ISO) because the office reads days in Spanish
+// time, and the server's clock is UTC. Everyone's hours, so it's gated on the
+// server too, not only by hiding the button, behind its own permission.
+exports.listTimeLogs = onCall(async (request) => {
+  requirePermission(request, 'admin:hourslog')
+  const { from, to, orderCode } = request.data ?? {}
+  return loadHoursLog({ from, to, orderCode })
 })
+
+// The page's "Descargar PDF": the same selection it has on screen, re-read
+// here rather than sent from the browser, so the report is always built from
+// the database. Days arrive as "YYYY-MM-DD" and are turned into Madrid
+// midnights here (hoursLogPdf.js), the same way the daily e-mail will pick
+// "yesterday" - the browser's clock plays no part in what a day is.
+exports.exportTimeLogsPdf = onCall(async (request) => {
+  requirePermission(request, 'admin:hourslog')
+
+  const { fromDay, toDay, orderCode, technicianId } = request.data ?? {}
+  if (technicianId !== undefined && technicianId !== null && typeof technicianId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Técnico no válido.')
+  }
+
+  let log
+  let dayKeys = null
+  if (typeof orderCode === 'string' && orderCode.trim()) {
+    log = await loadHoursLog({ orderCode })
+  } else {
+    const dayPattern = /^\d{4}-\d{2}-\d{2}$/
+    if (!dayPattern.test(fromDay ?? '') || !dayPattern.test(toDay ?? '') || toDay < fromDay) {
+      throw new HttpsError('invalid-argument', 'Fechas no válidas.')
+    }
+    log = await loadHoursLog({
+      from: madridMidnight(fromDay).toISOString(),
+      to: madridMidnight(addDaysToKey(toDay, 1)).toISOString(),
+    })
+    dayKeys = []
+    for (let day = fromDay; day <= toDay; day = addDaysToKey(day, 1)) dayKeys.push(day)
+  }
+
+  const technicianName = technicianId
+    ? (log.technicians.find((t) => t.id === technicianId)?.displayName ??
+      log.timeLogs.find((s) => s.technicianId === technicianId)?.technicianName ??
+      null)
+    : null
+
+  const buffer = await renderHoursLogPdfBuffer({
+    ...log,
+    dayKeys,
+    technicianId: technicianId || null,
+    technicianName,
+    orderCode: log.order?.code ?? null,
+    generatedAt: new Date(),
+  })
+  return { pdfBase64: buffer.toString('base64') }
+})
+
+// The workshop's own mail server; the password lives in Secret Manager
+// (firebase functions:secrets:set SMTP_PASSWORD), never in the code.
+const SMTP_PASSWORD = defineSecret('SMTP_PASSWORD')
+const HOURS_LOG_MAIL = {
+  host: 'eliasblanco.com',
+  port: 465,
+  from: 'portal@eliasblanco.com',
+  to: ['alejandro.segura@eliasblanco.com', 'andres@eliasblanco.com'],
+}
+
+// Every morning, the day before's hours to the office, as the same PDF the
+// "Registro de horas" page prints. 05:00 because nobody is on a shift then,
+// so the day is closed - and a shift still open at that hour is a forgotten
+// clock-out, which the e-mail points out. Sent on days without shifts too:
+// an e-mail that only comes on working days can't tell "nobody worked" from
+// "the job broke".
+exports.sendDailyHoursLog = onSchedule(
+  { schedule: '0 5 * * *', timeZone: 'Europe/Madrid', secrets: [SMTP_PASSWORD], retryCount: 2 },
+  async () => {
+    // Yesterday in Madrid, whatever the server's UTC clock says.
+    const day = addDaysToKey(madridDayKey(new Date()), -1)
+    const log = await loadHoursLog({
+      from: madridMidnight(day).toISOString(),
+      to: madridMidnight(addDaysToKey(day, 1)).toISOString(),
+    })
+    const pdf = await renderHoursLogPdfBuffer({
+      ...log,
+      dayKeys: [day],
+      technicianId: null,
+      technicianName: null,
+      orderCode: null,
+      generatedAt: new Date(),
+    })
+
+    const [summary] = buildDays({ ...log, dayKeys: [day], technicianId: null })
+    const heading = formatDayHeading(day)
+    const openShifts = log.timeLogs.filter((shift) => !shift.clockOut).length
+    const lines =
+      summary.shiftCount === 0
+        ? [`${heading}: nadie fichó.`]
+        : [
+            `${heading}: ${summary.shiftCount} ${summary.shiftCount === 1 ? 'turno' : 'turnos'}, ${formatMinutes(summary.minutes)} en total.`,
+            '',
+            ...summary.worked.map((t) => `- ${t.name}: ${formatMinutes(closedMinutes(t.shifts))}`),
+          ]
+    if (openShifts > 0) {
+      lines.push(
+        '',
+        `Atención: ${openShifts} ${openShifts === 1 ? 'turno sigue abierto' : 'turnos siguen abiertos'} a las 5 de la mañana. Probablemente alguien olvidó fichar la salida; sus horas no cuentan en el total hasta que se cierre.`,
+      )
+    }
+    lines.push('', 'El detalle de cada turno va en el PDF adjunto.', '', 'PortalEB')
+
+    const transporter = nodemailer.createTransport({
+      host: HOURS_LOG_MAIL.host,
+      port: HOURS_LOG_MAIL.port,
+      secure: true,
+      auth: { user: HOURS_LOG_MAIL.from, pass: SMTP_PASSWORD.value() },
+    })
+    await transporter.sendMail({
+      from: `"PortalEB" <${HOURS_LOG_MAIL.from}>`,
+      to: HOURS_LOG_MAIL.to.join(', '),
+      subject: `Registro de horas · ${heading}`,
+      text: lines.join('\n'),
+      attachments: [{ filename: `registro-horas-${day}.pdf`, content: pdf, contentType: 'application/pdf' }],
+    })
+    console.log(`Registro de horas del ${day} enviado a ${HOURS_LOG_MAIL.to.join(', ')}: ${summary.shiftCount} turnos.`)
+  },
+)
 
 const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
 

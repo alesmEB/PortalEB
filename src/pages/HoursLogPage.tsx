@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { BackButton } from '../components/BackButton'
+import { BusyOverlay } from '../components/BusyOverlay'
+import { useBusyAction } from '../hooks/useBusyAction'
 import { usePermission } from '../hooks/usePermission'
 import {
   HOURS_LOG_MAX_DAYS,
+  exportTimeLogsPdf,
   listTimeLogs,
   type HoursLogResult,
   type HoursLogShift,
@@ -187,6 +190,8 @@ export function HoursLogPage() {
   // Kept across loads: in "Por orden" with no code typed there's no result,
   // and the picker would otherwise lose its names (and hide the one chosen).
   const [knownTechnicians, setKnownTechnicians] = useState<{ id: string; name: string }[]>([])
+  const [pdfError, setPdfError] = useState<string | null>(null)
+  const { busyLabel, runBusy } = useBusyAction()
   // Dates can change faster than the server answers; only the last request
   // may write its result, or an earlier, slower one could overwrite it.
   const requestRef = useRef(0)
@@ -308,6 +313,43 @@ export function HoursLogPage() {
 
   const totalShifts = days.reduce((sum, day) => sum + day.shiftCount, 0)
   const totalMinutes = days.reduce((sum, day) => sum + day.minutes, 0)
+
+  // Prints exactly what's on screen: the selection in the URL, which is what
+  // `loaded` was read with.
+  async function downloadPdf() {
+    setPdfError(null)
+    const technician = technicianOptions.find((t) => t.id === technicianId)
+    const slug = (text: string) =>
+      text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+    const name = [
+      'registro-horas',
+      mode === 'order' ? orderCode : from === to ? from : `${from}-a-${to}`,
+      technician ? slug(technician.name) : null,
+    ]
+      .filter(Boolean)
+      .join('-')
+    try {
+      await runBusy('Generando el PDF...', async () => {
+        const blob = await exportTimeLogsPdf({
+          ...(mode === 'order' ? { orderCode } : { fromDay: from, toDay: to }),
+          ...(technicianId ? { technicianId } : {}),
+        })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${name}.pdf`
+        link.click()
+        URL.revokeObjectURL(url)
+      })
+    } catch (err) {
+      setPdfError(describeError(err).text)
+    }
+  }
 
   function openOrder(shift: HoursLogShift) {
     navigate(`/orders/${shift.workOrder.id}`, {
@@ -457,11 +499,20 @@ export function HoursLogPage() {
               ) : (
                 <span />
               )}
-              <p className="text-sm text-slate-600">
-                {totalShifts} {totalShifts === 1 ? 'turno' : 'turnos'} ·{' '}
-                <span className="font-semibold tabular-nums">{formatMinutes(totalMinutes)}</span>
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-slate-600">
+                  {totalShifts} {totalShifts === 1 ? 'turno' : 'turnos'} ·{' '}
+                  <span className="font-semibold tabular-nums">{formatMinutes(totalMinutes)}</span>
+                </p>
+                <button
+                  onClick={downloadPdf}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+                >
+                  Descargar PDF
+                </button>
+              </div>
             </div>
+            {pdfError && <p className="text-sm text-red-600">{pdfError}</p>}
 
             {days.length === 0 && (
               <p className="text-sm text-slate-500">
@@ -501,6 +552,7 @@ export function HoursLogPage() {
           </>
         )}
       </div>
+      <BusyOverlay label={busyLabel} />
     </div>
   )
 }

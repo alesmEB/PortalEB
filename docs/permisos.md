@@ -63,7 +63,7 @@ servidor**; que la interfaz esconda un botón no es la protección.
 | `addOrderNote` | `orders:notes` |
 | `setWorkOrderExternalCode` | rol ADMIN o `admin:lab` |
 | `adminUpdateTimeLog`, `adminDeleteTimeLog` | `admin:manage` |
-| `listTimeLogs` (Registro de horas) | `admin:hourslog`, sin puente por rol ADMIN ni por `admin:lab`: son las horas de todos |
+| `listTimeLogs`, `exportTimeLogsPdf` (Registro de horas y su PDF) | `admin:hourslog`, sin puente por rol ADMIN ni por `admin:lab`: son las horas de todos |
 
 ### Cierre administrativo
 

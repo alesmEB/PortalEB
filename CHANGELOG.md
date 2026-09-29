@@ -14,6 +14,13 @@ tu versión.
   todos los turnos de una orden, y filtrar por técnico. Cada técnico lleva su
   total del día; los que no ficharon salen como "Sin turnos". Pulsando el
   código se abre la orden, y al volver se conserva la selección.
+- En el Registro de horas, "Descargar PDF" saca en PDF lo que tienes en
+  pantalla: los mismos días, orden y técnico, con el total por técnico cuando
+  abarca varios días. Los días y las horas van siempre en hora de España.
+- Cada día a las 5 de la mañana llega por correo el registro de horas del día
+  anterior, con el PDF adjunto, a alejandro.segura@eliasblanco.com y
+  andres@eliasblanco.com. Llega también los días en que nadie fichó, y avisa
+  si a esa hora queda algún turno abierto (una salida sin fichar).
 - En las ventas de EBcontroller se puede añadir el fondo de pantalla de cada
   unidad, al registrar la venta o al editarla. Tiene que ser una imagen de
   480 × 272 píxeles: si mide otra cosa, se avisa y no se acepta. En la lista
