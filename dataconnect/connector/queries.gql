@@ -500,6 +500,7 @@ query ListEbClientProducts @auth(level: USER) {
     hardwareNumber
     softwareVersion
     programFileUrl
+    wallpaperUrl
     purchasedAt
     observations
     soldToEndUserAt

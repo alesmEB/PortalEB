@@ -473,6 +473,11 @@ type EbClientProduct @table(name: "eb_client_products") {
   hardwareNumber: String!
   softwareVersion: String
   programFileUrl: String
+  # The unit's custom display background, always 480x272 (the EBcontroller's
+  # screen size - checked when it's picked, see src/lib/ebWallpaperStorage.ts).
+  # Like programFileUrl, an attachment on the sale rather than part of what
+  # defines the product.
+  wallpaperUrl: String
   purchasedAt: Date
   observations: String
   # Set via the "Vender a cliente final" action (see EbProductsTab.tsx) when

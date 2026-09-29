@@ -87,6 +87,16 @@ service firebase.storage {
       allow write: if isAdminOrLab() && request.resource.size < 50 * 1024 * 1024;
     }
 
+    // A sale's display background (see EbProductsTab.tsx's WallpaperPicker).
+    // The 480x272 size is checked client-side when it's picked - rules can
+    // see the type and size of a file, not its dimensions.
+    match /eb-wallpapers/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isAdminOrLab() &&
+        request.resource.contentType.matches('image/.*') &&
+        request.resource.size < 5 * 1024 * 1024;
+    }
+
     // Photos/videos/documents attached to a chat message (see ChatPage.tsx) -
     // keyed by orderId (not the human-readable code) since ChatPage only has
     // the id from the route params. Gated by chat:write, the same permission

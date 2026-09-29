@@ -153,6 +153,8 @@ interface EbClientProductInput {
   /** "YYYY-MM-DD", optional. */
   purchasedAt?: string
   programFileUrl?: string
+  /** Download URL of the 480x272 display background (uploadEbWallpaper). */
+  wallpaperUrl?: string
   observations?: string
   /** "YYYY-MM-DD", optional - set when a distributor resells the unit to this client. */
   soldToEndUserAt?: string

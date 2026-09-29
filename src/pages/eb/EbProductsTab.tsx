@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
+import { Image as ImageIcon } from 'lucide-react'
 import {
   listAvailableEbScreens,
   listEbCableTypes,
@@ -25,6 +26,12 @@ import {
   ebSetClientProductRetired,
   ebUpdateClientProduct,
 } from '../../lib/ebEngineering'
+import {
+  EB_WALLPAPER_HEIGHT,
+  EB_WALLPAPER_WIDTH,
+  checkEbWallpaper,
+  uploadEbWallpaper,
+} from '../../lib/ebWallpaperStorage'
 import { EbCableChecksTab } from './EbCableChecksTab'
 import { EbSalesRankingTab } from './EbSalesRankingTab'
 import { EbStockTab } from './EbStockTab'
@@ -236,6 +243,73 @@ function ScreenPicker({
   )
 }
 
+// The file is only checked here, not uploaded: the upload happens when the
+// sale is saved (see ProductForm), so backing out of the form leaves nothing
+// behind in Storage.
+function WallpaperPicker({
+  savedUrl,
+  file,
+  onPick,
+  onRemove,
+}: {
+  savedUrl: string | null
+  file: File | null
+  onPick: (file: File) => void
+  onRemove: () => void
+}) {
+  const [error, setError] = useState<string | null>(null)
+  const fileUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
+  useEffect(() => () => {
+    if (fileUrl) URL.revokeObjectURL(fileUrl)
+  }, [fileUrl])
+  const previewUrl = fileUrl ?? savedUrl
+
+  async function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const picked = e.target.files?.[0]
+    // Cleared so picking the same file again after fixing it still fires.
+    e.target.value = ''
+    if (!picked) return
+    const problem = await checkEbWallpaper(picked)
+    setError(problem)
+    if (!problem) onPick(picked)
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-medium text-slate-500">Fondo de pantalla (opcional)</p>
+      <p className="text-[11px] text-slate-400">
+        Imagen de {EB_WALLPAPER_WIDTH} × {EB_WALLPAPER_HEIGHT} píxeles.
+      </p>
+      {previewUrl && (
+        <img
+          src={previewUrl}
+          alt="Fondo de pantalla"
+          className="mt-1 aspect-[480/272] w-full max-w-[480px] rounded-lg border border-slate-200 object-cover"
+        />
+      )}
+      <div className="mt-1 flex gap-2">
+        <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:border-eb-blue hover:text-eb-blue">
+          {previewUrl ? 'Cambiar' : 'Elegir imagen'}
+          <input type="file" accept="image/*" className="hidden" onChange={handleChange} />
+        </label>
+        {previewUrl && (
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              onRemove()
+            }}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:border-red-400 hover:text-red-600"
+          >
+            Quitar
+          </button>
+        )}
+      </div>
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  )
+}
+
 function ProductForm({
   product,
   clients,
@@ -271,6 +345,11 @@ function ProductForm({
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(
     product?.screens[0]?.id ?? null,
   )
+  // wallpaperUrl is what's already in Storage; wallpaperFile a newly picked
+  // image still to upload. Once uploaded the file becomes a URL, so a save
+  // that fails afterwards doesn't upload it a second time on retry.
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(product?.wallpaperUrl ?? null)
+  const [wallpaperFile, setWallpaperFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -380,6 +459,15 @@ function ProductForm({
     const screenBefore = product.screens[0]?.serialNumber ?? ''
     const screenAfter = screenOptions.find((s) => s.id === selectedScreenId)?.serialNumber ?? ''
     if (screenBefore !== screenAfter) list.push(`Pantalla: ${was(screenBefore, screenAfter)}`)
+    if (wallpaperFile || (wallpaperUrl ?? '') !== (product.wallpaperUrl ?? '')) {
+      list.push(
+        !wallpaperFile && !wallpaperUrl
+          ? 'Fondo de pantalla: se quita'
+          : product.wallpaperUrl
+            ? 'Fondo de pantalla: se cambia'
+            : 'Fondo de pantalla: se añade',
+      )
+    }
     if (observations.trim() !== (product.observations ?? '')) list.push('Observaciones')
     return list
   }, [
@@ -397,6 +485,8 @@ function ProductForm({
     selectedCableChecks,
     screenOptions,
     selectedScreenId,
+    wallpaperUrl,
+    wallpaperFile,
     observations,
   ])
 
@@ -404,6 +494,12 @@ function ProductForm({
     setSubmitting(true)
     setError(null)
     try {
+      let savedWallpaperUrl = wallpaperUrl
+      if (wallpaperFile) {
+        savedWallpaperUrl = await uploadEbWallpaper(wallpaperFile)
+        setWallpaperUrl(savedWallpaperUrl)
+        setWallpaperFile(null)
+      }
       const input = {
         clientId,
         serialNumber: effectiveSerialNumber.trim(),
@@ -413,6 +509,7 @@ function ProductForm({
         observations: observations.trim() || undefined,
         internalUse,
         programFileUrl: product?.programFileUrl ?? undefined,
+        wallpaperUrl: savedWallpaperUrl ?? undefined,
         soldToEndUserAt: product?.soldToEndUserAt ?? undefined,
         cableTypeIds: [...selectedCables],
         cableCheckIds: [...selectedCableChecks],
@@ -514,6 +611,15 @@ function ProductForm({
         selectedId={selectedScreenId}
         onSelect={setSelectedScreenId}
       />
+      <WallpaperPicker
+        savedUrl={wallpaperUrl}
+        file={wallpaperFile}
+        onPick={setWallpaperFile}
+        onRemove={() => {
+          setWallpaperFile(null)
+          setWallpaperUrl(null)
+        }}
+      />
       <label className="block text-xs font-medium text-slate-500">
         Observaciones (opcional)
         <textarea
@@ -566,6 +672,15 @@ function ProductForm({
                 : 'Registrar venta'}
         </button>
       </div>
+      <BusyOverlay
+        label={
+          submitting
+            ? wallpaperFile
+              ? 'Subiendo el fondo y guardando la venta...'
+              : 'Guardando la venta...'
+            : null
+        }
+      />
     </div>
   )
 }
@@ -606,6 +721,7 @@ function TransferToEndClientPanel({
         purchasedAt: product.purchasedAt ?? undefined,
         observations: product.observations ?? undefined,
         programFileUrl: product.programFileUrl ?? undefined,
+        wallpaperUrl: product.wallpaperUrl ?? undefined,
         soldToEndUserAt: soldToEndUserAt || undefined,
         cableTypeIds: product.cables.map((c) => c.cableType.id),
       })
@@ -1059,14 +1175,49 @@ function EbControllerProductsTab() {
                   </button>
                 </div>
 
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <button
-                    onClick={() => setConfirmingDeleteId(product.id)}
-                    className="text-slate-400 hover:text-red-600"
-                    title="Eliminar producto"
+                {/* 48px tall fits inside the shortest card (title, serial and
+                    date lines, 52.5px). Its width is the other risk: it takes
+                    ~90px from the text, and below 1024px that pushed the long
+                    cable lists onto another line (7 cards at 966px, 15 at
+                    768px; none from 1024px up). So narrower screens get the
+                    icon next to the ✕ instead. */}
+                {product.wallpaperUrl && (
+                  <a
+                    href={product.wallpaperUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Ver el fondo de pantalla"
+                    className="hidden shrink-0 lg:block"
                   >
-                    ✕
-                  </button>
+                    <img
+                      src={product.wallpaperUrl}
+                      alt="Fondo de pantalla"
+                      className="h-12 w-auto rounded border border-slate-200"
+                    />
+                  </a>
+                )}
+
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                    {product.wallpaperUrl && (
+                      <a
+                        href={product.wallpaperUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Ver el fondo de pantalla"
+                        className="text-slate-400 hover:text-eb-blue lg:hidden"
+                      >
+                        <ImageIcon className="h-4 w-4" />
+                      </a>
+                    )}
+                    <button
+                      onClick={() => setConfirmingDeleteId(product.id)}
+                      className="text-slate-400 hover:text-red-600"
+                      title="Eliminar producto"
+                    >
+                      ✕
+                    </button>
+                  </div>
                   <button
                     disabled={retiringId === product.id}
                     onClick={() => handleToggleRetired(product)}

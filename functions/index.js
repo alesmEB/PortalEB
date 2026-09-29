@@ -3248,6 +3248,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
     $softwareVersion: String
     $purchasedAt: Date
     $programFileUrl: String
+    $wallpaperUrl: String
     $observations: String
     $internalUse: Boolean!
     $createdById: String!
@@ -3260,6 +3261,7 @@ const CREATE_EB_CLIENT_PRODUCT_MUTATION = `
         softwareVersion: $softwareVersion
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
+        wallpaperUrl: $wallpaperUrl
         observations: $observations
         internalUse: $internalUse
         createdById: $createdById
@@ -3276,6 +3278,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
     $softwareVersion: String
     $purchasedAt: Date
     $programFileUrl: String
+    $wallpaperUrl: String
     $observations: String
     $soldToEndUserAt: Date
     $internalUse: Boolean!
@@ -3289,6 +3292,7 @@ const UPDATE_EB_CLIENT_PRODUCT_MUTATION = `
         softwareVersion: $softwareVersion
         purchasedAt: $purchasedAt
         programFileUrl: $programFileUrl
+        wallpaperUrl: $wallpaperUrl
         observations: $observations
         soldToEndUserAt: $soldToEndUserAt
         internalUse: $internalUse
@@ -3782,6 +3786,17 @@ exports.ebDeleteScreen = onCall(async (request) => {
   return { success: true }
 })
 
+// Every admin opening the sales list loads this as an <img>, so it has to be
+// one of our own uploads (uploadEbWallpaper), not whatever URL a caller sends.
+function wallpaperUrlOrNull(value) {
+  if (value === undefined || value === null || value === '') return null
+  const prefix = `https://firebasestorage.googleapis.com/v0/b/${admin.storage().bucket().name}/o/eb-wallpapers%2F`
+  if (typeof value !== 'string' || !value.startsWith(prefix)) {
+    throw new HttpsError('invalid-argument', 'El fondo de pantalla no es válido.')
+  }
+  return value
+}
+
 exports.ebAddClientProduct = onCall(async (request) => {
   requireAdminOrLab(request)
 
@@ -3792,6 +3807,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
     softwareVersion,
     purchasedAt,
     programFileUrl,
+    wallpaperUrl,
     observations,
     internalUse,
     cableTypeIds,
@@ -3814,6 +3830,7 @@ exports.ebAddClientProduct = onCall(async (request) => {
       softwareVersion: softwareVersion?.trim() || null,
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
+      wallpaperUrl: wallpaperUrlOrNull(wallpaperUrl),
       observations: observations || null,
       internalUse: internalUse === true,
       createdById: request.auth.uid,
@@ -3856,6 +3873,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
     softwareVersion,
     purchasedAt,
     programFileUrl,
+    wallpaperUrl,
     observations,
     soldToEndUserAt,
     internalUse,
@@ -3881,6 +3899,7 @@ exports.ebUpdateClientProduct = onCall(async (request) => {
       softwareVersion: softwareVersion?.trim() || null,
       purchasedAt: purchasedAt || null,
       programFileUrl: programFileUrl || null,
+      wallpaperUrl: wallpaperUrlOrNull(wallpaperUrl),
       observations: observations || null,
       soldToEndUserAt: soldToEndUserAt || null,
       internalUse: internalUse === true,

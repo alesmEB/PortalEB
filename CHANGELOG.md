@@ -8,6 +8,12 @@ tu versión.
 
 ## 29 de septiembre de 2026
 
+- En las ventas de EBcontroller se puede añadir el fondo de pantalla de cada
+  unidad, al registrar la venta o al editarla. Tiene que ser una imagen de
+  480 × 272 píxeles: si mide otra cosa, se avisa y no se acepta. En la lista
+  de ventas se ve en pequeño a la derecha de cada venta, sin que la tarjeta
+  crezca, y al pulsarlo se abre a tamaño real. En pantallas estrechas (móvil,
+  tablet o ventana pequeña) sale un icono en su lugar.
 - Arreglado: a algunos técnicos les salía "Turno activo" en una orden
   terminada hace meses, y les llegaba el aviso cada media hora. Eran fichajes
   traídos de la aplicación antigua a los que nadie les dio salida. Ahora un

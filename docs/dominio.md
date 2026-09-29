@@ -84,7 +84,9 @@ La sección del producto propio, con su público internacional:
 - **EbClientProduct** — una unidad vendida: serie, hardware, versión de
   software, fecha de compra. `soldToEndUserAt` cuando un distribuidor la
   revende; `retiredAt` cuando se da de baja; `internalUse` cuando la unidad se
-  queda en casa y **no cuenta como venta ni ocupa número**.
+  queda en casa y **no cuenta como venta ni ocupa número**. `wallpaperUrl` es
+  el fondo de pantalla de esa unidad: siempre de 480 × 272 píxeles, el tamaño
+  de la pantalla del EBcontroller, y se comprueba al elegir el archivo.
 - **EbCableType** — catálogo de cables (código `EBEN…` y nombre). Se puede
   eliminar solo mientras no lo use ninguna comprobación ni ninguna venta.
 - **CableCheck** — cada comprobación de continuidad que registra el
