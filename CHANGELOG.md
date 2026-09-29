@@ -6,6 +6,17 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 29 de septiembre de 2026
+
+- Arreglado: a algunos técnicos les salía "Turno activo" en una orden
+  terminada hace meses, y les llegaba el aviso cada media hora. Eran fichajes
+  traídos de la aplicación antigua a los que nadie les dio salida. Ahora un
+  turno abierto en una orden terminada no cuenta como turno activo: no sale en
+  la barra de abajo, no avisa, y al fichar en otra orden ya no se le suman
+  todas esas horas.
+- En la lista de Turnos de una orden terminada, administración puede cerrar a
+  mano esos fichajes abiertos (o borrarlos) con el botón "Cerrar".
+
 ## 25 de septiembre de 2026
 
 - Los técnicos pueden trabajar sin cobertura:

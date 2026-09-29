@@ -21,6 +21,7 @@ import { OrderDocumentsViewer, type DocumentOption } from '../components/OrderDo
 import { useAuth } from '../contexts/AuthContext'
 import { useBusyAction } from '../hooks/useBusyAction'
 import { usePermission } from '../hooks/usePermission'
+import { pickActiveShift } from '../lib/activeShift'
 import {
   subscribeToMessages,
   subscribeToUnreadOrderIds,
@@ -617,10 +618,9 @@ function EditTimeLogModal({
   onClose,
   onSaved,
 }: {
-  // clockOut is only ever passed in for already-finished shifts (see the
-  // guard around the "Editar" button below), but the field itself is
-  // nullable on the type (active shifts have none) - fall back to clockIn
-  // just to keep this a valid datetime-local value; never actually hit.
+  // Without a clockOut this is a leftover open shift on a finished order
+  // (the only ones the button below offers): the field starts at the
+  // clock-in, which the form refuses to save until admin moves it forward.
   timeLog: { id: string; clockIn: string; clockOut?: string | null; technician: { displayName: string } }
   onClose: () => void
   onSaved: () => void
@@ -667,7 +667,9 @@ function EditTimeLogModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
       <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
-        <h2 className="text-sm font-semibold text-eb-blue-dark">Corregir turno</h2>
+        <h2 className="text-sm font-semibold text-eb-blue-dark">
+          {timeLog.clockOut ? 'Corregir turno' : 'Cerrar turno'}
+        </h2>
         <p className="mt-1 text-xs text-slate-500">{timeLog.technician.displayName}</p>
         <label className="mt-3 block text-xs font-medium text-slate-500">
           Entrada
@@ -1186,7 +1188,7 @@ export function OrderDetailPage() {
   const loadMyActiveLog = useCallback(async () => {
     try {
       const res = await getMyActiveTimeLog(FRESH)
-      const active = res.data.timeLogs[0] ?? null
+      const active = pickActiveShift(res.data.timeLogs)
       setMyActiveLog(active)
       if (uid) writeSnapshot(uid, 'activeLog', active)
     } catch (err) {
@@ -1438,16 +1440,20 @@ export function OrderDetailPage() {
   const myAssignment = order.assignments.find((a) => a.technicianId === profile?.id)
   const canManageOrder = !!myAssignment && (myAssignment.isAllowed || myAssignment.isLead)
   const canToggleTasks = !!myAssignment && order.status === WorkOrderStatus.IN_PROGRESS
+  const orderIsClosed =
+    order.status === WorkOrderStatus.COMPLETED || order.status === WorkOrderStatus.CANCELLED
   // Whoever can create an order can also correct its job list, but only
   // while the order can still change: a completed order's jobs are already
   // written into its report, and a cancelled one isn't going anywhere.
-  const canEditTasks =
-    (canCreateOrders || isLab) &&
-    order.status !== WorkOrderStatus.COMPLETED &&
-    order.status !== WorkOrderStatus.CANCELLED
+  const canEditTasks = (canCreateOrders || isLab) && !orderIsClosed
   const amWorkingHere = myActiveLog?.workOrderId === order.id
-  const workingTechnicianIds = new Set(
-    order.timeLogs.filter((log) => !log.clockOut).map((log) => log.technicianId),
+  // Nobody is at work on a finished order: a shift still open on one is a
+  // leftover with no clock-out (see src/lib/activeShift.ts), which admin
+  // closes from the Turnos list below.
+  const workingTechnicianIds = new Set<string>(
+    orderIsClosed
+      ? []
+      : order.timeLogs.filter((log) => !log.clockOut).map((log) => log.technicianId),
   )
   const shiftsByTechnician = new Map<string, { name: string; shifts: typeof order.timeLogs }>()
   for (const log of order.timeLogs) {
@@ -1826,14 +1832,14 @@ export function OrderDetailPage() {
                             </span>
                           )}
                         </span>
-                        {shift.clockOut && (
+                        {(shift.clockOut || orderIsClosed) && (
                           <HasPermission permission="admin:manage">
                             <button
                               onClick={() => setEditingTimeLog(shift)}
                               className="text-slate-400 hover:text-eb-blue"
-                              title="Corregir turno"
+                              title={shift.clockOut ? 'Corregir turno' : 'Cerrar este turno abierto'}
                             >
-                              Editar
+                              {shift.clockOut ? 'Editar' : 'Cerrar'}
                             </button>
                           </HasPermission>
                         )}

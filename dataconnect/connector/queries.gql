@@ -196,6 +196,9 @@ query GetMyActiveTimeLog @auth(level: USER) {
     clockIn
     workOrder {
       code
+      # A shift left open on a finished order is leftover data, not an active
+      # shift - src/lib/activeShift.ts filters those out.
+      status
     }
   }
 }

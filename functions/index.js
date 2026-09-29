@@ -363,9 +363,25 @@ const GET_MY_ACTIVE_TIME_LOG_QUERY = `
       id
       clockIn
       workOrderId
+      workOrder {
+        status
+      }
     }
   }
 `
+
+// Completing an order clocks everyone out, so a shift still open on a
+// finished one is leftover data, never a technician at work: the hours
+// migrated from the old Sotogrande app came with the clock-out nobody
+// pressed. Treating those as the active shift meant the next clock-in
+// closed a shift opened months earlier, turning it into a shift of
+// hundreds of hours. Mirrored client-side in src/lib/activeShift.ts.
+const CLOSED_ORDER_STATUSES = ['COMPLETED', 'CANCELLED']
+
+function pickActiveTimeLog(timeLogs) {
+  return timeLogs.find((log) => !CLOSED_ORDER_STATUSES.includes(log.workOrder.status))
+}
+
 const CLOCK_IN_MUTATION = `
   mutation ClockInAdmin(
     $workOrderId: UUID!
@@ -2149,7 +2165,7 @@ exports.startWorking = onCall(async (request) => {
   const activeRes = await dataConnect.executeGraphqlRead(GET_MY_ACTIVE_TIME_LOG_QUERY, {
     variables: { technicianId: callerUid },
   })
-  const active = activeRes.data.timeLogs[0]
+  const active = pickActiveTimeLog(activeRes.data.timeLogs)
   if (active) {
     // The open shift ends where this one starts, not "now": a shift replayed
     // late must not swallow the hours in between.
@@ -2206,7 +2222,7 @@ exports.stopWorking = onCall(async (request) => {
   const activeRes = await dataConnect.executeGraphqlRead(GET_MY_ACTIVE_TIME_LOG_QUERY, {
     variables: { technicianId: callerUid },
   })
-  const active = activeRes.data.timeLogs[0]
+  const active = pickActiveTimeLog(activeRes.data.timeLogs)
   if (!active) {
     // Replaying a clock-out whose shift is already closed is not a failure -
     // it usually means the queue sent it twice. Pressed live, it still is.
@@ -2247,6 +2263,9 @@ const GET_TIME_LOG_FOR_EDIT_QUERY = `
       clockIn
       clockOut
       durationMinutes
+      workOrder {
+        status
+      }
     }
   }
 `
@@ -2265,9 +2284,9 @@ const DELETE_TIME_LOG_MUTATION = `
 `
 
 // Lets an admin correct a technician's already-finished shift (they forgot
-// to clock out, left it running overnight, etc.) - deliberately scoped to
-// completed shifts only (clockOut already set); an active/ongoing shift
-// should go through the real clock-out flow, not this correction path.
+// to clock out, left it running overnight, etc.), and close one left open on
+// an order that is already finished; an active/ongoing shift should go
+// through the real clock-out flow, not this correction path.
 // Logged to OrderTracking (unlike the routine clock in/out itself) since
 // this is a correction of what's meant to be the authoritative hours
 // record, not routine noise.
@@ -2294,8 +2313,11 @@ exports.adminUpdateTimeLog = onCall(async (request) => {
   if (!timeLog) {
     throw new HttpsError('not-found', 'El turno no existe.')
   }
-  if (!timeLog.clockOut) {
-    throw new HttpsError('failed-precondition', 'Solo se pueden editar turnos ya finalizados.')
+  // An open shift can be corrected only once its order is finished, which
+  // means it is a leftover with no clock-out (see pickActiveTimeLog) - a
+  // technician's ongoing shift still has to go through the real clock-out.
+  if (!timeLog.clockOut && !CLOSED_ORDER_STATUSES.includes(timeLog.workOrder.status)) {
+    throw new HttpsError('failed-precondition', 'No se puede editar un turno en curso.')
   }
 
   const durationMinutes = Math.round((clockOutDate.getTime() - clockInDate.getTime()) / 60000)
@@ -2326,11 +2348,10 @@ exports.adminUpdateTimeLog = onCall(async (request) => {
 })
 
 // Lets an admin remove a shift entirely (duplicate clock-in, test entry,
-// etc.) - same completed-shifts-only scope as adminUpdateTimeLog, for the
-// same reason (an active shift should be stopped via the real clock-out
-// flow, not deleted out from under the technician). The shift's own data
-// is captured in the audit metadata since the row itself won't exist
-// afterwards to look it up from.
+// etc.) - same scope as adminUpdateTimeLog, for the same reason (an active
+// shift should be stopped via the real clock-out flow, not deleted out from
+// under the technician). The shift's own data is captured in the audit
+// metadata since the row itself won't exist afterwards to look it up from.
 exports.adminDeleteTimeLog = onCall(async (request) => {
   requirePermission(request, 'admin:manage')
 
@@ -2346,8 +2367,8 @@ exports.adminDeleteTimeLog = onCall(async (request) => {
   if (!timeLog) {
     throw new HttpsError('not-found', 'El turno no existe.')
   }
-  if (!timeLog.clockOut) {
-    throw new HttpsError('failed-precondition', 'Solo se pueden eliminar turnos ya finalizados.')
+  if (!timeLog.clockOut && !CLOSED_ORDER_STATUSES.includes(timeLog.workOrder.status)) {
+    throw new HttpsError('failed-precondition', 'No se puede eliminar un turno en curso.')
   }
 
   await dataConnect.executeGraphql(DELETE_TIME_LOG_MUTATION, { variables: { id: timeLogId } })
@@ -2634,11 +2655,12 @@ exports.setCalendarAppointmentScheduledDate = onCall(async (request) => {
 
 const GET_ALL_ACTIVE_TIME_LOGS_QUERY = `
   query GetAllActiveTimeLogsAdmin {
-    timeLogs(where: { clockOut: { isNull: true } }) {
+    timeLogs(where: { clockOut: { isNull: true } }, limit: 200) {
       technicianId
       workOrder {
         id
         code
+        status
       }
     }
   }
@@ -2674,8 +2696,11 @@ exports.notifyActiveShifts = onSchedule(
     if (hour === 16 && minute !== 0) return
 
     const res = await dataConnect.executeGraphqlRead(GET_ALL_ACTIVE_TIME_LOGS_QUERY, {})
+    const active = res.data.timeLogs.filter(
+      (log) => !CLOSED_ORDER_STATUSES.includes(log.workOrder.status),
+    )
     await Promise.all(
-      res.data.timeLogs.map((log) =>
+      active.map((log) =>
         sendToUsers([log.technicianId], {
           title: 'Turno activo',
           body: `Sigues trabajando en la orden ${log.workOrder.code}`,

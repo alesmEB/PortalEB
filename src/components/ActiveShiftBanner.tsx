@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMyActiveTimeLog, type GetMyActiveTimeLogData } from '@dataconnect/generated'
 import { useAuth } from '../contexts/AuthContext'
+import { pickActiveShift } from '../lib/activeShift'
 import { FRESH } from '../lib/dataConnectOptions'
 
 type ActiveLog = GetMyActiveTimeLogData['timeLogs'][number]
@@ -33,7 +34,7 @@ export function ActiveShiftBanner() {
     let cancelled = false
     function load() {
       getMyActiveTimeLog(FRESH).then((res) => {
-        if (!cancelled) setActiveLog(res.data.timeLogs[0] ?? null)
+        if (!cancelled) setActiveLog(pickActiveShift(res.data.timeLogs))
       })
     }
     load()

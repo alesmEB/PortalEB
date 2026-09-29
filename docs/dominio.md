@@ -34,11 +34,16 @@ Cuelgan de ella:
 
 - **WorkOrderTask** — los trabajos a realizar. Se pueden corregir después de
   crear la orden mientras no esté completada, y el PDF se regenera.
-- **Quote** — presupuestos, como mucho dos intentos. El segundo rechazo cancela.
+- **Quote** — presupuestos, como mucho dos intentos. Tras el segundo rechazo la
+  orden se queda en "Presupuesto rechazado"; cancelarla es una decisión aparte.
 - **TechnicianAssignment** — técnicos asignados, con `isAllowed` e `isLead`.
   Desasignar no borra la fila: le pone `unassignedAt`.
 - **TimeLog** — fichajes. Se ficha por orden, no por jornada; un fichaje sin
-  `clockOut` es un turno abierto.
+  `clockOut` es un turno abierto. Solo lo está de verdad si su orden sigue
+  viva: completar una orden cierra sus turnos, así que uno abierto en una
+  orden terminada es un resto (los fichajes traídos de la aplicación antigua
+  llegaron sin salida) y no cuenta como turno activo en ninguna pantalla —
+  administración lo cierra a mano desde la orden.
 - **Incident** — incidencias con fotos, reportadas por el técnico.
 - **WorkOrderPhoto** — fotos de inicio, incidencia y final.
 - **WorkOrderScheduledDate** — un día del calendario, una fila. Una orden puede

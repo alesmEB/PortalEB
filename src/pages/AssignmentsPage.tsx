@@ -11,6 +11,7 @@ import { BackButton } from '../components/BackButton'
 import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
+import { pickActiveShift } from '../lib/activeShift'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { formatSnapshotTime, readSnapshot, writeSnapshot } from '../lib/offlineStore'
@@ -51,7 +52,7 @@ export function AssignmentsPage() {
     // Only highlights the order being worked on - if it fails the list is
     // still usable, so it doesn't get its own error.
     getMyActiveTimeLog(FRESH)
-      .then((res) => setWorkingOrderId(res.data.timeLogs[0]?.workOrderId ?? null))
+      .then((res) => setWorkingOrderId(pickActiveShift(res.data.timeLogs)?.workOrderId ?? null))
       .catch(() => {})
   }, [profile])
 
