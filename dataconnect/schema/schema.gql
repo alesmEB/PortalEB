@@ -272,7 +272,14 @@ type CalendarAppointment @table(name: "calendar_appointments") {
   # Free text on purpose - these are boats we have no record of yet.
   boatDetails: String
   locationCode: OrderLocation!
+  # The job itself ("Comentarios de la actuación"), set with the appointment
+  # and shown as the second line of its chip.
   notes: String
+  # Running notes written on the chip at any time, completed or not - most
+  # come after the visit ("pide presupuesto", "volver en noviembre"), which is
+  # why they're separate from `notes` and have their own callable
+  # (setCalendarAppointmentRemarks) instead of the full edit form.
+  remarks: String
   # Completed appointments drop out of the "citas" panel but keep the days
   # they were scheduled on visible in the calendar, same as a COMPLETED
   # order's past days - deleting is for entries created by mistake.

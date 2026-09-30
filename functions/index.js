@@ -2859,6 +2859,53 @@ exports.setCalendarAppointmentClosed = onCall(async (request) => {
 // Wipes the appointment's days first - PostgreSQL would refuse the delete
 // while they still reference it, and an appointment created by mistake has no
 // history worth keeping (that's what closing is for).
+// Two mutations because a null variable doesn't clear a field in an
+// _update - it has to be a literal (see CLAUDE.md).
+const SET_CALENDAR_APPOINTMENT_REMARKS_MUTATION = `
+  mutation SetCalendarAppointmentRemarksAdmin($id: UUID!, $remarks: String!) {
+    calendarAppointment_update(id: $id, data: { remarks: $remarks })
+  }
+`
+const CLEAR_CALENDAR_APPOINTMENT_REMARKS_MUTATION = `
+  mutation ClearCalendarAppointmentRemarksAdmin($id: UUID!) {
+    calendarAppointment_update(id: $id, data: { remarks: null })
+  }
+`
+
+// An appointment's notes, editable in any state: unlike its other fields,
+// they're mostly written after the visit, including once it's completed or
+// turned into an order - which the reopen/delete guards otherwise lock down.
+// Same who-can-edit rule as the rest of the calendar.
+exports.setCalendarAppointmentRemarks = onCall(async (request) => {
+  requireAdminOrLab(request)
+
+  const { appointmentId, remarks } = request.data ?? {}
+  if (typeof appointmentId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la cita.')
+  }
+  if (remarks !== undefined && remarks !== null && typeof remarks !== 'string') {
+    throw new HttpsError('invalid-argument', 'Las notas no son válidas.')
+  }
+  const text = typeof remarks === 'string' ? remarks.trim() : ''
+  if (text.length > 2000) {
+    throw new HttpsError('invalid-argument', 'Las notas no pueden pasar de 2000 caracteres.')
+  }
+  if (!(await getCalendarAppointment(appointmentId))) {
+    throw new HttpsError('not-found', 'La cita ya no existe.')
+  }
+
+  if (text) {
+    await dataConnect.executeGraphql(SET_CALENDAR_APPOINTMENT_REMARKS_MUTATION, {
+      variables: { id: appointmentId, remarks: text },
+    })
+  } else {
+    await dataConnect.executeGraphql(CLEAR_CALENDAR_APPOINTMENT_REMARKS_MUTATION, {
+      variables: { id: appointmentId },
+    })
+  }
+  return { success: true }
+})
+
 exports.deleteCalendarAppointment = onCall(async (request) => {
   requireAdminOrLab(request)
 

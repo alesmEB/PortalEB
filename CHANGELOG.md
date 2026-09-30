@@ -6,6 +6,16 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 30 de septiembre de 2026
+
+- Las citas del calendario tienen notas libres: el icono de nota en su chip
+  (en la vista semana y en la de mes) abre un cuadro para escribirlas. Se
+  pueden añadir y cambiar siempre, también cuando la cita ya está completada
+  o convertida en orden, y se ven en el propio chip.
+- En la lista de órdenes, los filtros se mantienen al entrar en una orden y
+  volver, con su "Volver" o con el atrás del navegador. Entrando desde el
+  inicio, la lista sale sin filtros.
+
 ## 29 de septiembre de 2026
 
 - Nuevo "Registro de horas" en el inicio, con el permiso nuevo `admin:hourslog`:

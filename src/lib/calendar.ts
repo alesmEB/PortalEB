@@ -65,6 +65,17 @@ export async function setCalendarAppointmentClosed(appointmentId: string, closed
   return res.data
 }
 
+const callSetCalendarAppointmentRemarks = httpsCallable<
+  { appointmentId: string; remarks: string },
+  { success: boolean }
+>(functions, 'setCalendarAppointmentRemarks')
+
+/** The appointment's free notes, in any state; an empty string clears them. */
+export async function setCalendarAppointmentRemarks(appointmentId: string, remarks: string) {
+  const res = await callSetCalendarAppointmentRemarks({ appointmentId, remarks })
+  return res.data
+}
+
 const callDeleteCalendarAppointment = httpsCallable<
   { appointmentId: string },
   { success: boolean }

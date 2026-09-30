@@ -74,10 +74,13 @@ servidor**; que la interfaz esconda un botón no es la protección.
 
 ### Calendario
 
-`setWorkOrderScheduledDate` y las cinco funciones de citas
+`setWorkOrderScheduledDate` y las seis funciones de citas
 (`createCalendarAppointment`, `updateCalendarAppointment`,
 `setCalendarAppointmentClosed`, `deleteCalendarAppointment`,
-`setCalendarAppointmentScheduledDate`) exigen rol ADMIN o `admin:lab`. Los
+`setCalendarAppointmentScheduledDate`, `setCalendarAppointmentRemarks`)
+exigen rol ADMIN o `admin:lab`. Las notas (`setCalendarAppointmentRemarks`)
+son lo único de una cita que se puede cambiar con cualquier estado, incluida
+completada o convertida en orden. Los
 técnicos ven el calendario pero no lo editan.
 
 Completar una cita **sin orden** usa `setCalendarAppointmentClosed` (ADMIN o

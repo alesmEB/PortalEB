@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, MapPin, X } from 'lucide-react'
+import { CalendarDays, MapPin, StickyNote, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -15,12 +15,14 @@ import {
   type ListWorkOrderScheduledDatesData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { BusyOverlay } from '../components/BusyOverlay'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import {
   createCalendarAppointment,
   deleteCalendarAppointment,
   setCalendarAppointmentClosed,
+  setCalendarAppointmentRemarks,
   setCalendarAppointmentScheduledDate,
   setWorkOrderScheduledDate,
   updateCalendarAppointment,
@@ -131,6 +133,7 @@ export function CalendarPage() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [completingAppointment, setCompletingAppointment] = useState<Appointment | null>(null)
   const [editingDaysId, setEditingDaysId] = useState<string | null>(null)
+  const [editingRemarksId, setEditingRemarksId] = useState<string | null>(null)
   const [showClosedAppointments, setShowClosedAppointments] = useState(false)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()))
@@ -192,6 +195,7 @@ export function CalendarPage() {
   // Read from the list rather than held in state, so the dialog redraws
   // with the new days as soon as the refetch lands.
   const appointmentBeingScheduled = appointments.find((a) => a.id === editingDaysId) ?? null
+  const appointmentBeingNoted = appointments.find((a) => a.id === editingRemarksId) ?? null
 
   async function handleToggleAppointment(
     appointmentId: string,
@@ -431,9 +435,18 @@ export function CalendarPage() {
                       )
                     })}
                     {(appointmentsByDate.get(key) ?? []).map((entry) => (
-                      <button
-                        type="button"
+                      // A div rather than a button: it holds the notes button,
+                      // and buttons can't nest. Keyboard access is kept by hand.
+                      <div
+                        role="button"
+                        tabIndex={0}
                         key={entry.appointment.id}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            e.currentTarget.click()
+                          }
+                        }}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (entry.appointment.workOrderId) {
@@ -447,17 +460,32 @@ export function CalendarPage() {
                           entry.appointment.boatDetails ? ` · ${entry.appointment.boatDetails}` : ''
                         } · ${orderLocationLabel[entry.appointment.locationCode]}${
                           entry.appointment.workOrder ? ` · Orden ${entry.appointment.workOrder.code}` : ''
-                        }`}
-                        className={`block w-full rounded border px-1 py-0.5 text-left text-[9px] ${
+                        }${entry.appointment.remarks ? ` · Notas: ${entry.appointment.remarks}` : ''}`}
+                        className={`block w-full cursor-pointer rounded border px-1 py-0.5 text-left text-[9px] ${
                           appointmentCardClass[appointmentStatus(entry.appointment)]
                         }`}
                       >
                         {/* Same reading order as an order's chip - boat, then the
                             job, then where - so both kinds scan alike. The boat is
                             optional on an appointment, so the job moves up. */}
-                        <p className="truncate font-semibold">
-                          {entry.appointment.boatDetails || entry.appointment.title}
-                        </p>
+                        <div className="flex items-start gap-0.5">
+                          <p className="min-w-0 flex-1 truncate font-semibold">
+                            {entry.appointment.boatDetails || entry.appointment.title}
+                          </p>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingRemarksId(entry.appointment.id)
+                              }}
+                              title="Notas de la cita"
+                              className="shrink-0 opacity-60 hover:opacity-100"
+                            >
+                              <StickyNote className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                        </div>
                         {entry.appointment.boatDetails && (
                           <p className="truncate">{entry.appointment.title}</p>
                         )}
@@ -467,7 +495,13 @@ export function CalendarPage() {
                             {orderLocationLabel[entry.appointment.locationCode]}
                           </span>
                         </p>
-                      </button>
+                        {entry.appointment.remarks && (
+                          <p className="mt-0.5 flex items-center gap-0.5 italic">
+                            <StickyNote className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{entry.appointment.remarks}</span>
+                          </p>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -572,6 +606,17 @@ export function CalendarPage() {
                                 <p className="text-xs opacity-90">{appointment.boatDetails}</p>
                               )}
                             </div>
+                            {/* Unlike the days and the ✕, notes stay editable
+                                once the appointment is completed. */}
+                            {canManage && (
+                              <button
+                                onClick={() => setEditingRemarksId(appointment.id)}
+                                title="Notas de la cita"
+                                className="opacity-60 hover:opacity-100"
+                              >
+                                <StickyNote className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                             {canManage && status === 'open' && (
                               <button
                                 onClick={() => setEditingDaysId(appointment.id)}
@@ -609,6 +654,14 @@ export function CalendarPage() {
                           )}
                           {appointment.notes && (
                             <p className="mt-1 text-[11px] opacity-90">{appointment.notes}</p>
+                          )}
+                          {appointment.remarks && (
+                            <p className="mt-1 flex gap-1 text-[11px] italic">
+                              <StickyNote className="mt-0.5 h-3 w-3 shrink-0" />
+                              <span className="min-w-0 whitespace-pre-line break-words">
+                                {appointment.remarks}
+                              </span>
+                            </p>
                           )}
                           {canManage && status === 'open' && full && (
                             <button
@@ -739,6 +792,14 @@ export function CalendarPage() {
                           {appointment.notes && (
                             <p className="mt-0.5 text-xs text-amber-700">{appointment.notes}</p>
                           )}
+                          {appointment.remarks && (
+                            <p className="mt-0.5 flex gap-1 text-xs italic text-amber-800">
+                              <StickyNote className="mt-0.5 h-3 w-3 shrink-0" />
+                              <span className="min-w-0 whitespace-pre-line break-words">
+                                {appointment.remarks}
+                              </span>
+                            </p>
+                          )}
                         </button>
                         <div className="flex shrink-0 items-center gap-2">
                           <button
@@ -845,6 +906,15 @@ export function CalendarPage() {
                           <span className="flex-1 truncate">
                             {appointment.title} · {orderLocationLabel[appointment.locationCode]}
                           </span>
+                          <button
+                            onClick={() => setEditingRemarksId(appointment.id)}
+                            title={appointment.remarks ? `Notas: ${appointment.remarks}` : 'Añadir notas'}
+                            className={`shrink-0 hover:text-eb-blue ${
+                              appointment.remarks ? 'text-amber-600' : 'text-slate-400'
+                            }`}
+                          >
+                            <StickyNote className="h-3.5 w-3.5" />
+                          </button>
                           {/* One that became an order can't be reopened (the server
                               refuses too) - it points at its order instead. */}
                           {appointment.workOrderId ? (
@@ -888,6 +958,17 @@ export function CalendarPage() {
           onClose={() => setEditingAppointment(null)}
           onSaved={() => {
             setEditingAppointment(null)
+            load()
+          }}
+        />
+      )}
+
+      {appointmentBeingNoted && (
+        <AppointmentRemarksModal
+          appointment={appointmentBeingNoted}
+          onClose={() => setEditingRemarksId(null)}
+          onSaved={() => {
+            setEditingRemarksId(null)
             load()
           }}
         />
@@ -1150,6 +1231,73 @@ function CompleteAppointmentModal({
 /** The days an appointment sits on, editable straight from its card in the
  * week view: the ones it already has (whatever week they fall in), the days
  * of the week on screen, and a date box for anything further out. */
+function AppointmentRemarksModal({
+  appointment,
+  onClose,
+  onSaved,
+}: {
+  appointment: Appointment
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [remarks, setRemarks] = useState(appointment.remarks ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const unchanged = remarks.trim() === (appointment.remarks ?? '')
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    try {
+      await setCalendarAppointmentRemarks(appointment.id, remarks)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron guardar las notas.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
+      <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
+        <h2 className="text-sm font-semibold text-eb-blue-dark">Notas de la cita</h2>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {appointment.title}
+          {appointment.boatDetails && ` · ${appointment.boatDetails}`}
+        </p>
+        <textarea
+          value={remarks}
+          onChange={(e) => setRemarks(e.target.value)}
+          rows={5}
+          maxLength={2000}
+          autoFocus
+          placeholder="Lo que haya que recordar de esta cita..."
+          className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+        />
+        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || unchanged}
+            className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+      <BusyOverlay label={saving ? 'Guardando las notas...' : null} />
+    </div>
+  )
+}
+
 function AppointmentDaysModal({
   appointment,
   weekDays,

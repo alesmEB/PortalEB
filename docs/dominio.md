@@ -109,6 +109,9 @@ Dos cosas distintas comparten la rejilla:
   X"), con la embarcación en texto libre porque son barcos de los que aún no
   hay ficha. Completarlas las saca del panel pero mantiene sus días;
   **CalendarAppointmentDate** guarda un día por fila, igual que las órdenes.
+  Tienen dos textos: `notes` es el trabajo que hay que hacer (la segunda línea
+  del chip) y `remarks` son notas libres que se escriben en cualquier momento,
+  también después de completarla.
 
 Una cita nace de dos formas: desde el panel "Citas sin orden", sin día, y se
 coloca después con los chips de la semana; o pulsando un día en la vista Mes,

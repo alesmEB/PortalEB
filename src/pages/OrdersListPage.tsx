@@ -7,7 +7,7 @@ import {
   Trash2,
   Wrench,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   OrderLocation,
   UserRole,
@@ -78,14 +78,40 @@ export function OrdersListPage() {
   const [unreadClientChatIds, setUnreadClientChatIds] = useState<Set<string>>(new Set())
   const [unreadTechnicianChatIds, setUnreadTechnicianChatIds] = useState<Set<string>>(new Set())
 
-  const [locationFilter, setLocationFilter] = useState<LocationFilter>('ALL')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
-  const [boatFilter, setBoatFilter] = useState('')
-  const [searchText, setSearchText] = useState('')
-  const [hideCompleted, setHideCompleted] = useState(false)
-  const [showDeleted, setShowDeleted] = useState(false)
-  const [adminProcessFilter, setAdminProcessFilter] = useState('ALL')
-  const [filtersOpen, setFiltersOpen] = useState(false)
+  // Filters live in the URL: opening an order and coming back (its "Volver"
+  // or the browser's) used to land on the unfiltered list, and whoever was
+  // working through "pendientes de facturar" had to set it up again every
+  // time. Entering from the dashboard still starts clean.
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const locationFilter = (searchParams.get('loc') ?? 'ALL') as LocationFilter
+  const statusFilter = (searchParams.get('status') ?? 'ALL') as StatusFilter
+  const boatFilter = searchParams.get('boat') ?? ''
+  const searchText = searchParams.get('q') ?? ''
+  const hideCompleted = searchParams.get('hideDone') === '1'
+  const showDeleted = searchParams.get('deleted') === '1'
+  const adminProcessFilter = searchParams.get('admin') ?? 'ALL'
+  // Back from an order with filters on, the panel opens as it was left.
+  const [filtersOpen, setFiltersOpen] = useState(() => searchParams.size > 0)
+  // Where an order or chat opened from here should send "Volver".
+  const listPath = `${location.pathname}${location.search}`
+
+  function setFilter(key: string, value: string | null) {
+    // From the address bar, not the router's `prev`: that one is the render's
+    // copy, and two changes before the next render (the location, then the
+    // status right after) had the second wipe out the first.
+    const next = new URLSearchParams(window.location.search)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setSearchParams(next, { replace: true })
+  }
+  const setLocationFilter = (value: LocationFilter) => setFilter('loc', value === 'ALL' ? null : value)
+  const setStatusFilter = (value: StatusFilter) => setFilter('status', value === 'ALL' ? null : value)
+  const setBoatFilter = (value: string) => setFilter('boat', value || null)
+  const setSearchText = (value: string) => setFilter('q', value || null)
+  const setHideCompleted = (value: boolean) => setFilter('hideDone', value ? '1' : null)
+  const setShowDeleted = (value: boolean) => setFilter('deleted', value ? '1' : null)
+  const setAdminProcessFilter = (value: string) => setFilter('admin', value === 'ALL' ? null : value)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const canDelete = usePermission('orders:delete')
 
@@ -366,7 +392,7 @@ export function OrdersListPage() {
           >
             <div className="flex items-start justify-between gap-2">
               <button
-                onClick={() => navigate(`/orders/${order.id}`)}
+                onClick={() => navigate(`/orders/${order.id}`, { state: { from: listPath } })}
                 className="flex-1 text-left"
               >
                 <div className="flex items-center justify-between">
@@ -449,7 +475,7 @@ export function OrdersListPage() {
               <HasPermission permission="chat:write">
                 <button
                   onClick={() =>
-                    navigate(`/chat/client/${order.id}`, { state: { from: '/orders' } })
+                    navigate(`/chat/client/${order.id}`, { state: { from: listPath } })
                   }
                   className="relative rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue"
                   title="Chat con el cliente"
@@ -463,7 +489,7 @@ export function OrdersListPage() {
               <HasPermission permission="chat:write">
                 <button
                   onClick={() =>
-                    navigate(`/chat/technicians/${order.id}`, { state: { from: '/orders' } })
+                    navigate(`/chat/technicians/${order.id}`, { state: { from: listPath } })
                   }
                   className="relative rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue"
                   title="Chat con técnicos"
