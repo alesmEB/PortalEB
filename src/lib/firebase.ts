@@ -37,15 +37,32 @@ async function registerMessagingServiceWorker() {
   })
 }
 
+export type PushSupport = 'unsupported' | NotificationPermission
+
+/** Where this device stands on notifications, without asking anything. */
+export async function getPushSupport(): Promise<PushSupport> {
+  if (!('Notification' in window) || !(await isSupported())) return 'unsupported'
+  return Notification.permission
+}
+
 /**
- * Requests notification permission and returns an FCM registration token for
- * the current device, or null if messaging isn't supported (e.g. Safari
- * without a home-screen install) or permission was denied.
+ * The device's FCM registration token, or null if messaging isn't supported
+ * (e.g. Safari without a home-screen install) or permission isn't granted.
+ *
+ * Only with `prompt` does it ask for permission, and that has to come from a
+ * tap: Chrome - on Android especially - shows no dialog for a request made on
+ * page load, only a quiet hint in the address bar, which an installed app
+ * doesn't have. Asking at login is how a technician's phone ended up with the
+ * app installed and never asked.
  */
-export async function requestPushNotificationToken(): Promise<string | null> {
+export async function requestPushNotificationToken({
+  prompt,
+}: {
+  prompt: boolean
+}): Promise<string | null> {
   if (!(await isSupported())) return null
 
-  const permission = await Notification.requestPermission()
+  const permission = prompt ? await Notification.requestPermission() : Notification.permission
   if (permission !== 'granted') return null
 
   if (!messagingInstance) messagingInstance = getMessaging(firebaseApp)

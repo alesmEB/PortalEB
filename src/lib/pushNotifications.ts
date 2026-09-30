@@ -1,6 +1,12 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
-import { firestore, functions, requestPushNotificationToken } from './firebase'
+import {
+  firestore,
+  functions,
+  getPushSupport,
+  requestPushNotificationToken,
+  type PushSupport,
+} from './firebase'
 
 const DEVICE_ID_KEY = 'portaleb-device-id'
 
@@ -21,21 +27,37 @@ function getOrCreateDeviceId(): string {
   return id
 }
 
-/** Requests permission (if needed) and saves the device's FCM token under the given user. */
+async function saveDeviceToken(userId: string, token: string) {
+  await setDoc(
+    doc(firestore, 'deviceTokens', getOrCreateDeviceId()),
+    { userId, token, userAgent: navigator.userAgent, updatedAt: serverTimestamp() },
+    { merge: true },
+  )
+}
+
+/**
+ * At login: saves the device's FCM token under the user if notifications are
+ * already allowed, and asks nothing - asking is NotificationsBanner's job,
+ * from a tap (see requestPushNotificationToken).
+ */
 export async function registerDeviceToken(userId: string) {
   try {
-    const token = await requestPushNotificationToken()
-    if (!token) return
-    const deviceId = getOrCreateDeviceId()
-    await setDoc(
-      doc(firestore, 'deviceTokens', deviceId),
-      { userId, token, userAgent: navigator.userAgent, updatedAt: serverTimestamp() },
-      { merge: true },
-    )
+    const token = await requestPushNotificationToken({ prompt: false })
+    if (token) await saveDeviceToken(userId, token)
   } catch {
-    // Best-effort: a user denying/lacking notification support shouldn't
-    // block anything else in the app.
+    // Best-effort: a device without notifications shouldn't block the login.
   }
+}
+
+/**
+ * From the "Activar notificaciones" tap: asks for permission, saves the token
+ * and says where the device ended up. Throws if saving fails, so the banner
+ * can show it instead of claiming success.
+ */
+export async function enablePushNotifications(userId: string): Promise<PushSupport> {
+  const token = await requestPushNotificationToken({ prompt: true })
+  if (token) await saveDeviceToken(userId, token)
+  return getPushSupport()
 }
 
 interface SendPushNotificationInput {

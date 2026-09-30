@@ -8,6 +8,13 @@ tu versión.
 
 ## 30 de septiembre de 2026
 
+- Arreglado: en algunos móviles (Android con la app instalada) nunca salía la
+  ventana para permitir las notificaciones. Ahora, a quien trabaja en las
+  órdenes (los técnicos asignables) y mientras no las tenga activadas, el
+  inicio le muestra un aviso con el botón "Activar notificaciones", y al
+  pulsarlo sale la ventana. A los administrativos no les sale. Si están bloqueadas, el aviso explica cómo
+  desbloquearlas desde los ajustes del móvil.
+
 - Las citas del calendario tienen notas libres: el icono de nota en su chip
   (en la vista semana y en la de mes) abre un cuadro para escribirlas. Se
   pueden añadir y cambiar siempre, también cuando la cita ya está completada

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UserRole, getMyEbClient } from '@dataconnect/generated'
 import { HasPermission } from '../components/HasPermission'
+import { NotificationsBanner } from '../components/NotificationsBanner'
 import { useAuth } from '../contexts/AuthContext'
 import { FRESH } from '../lib/dataConnectOptions'
 
@@ -38,6 +39,7 @@ export function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col">
       <main className="flex-1 p-4">
+        <NotificationsBanner />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <HasPermission permission="orders:create">
             <button
