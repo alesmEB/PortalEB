@@ -203,9 +203,18 @@ query GetMyActiveTimeLog @auth(level: USER) {
   }
 }
 
+# Only the orders a technician still has to work: deleting an order leaves
+# its assignments in place (and its status as it was), so without the
+# deletedAt filter a technician kept seeing orders the office had removed.
+# Completed ones are dropped here too rather than on the phone, which used to
+# download every order the technician ever worked to show a handful.
 query ListMyAssignedWorkOrders @auth(level: USER) {
   technicianAssignments(
-    where: { technicianId: { eq_expr: "auth.uid" }, unassignedAt: { isNull: true } }
+    where: {
+      technicianId: { eq_expr: "auth.uid" }
+      unassignedAt: { isNull: true }
+      workOrder: { deletedAt: { isNull: true }, status: { nin: [COMPLETED, CANCELLED] } }
+    }
     limit: 1000
   ) {
     isAllowed
@@ -251,8 +260,13 @@ query ListSchedulableWorkOrders @auth(level: USER) @retired {
 # order with technicians assigned that isn't completed yet, along with every
 # day it's already scheduled on (so the panel can show which of the current
 # week's checkboxes are already ticked, across any week).
+# A deleted order keeps its status, so it has to be left out explicitly.
 query ListAssignedWorkOrders @auth(level: USER) {
-  workOrders(where: { status: { in: [ASSIGNED, IN_PROGRESS] } }, orderBy: { code: ASC }, limit: 1000) {
+  workOrders(
+    where: { status: { in: [ASSIGNED, IN_PROGRESS] }, deletedAt: { isNull: true } }
+    orderBy: { code: ASC }
+    limit: 1000
+  ) {
     id
     code
     status
@@ -327,8 +341,13 @@ query ListCalendarAppointmentDates @auth(level: USER) {
 # Powers the day columns of the weekly calendar page - every scheduled day
 # for every order, regardless of the order's status, so a COMPLETED order's
 # past scheduled days still show up (read-only) instead of disappearing.
+# Deleted orders are the exception: they were never meant to happen.
 query ListWorkOrderScheduledDates @auth(level: USER) {
-  workOrderScheduledDates(orderBy: { date: ASC }, limit: 1000) {
+  workOrderScheduledDates(
+    where: { workOrder: { deletedAt: { isNull: true } } }
+    orderBy: { date: ASC }
+    limit: 1000
+  ) {
     date
     workOrder {
       id

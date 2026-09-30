@@ -8,6 +8,10 @@ tu versión.
 
 ## 30 de septiembre de 2026
 
+- Arreglado: las órdenes eliminadas seguían saliendo en las Asignaciones de
+  los técnicos que tenían asignados, y en el calendario (en "Órdenes
+  asignadas" y en los días que tenían marcados). Ya no aparecen.
+
 - Arreglado: en algunos móviles (Android con la app instalada) nunca salía la
   ventana para permitir las notificaciones. Ahora, a quien trabaja en las
   órdenes (los técnicos asignables) y mientras no las tenga activadas, el
