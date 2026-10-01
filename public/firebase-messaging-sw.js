@@ -17,21 +17,26 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging()
 
+// Both branches return their promise: Firebase awaits what this handler
+// returns inside the push event's waitUntil, and without it the browser was
+// free to put the worker to sleep before the work finished - which is how a
+// "Turno activo" notification could stay on the phone after clocking out.
 messaging.onBackgroundMessage((payload) => {
   const tag = payload.data?.tag
 
   // "close" message (see stopWorking in functions/index.js) - just closes
   // whatever's still shown under this tag instead of showing anything new.
   if (payload.data?.action === 'close' && tag) {
-    self.registration.getNotifications({ tag }).then((list) => list.forEach((n) => n.close()))
-    return
+    return self.registration
+      .getNotifications({ tag })
+      .then((list) => list.forEach((n) => n.close()))
   }
 
   const { title, body } = payload.data ?? {}
   // `tag` (chat notifications, and the active-shift reminder) replaces any
   // still-unread notification with the same tag instead of stacking a new
   // one per message.
-  self.registration.showNotification(title ?? 'PortalEB', {
+  return self.registration.showNotification(title ?? 'PortalEB', {
     body,
     icon: '/pwa-192x192.webp',
     badge: '/pwa-64x64.webp',

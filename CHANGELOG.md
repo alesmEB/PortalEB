@@ -8,6 +8,9 @@ tu versión.
 
 ## 1 de octubre de 2026
 
+- Arreglado: el aviso de "Turno activo" a veces se quedaba en el móvil después
+  de fichar la salida. Ahora se retira siempre que llega la orden de quitarlo.
+
 - Órdenes de taller: cada mes hay una orden por localización (Algeciras, La
   Línea y Sotogrande) para fichar las horas de trabajo en el taller. Las crea
   el sistema solo, con todos los técnicos asignables ya dentro, y cierra las
