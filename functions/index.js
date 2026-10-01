@@ -2644,6 +2644,219 @@ exports.sendDailyHoursLog = onSchedule(
   },
 )
 
+// ---------------------------------------------------------------------------
+// Workshop orders: one per location and month, for work done in the workshop
+// itself (see WorkOrder.workshopMonth in schema.gql). Nobody creates them by
+// hand - syncWorkshopOrders below does, and keeps them in step every night.
+// ---------------------------------------------------------------------------
+
+// The customer every workshop order hangs from. WorkOrder needs a customer
+// and a boat, and the workshop is neither, so there's one of each made for
+// it (a "boat" per location: its name is what the hours log prints next to
+// the order's code).
+const WORKSHOP_CUSTOMER_NAME = 'Taller Elías Blanco'
+const WORKSHOP_LOCATION_LABEL = { ALGECIRAS: 'Algeciras', LA_LINEA: 'La Línea', SOTOGRANDE: 'Sotogrande' }
+
+function workshopOrderCode(locationCode, month) {
+  return `TALLER-${ORDER_CODE_PREFIX[locationCode]}-${month}`
+}
+
+const GET_WORKSHOP_ORDER_QUERY = `
+  query GetWorkshopOrderAdmin($code: String!) {
+    workOrders(where: { code: { eq: $code } }, limit: 1) {
+      id
+      assignments: technicianAssignments_on_workOrder(limit: 1000) {
+        technicianId
+      }
+    }
+  }
+`
+const LIST_OPEN_WORKSHOP_ORDERS_QUERY = `
+  query ListOpenWorkshopOrdersAdmin {
+    workOrders(where: { workshopMonth: { isNull: false }, status: { eq: IN_PROGRESS } }, limit: 500) {
+      id
+      code
+      workshopMonth
+    }
+  }
+`
+// Stands in as the author of what the system does on its own: createdById and
+// assignedById need a real user, and the oldest active admin is as close to
+// "the system" as there is - and doesn't change from one night to the next.
+const GET_SYSTEM_ACTOR_QUERY = `
+  query GetSystemActorAdmin {
+    users(where: { role: { eq: ADMIN }, isActive: { eq: true } }, orderBy: { createdAt: ASC }, limit: 1) {
+      id
+    }
+  }
+`
+const FIND_CUSTOMER_BY_NAME_QUERY = `
+  query FindCustomerByNameAdmin($name: String!) {
+    customers(where: { name: { eq: $name } }, limit: 1) {
+      id
+    }
+  }
+`
+const FIND_BOAT_BY_NAME_QUERY = `
+  query FindBoatByNameAdmin($ownerId: UUID!, $name: String!) {
+    boats(where: { ownerId: { eq: $ownerId }, name: { eq: $name } }, limit: 1) {
+      id
+    }
+  }
+`
+// sequenceNumber 0 keeps these out of the per-location numbering: the real
+// orders' counter bootstraps from the highest sequenceNumber in use.
+const CREATE_WORKSHOP_ORDER_MUTATION = `
+  mutation CreateWorkshopOrderAdmin(
+    $code: String!
+    $locationCode: OrderLocation!
+    $customerId: UUID!
+    $boatId: UUID!
+    $createdById: String!
+    $workshopMonth: String!
+  ) {
+    workOrder_insert(
+      data: {
+        code: $code
+        locationCode: $locationCode
+        sequenceNumber: 0
+        customerId: $customerId
+        boatId: $boatId
+        createdById: $createdById
+        assetLocation: "Taller"
+        status: IN_PROGRESS
+        workshopMonth: $workshopMonth
+      }
+    )
+  }
+`
+
+async function workshopCustomerAndBoat(locationCode) {
+  const customerRes = await dataConnect.executeGraphqlRead(FIND_CUSTOMER_BY_NAME_QUERY, {
+    variables: { name: WORKSHOP_CUSTOMER_NAME },
+  })
+  let customerId = customerRes.data.customers[0]?.id
+  if (!customerId) {
+    const created = await dataConnect.executeGraphql(CREATE_CUSTOMER_MUTATION, {
+      variables: { name: WORKSHOP_CUSTOMER_NAME, contactName: 'Taller', phone: '-', email: null },
+    })
+    customerId = created.data.customer_insert.id
+  }
+
+  const boatName = `Taller ${WORKSHOP_LOCATION_LABEL[locationCode]}`
+  const boatRes = await dataConnect.executeGraphqlRead(FIND_BOAT_BY_NAME_QUERY, {
+    variables: { ownerId: customerId, name: boatName },
+  })
+  let boatId = boatRes.data.boats[0]?.id
+  if (!boatId) {
+    const created = await dataConnect.executeGraphql(CREATE_BOAT_MUTATION, {
+      variables: {
+        ownerId: customerId,
+        name: boatName,
+        registrationNumber: null,
+        manufacturerModel: null,
+        loaMeters: null,
+        beamMeters: null,
+      },
+    })
+    boatId = created.data.boat_insert.id
+  }
+  return { customerId, boatId }
+}
+
+// Idempotent, so it can run every night instead of once a month: it makes
+// this month's three orders if they aren't there, puts on them whoever holds
+// orders:assignable and isn't on them yet (a technician who joins mid-month
+// gets them the next morning, not next month), and completes the ones left
+// from earlier months.
+//
+// A shift still open on a month being closed is left open on purpose: on a
+// completed order it stops counting as anyone's active shift (see
+// pickActiveTimeLog) and shows in the order's Turnos with "Cerrar", so admin
+// gives it its real end instead of the system inventing one at midnight.
+async function syncWorkshopOrders(now = new Date()) {
+  const month = madridDayKey(now).slice(0, 7)
+  const summary = { month, created: [], assigned: 0, completed: [] }
+
+  const actorRes = await dataConnect.executeGraphqlRead(GET_SYSTEM_ACTOR_QUERY, {})
+  const actorId = actorRes.data.users[0]?.id
+  if (!actorId) throw new Error('No hay ningún administrador activo para firmar las órdenes de taller.')
+
+  const usersRes = await dataConnect.executeGraphqlRead(LIST_ACTIVE_USERS_WITH_PERMISSIONS_QUERY, {})
+  const assignableIds = usersRes.data.users
+    .filter((user) => user.userPermissions.some((up) => up.permission.key === 'orders:assignable'))
+    .map((user) => user.id)
+
+  for (const locationCode of ORDER_LOCATIONS) {
+    const code = workshopOrderCode(locationCode, month)
+    const existing = await dataConnect.executeGraphqlRead(GET_WORKSHOP_ORDER_QUERY, { variables: { code } })
+    let order = existing.data.workOrders[0]
+    if (!order) {
+      const { customerId, boatId } = await workshopCustomerAndBoat(locationCode)
+      const created = await dataConnect.executeGraphql(CREATE_WORKSHOP_ORDER_MUTATION, {
+        variables: { code, locationCode, customerId, boatId, createdById: actorId, workshopMonth: month },
+      })
+      order = { id: created.data.workOrder_insert.id, assignments: [] }
+      await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+        variables: {
+          workOrderId: order.id,
+          actorId,
+          eventType: 'ORDER_CREATED',
+          metadata: { automatic: true, workshopMonth: month },
+        },
+      })
+      summary.created.push(code)
+    }
+
+    // Anyone already on it is left alone, unassigned or not: this only adds.
+    const alreadyOn = new Set(order.assignments.map((a) => a.technicianId))
+    for (const technicianId of assignableIds) {
+      if (alreadyOn.has(technicianId)) continue
+      await dataConnect.executeGraphql(ASSIGN_TECHNICIAN_MUTATION, {
+        variables: {
+          workOrderId: order.id,
+          technicianId,
+          assignedById: actorId,
+          assignedAt: now.toISOString(),
+          isAllowed: false,
+          isLead: false,
+        },
+      })
+      summary.assigned += 1
+    }
+  }
+
+  const openRes = await dataConnect.executeGraphqlRead(LIST_OPEN_WORKSHOP_ORDERS_QUERY, {})
+  for (const order of openRes.data.workOrders) {
+    if (order.workshopMonth >= month) continue
+    await dataConnect.executeGraphql(COMPLETE_WORK_ORDER_MUTATION, {
+      variables: { id: order.id, completedAt: now.toISOString() },
+    })
+    await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+      variables: {
+        workOrderId: order.id,
+        actorId,
+        eventType: 'ORDER_COMPLETED',
+        metadata: { automatic: true, workshopMonth: order.workshopMonth },
+      },
+    })
+    summary.completed.push(order.code)
+  }
+
+  return summary
+}
+
+// Five past midnight, Spanish time: on the 1st that's when the new month's
+// orders appear and the old ones close; every other night it only picks up
+// newly assignable technicians.
+exports.ensureWorkshopOrders = onSchedule(
+  { schedule: '5 0 * * *', timeZone: 'Europe/Madrid', retryCount: 2 },
+  async () => {
+    const summary = await syncWorkshopOrders()
+    console.log(`Órdenes de taller de ${summary.month}: ${JSON.stringify(summary)}`)
+  },
+)
+
 const SCHEDULABLE_STATUSES = ['ASSIGNED', 'IN_PROGRESS']
 
 // Adds/removes one day a work order is placed on in the weekly calendar - a

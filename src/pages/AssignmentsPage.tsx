@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { MessageCircle } from 'lucide-react'
+import { MessageCircle, Wrench } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   WorkOrderStatus,
@@ -15,7 +15,9 @@ import { pickActiveShift } from '../lib/activeShift'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { formatSnapshotTime, readSnapshot, writeSnapshot } from '../lib/offlineStore'
+import { orderLocationLabel } from '../lib/orderCode'
 import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
+import { WORKSHOP_LOCATIONS, formatWorkshopMonth } from '../lib/workshop'
 
 type Assignment = ListMyAssignedWorkOrdersData['technicianAssignments'][number]
 
@@ -71,6 +73,20 @@ export function AssignmentsPage() {
   const pendingAssignments = assignments?.filter(
     (assignment) => assignment.workOrder.status !== WorkOrderStatus.COMPLETED,
   )
+  // The month's workshop orders sit apart, on top: everyone is on them all
+  // month, so in the list they'd be three rows every technician scrolls past
+  // to reach the orders that are actually theirs.
+  const workshopAssignments = pendingAssignments
+    ?.filter((assignment) => assignment.workOrder.workshopMonth)
+    .sort(
+      (a, b) =>
+        (b.workOrder.workshopMonth ?? '').localeCompare(a.workOrder.workshopMonth ?? '') ||
+        WORKSHOP_LOCATIONS.indexOf(a.workOrder.locationCode) -
+          WORKSHOP_LOCATIONS.indexOf(b.workOrder.locationCode),
+    )
+  const orderAssignments = pendingAssignments?.filter(
+    (assignment) => !assignment.workOrder.workshopMonth,
+  )
 
   return (
     <div className="flex-1 p-4">
@@ -94,10 +110,40 @@ export function AssignmentsPage() {
           </p>
         )}
         {assignments === null && !loadError && <p className="text-sm text-slate-500">Cargando...</p>}
-        {pendingAssignments?.length === 0 && (
+        {workshopAssignments && workshopAssignments.length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {workshopAssignments.map((assignment) => {
+              const isWorkingHere = assignment.workOrder.id === workingOrderId
+              return (
+                <button
+                  key={assignment.workOrder.id}
+                  onClick={() =>
+                    navigate(`/orders/${assignment.workOrder.id}`, { state: { from: '/assignments' } })
+                  }
+                  title={isWorkingHere ? 'Trabajando ahora' : undefined}
+                  className={`min-w-0 rounded-xl bg-white/90 p-3 text-left ${
+                    isWorkingHere ? 'border-2 border-eb-teal' : 'border border-slate-200'
+                  }`}
+                >
+                  <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                    <Wrench className="h-3 w-3 shrink-0" />
+                    Taller
+                  </p>
+                  <p className="truncate text-sm font-semibold text-eb-blue-dark">
+                    {orderLocationLabel[assignment.workOrder.locationCode]}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {formatWorkshopMonth(assignment.workOrder.workshopMonth ?? '')}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {orderAssignments?.length === 0 && (
           <p className="text-sm text-slate-500">No tienes órdenes asignadas pendientes.</p>
         )}
-        {pendingAssignments?.map((assignment) => {
+        {orderAssignments?.map((assignment) => {
           const isWorkingHere = assignment.workOrder.id === workingOrderId
           return (
             <div

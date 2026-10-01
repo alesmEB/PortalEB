@@ -66,6 +66,18 @@ export function DashboardPage() {
             </button>
           </HasPermission>
 
+          {/* The workshop orders' own list (see WorkshopOrdersPage), kept out
+              of "Lista de órdenes" so they don't mix with the real ones.
+              Staff only: there's nothing in them for a client. */}
+          {profile && profile.role !== UserRole.CLIENT && (
+            <button
+              onClick={() => navigate('/workshop')}
+              className="w-full rounded-lg bg-eb-blue py-3 text-base font-semibold text-white transition-colors hover:bg-eb-blue-dark"
+            >
+              Órdenes de taller
+            </button>
+          )}
+
           {(profile?.role === UserRole.ADMIN ||
             profile?.role === UserRole.TECHNICIAN ||
             permissions.includes('admin:lab')) && (

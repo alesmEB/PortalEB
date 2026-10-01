@@ -59,6 +59,7 @@ import {
 import type { AdminProcessStep, WorkOrderTaskInput } from '../lib/orderWorkflow'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
+import { formatWorkshopMonth } from '../lib/workshop'
 import { uploadQuotePdf } from '../lib/quoteStorage'
 
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
@@ -1442,6 +1443,11 @@ export function OrderDetailPage() {
   const canToggleTasks = !!myAssignment && order.status === WorkOrderStatus.IN_PROGRESS
   const orderIsClosed =
     order.status === WorkOrderStatus.COMPLETED || order.status === WorkOrderStatus.CANCELLED
+  // A workshop order (see WorkOrder.workshopMonth) is only somewhere to clock
+  // hours: no customer, quote, job list, report or closing process, and the
+  // system assigns and completes it. Everything about those is hidden, which
+  // leaves clocking in, who's on it, the shifts and the notes.
+  const isWorkshop = !!order.workshopMonth
   // Whoever can create an order can also correct its job list, but only
   // while the order can still change: a completed order's jobs are already
   // written into its report, and a cancelled one isn't going anywhere.
@@ -1489,7 +1495,9 @@ export function OrderDetailPage() {
         </span>
       </div>
       <p className="text-sm text-slate-500">
-        {orderLocationLabel[order.locationCode]} · {order.assetLocation}
+        {order.workshopMonth
+          ? `Trabajos de taller · ${orderLocationLabel[order.locationCode]} · ${formatWorkshopMonth(order.workshopMonth)}`
+          : `${orderLocationLabel[order.locationCode]} · ${order.assetLocation}`}
       </p>
 
       {order.deletedAt && (
@@ -1505,7 +1513,9 @@ export function OrderDetailPage() {
         </p>
       )}
 
-      <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />
+      {!isWorkshop && (
+        <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />
+      )}
 
       <HasPermission permission="orders:notes">
         <NotesSection notes={order.notes} workOrderId={order.id} onAdded={loadOrder} />
@@ -1562,6 +1572,7 @@ export function OrderDetailPage() {
           </button>
         )}
         {canAssignTechnicians &&
+          !isWorkshop &&
           (order.status === WorkOrderStatus.ASSIGNED ||
             order.status === WorkOrderStatus.IN_PROGRESS) && (
             <button
@@ -1589,8 +1600,9 @@ export function OrderDetailPage() {
             Terminar orden
           </button>
         )}
-        {(order.status === WorkOrderStatus.ASSIGNED ||
-          order.status === WorkOrderStatus.IN_PROGRESS) && (
+        {!isWorkshop &&
+          (order.status === WorkOrderStatus.ASSIGNED ||
+            order.status === WorkOrderStatus.IN_PROGRESS) && (
           <HasPermission permission="orders:forcecomplete">
             <button
               disabled={busy}
@@ -1602,6 +1614,7 @@ export function OrderDetailPage() {
           </HasPermission>
         )}
         {!!myAssignment &&
+          !isWorkshop &&
           (order.status === WorkOrderStatus.ASSIGNED ||
             order.status === WorkOrderStatus.IN_PROGRESS) && (
             <button
@@ -1622,125 +1635,133 @@ export function OrderDetailPage() {
             {amWorkingHere ? 'Dejar de trabajar' : 'Trabajar en esta orden'}
           </button>
         )}
-        <HasPermission permission="chat:write">
-          <button
-            onClick={() => navigate(`/chat/client/${order.id}`, { state: { from: `/orders/${order.id}` } })}
-            className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
-          >
-            Chat con cliente
-            {unreadClientIds.has(order.id) && (
-              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-            )}
-          </button>
-        </HasPermission>
-        <HasPermission permission="chat:write">
-          <button
-            onClick={() =>
-              navigate(`/chat/technicians/${order.id}`, { state: { from: `/orders/${order.id}` } })
-            }
-            className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
-          >
-            Chat con técnicos
-            {unreadTechnicianIds.has(order.id) && (
-              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-            )}
-          </button>
-        </HasPermission>
+        {!isWorkshop && (
+          <HasPermission permission="chat:write">
+            <button
+              onClick={() => navigate(`/chat/client/${order.id}`, { state: { from: `/orders/${order.id}` } })}
+              className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+            >
+              Chat con cliente
+              {unreadClientIds.has(order.id) && (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+              )}
+            </button>
+          </HasPermission>
+        )}
+        {!isWorkshop && (
+          <HasPermission permission="chat:write">
+            <button
+              onClick={() =>
+                navigate(`/chat/technicians/${order.id}`, { state: { from: `/orders/${order.id}` } })
+              }
+              className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+            >
+              Chat con técnicos
+              {unreadTechnicianIds.has(order.id) && (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+              )}
+            </button>
+          </HasPermission>
+        )}
       </div>
 
-      <ChatFilesSection orderId={order.id} />
+      {!isWorkshop && <ChatFilesSection orderId={order.id} />}
 
-      <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <h2 className="text-sm font-semibold text-eb-teal-dark">Cliente</h2>
-            <p className="mt-2 text-sm text-slate-700">{order.customer.name}</p>
-            <p className="text-sm text-slate-500">
-              {order.customer.contactName} · {order.customer.phone}
-            </p>
+      {!isWorkshop && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <h2 className="text-sm font-semibold text-eb-teal-dark">Cliente</h2>
+              <p className="mt-2 text-sm text-slate-700">{order.customer.name}</p>
+              <p className="text-sm text-slate-500">
+                {order.customer.contactName} · {order.customer.phone}
+              </p>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+              <h2 className="text-sm font-semibold text-eb-teal-dark">Embarcación / máquina</h2>
+              <p className="mt-2 text-sm text-slate-700">{order.boat.name}</p>
+              {order.boat.registrationNumber && (
+                <p className="text-sm text-slate-500">Matrícula: {order.boat.registrationNumber}</p>
+              )}
+              <ul className="mt-2 space-y-1">
+                {order.boat.engines.map((engine, i) => (
+                  <li key={i} className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
+                    {engine.engineType} · chasis {engine.chassisNumber} · propulsor{' '}
+                    {engine.propellerSerialNumber}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!isWorkshop && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos a realizar</h2>
+            <div className="flex items-center gap-2">
+              {order.tasks.length > 0 && (
+                <span className="text-xs text-slate-500">
+                  {order.tasks.filter((t) => t.isCompleted).length}/{order.tasks.length}
+                </span>
+              )}
+              {canEditTasks && !editingTasks && (
+                <button
+                  onClick={() => setEditingTasks(true)}
+                  className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
+                >
+                  Editar
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
-            <h2 className="text-sm font-semibold text-eb-teal-dark">Embarcación / máquina</h2>
-            <p className="mt-2 text-sm text-slate-700">{order.boat.name}</p>
-            {order.boat.registrationNumber && (
-              <p className="text-sm text-slate-500">Matrícula: {order.boat.registrationNumber}</p>
-            )}
-            <ul className="mt-2 space-y-1">
-              {order.boat.engines.map((engine, i) => (
-                <li key={i} className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
-                  {engine.engineType} · chasis {engine.chassisNumber} · propulsor{' '}
-                  {engine.propellerSerialNumber}
+          {editingTasks ? (
+            <TasksEditor
+              tasks={order.tasks}
+              onCancel={() => setEditingTasks(false)}
+              onSave={async (tasks) => {
+                await updateWorkOrderTasks(order.id, tasks)
+                setEditingTasks(false)
+                await loadOrder()
+              }}
+            />
+          ) : (
+          <ul className="mt-2 space-y-1">
+            {order.tasks.map((task) =>
+              canToggleTasks ? (
+                <li key={task.id}>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={task.isCompleted}
+                      disabled={busy}
+                      onChange={(e) => handleToggleTask(task.id, e.target.checked)}
+                    />
+                    <span className={task.isCompleted ? 'text-slate-400 line-through' : ''}>
+                      {task.description}
+                    </span>
+                  </label>
                 </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos a realizar</h2>
-          <div className="flex items-center gap-2">
-            {order.tasks.length > 0 && (
-              <span className="text-xs text-slate-500">
-                {order.tasks.filter((t) => t.isCompleted).length}/{order.tasks.length}
-              </span>
-            )}
-            {canEditTasks && !editingTasks && (
-              <button
-                onClick={() => setEditingTasks(true)}
-                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
-              >
-                Editar
-              </button>
-            )}
-          </div>
-        </div>
-
-        {editingTasks ? (
-          <TasksEditor
-            tasks={order.tasks}
-            onCancel={() => setEditingTasks(false)}
-            onSave={async (tasks) => {
-              await updateWorkOrderTasks(order.id, tasks)
-              setEditingTasks(false)
-              await loadOrder()
-            }}
-          />
-        ) : (
-        <ul className="mt-2 space-y-1">
-          {order.tasks.map((task) =>
-            canToggleTasks ? (
-              <li key={task.id}>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={task.isCompleted}
-                    disabled={busy}
-                    onChange={(e) => handleToggleTask(task.id, e.target.checked)}
+              ) : (
+                <li key={task.id} className="flex items-center gap-2 text-sm text-slate-700">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${
+                      task.isCompleted ? 'bg-eb-teal' : 'bg-slate-300'
+                    }`}
                   />
                   <span className={task.isCompleted ? 'text-slate-400 line-through' : ''}>
                     {task.description}
                   </span>
-                </label>
-              </li>
-            ) : (
-              <li key={task.id} className="flex items-center gap-2 text-sm text-slate-700">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${
-                    task.isCompleted ? 'bg-eb-teal' : 'bg-slate-300'
-                  }`}
-                />
-                <span className={task.isCompleted ? 'text-slate-400 line-through' : ''}>
-                  {task.description}
-                </span>
-              </li>
-            ),
+                </li>
+              ),
+            )}
+          </ul>
           )}
-        </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       {order.description && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
@@ -1893,12 +1914,14 @@ export function OrderDetailPage() {
         </ul>
       </section>
 
-      <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-eb-teal-dark">Documentos</h2>
-        <OrderDocumentsViewer documents={documentOptions} />
-      </section>
+      {!isWorkshop && (
+        <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
+          <h2 className="text-sm font-semibold text-eb-teal-dark">Documentos</h2>
+          <OrderDocumentsViewer documents={documentOptions} />
+        </section>
+      )}
 
-      {canViewAdminProcess && order.status === WorkOrderStatus.COMPLETED && (
+      {canViewAdminProcess && !isWorkshop && order.status === WorkOrderStatus.COMPLETED && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Gestión administrativa</h2>
           <ul className="mt-2 space-y-2">

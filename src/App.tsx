@@ -22,6 +22,7 @@ import { OrdersListPage } from './pages/OrdersListPage'
 import { OrderDetailPage } from './pages/OrderDetailPage'
 import { RatingsPage } from './pages/RatingsPage'
 import { SendNotificationPage } from './pages/SendNotificationPage'
+import { WorkshopOrdersPage } from './pages/WorkshopOrdersPage'
 
 function App() {
   return (
@@ -142,6 +143,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <HoursLogPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/workshop"
+              element={
+                <ProtectedRoute>
+                  <WorkshopOrdersPage />
                 </ProtectedRoute>
               }
             />

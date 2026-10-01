@@ -123,7 +123,7 @@ query ListAssignableUsers @auth(level: USER) {
 
 # Summary rows for the main orders list screen.
 query ListWorkOrders @auth(level: USER) {
-  workOrders(orderBy: { createdAt: DESC }, limit: 1000) {
+  workOrders(where: { workshopMonth: { isNull: true } }, orderBy: { createdAt: DESC }, limit: 1000) {
     id
     code
     externalCode
@@ -223,9 +223,32 @@ query ListMyAssignedWorkOrders @auth(level: USER) {
       id
       code
       status
+      locationCode
+      workshopMonth
       boat {
         name
       }
+    }
+  }
+}
+
+# The workshop orders (see WorkOrder.workshopMonth), newest month first, with
+# their shifts so the screen can total the hours of each.
+query ListWorkshopOrders @auth(level: USER) {
+  workOrders(
+    where: { workshopMonth: { isNull: false }, deletedAt: { isNull: true } }
+    orderBy: { workshopMonth: DESC }
+    limit: 1000
+  ) {
+    id
+    code
+    status
+    locationCode
+    workshopMonth
+    timeLogs: timeLogs_on_workOrder(limit: 5000) {
+      technicianId
+      clockOut
+      durationMinutes
     }
   }
 }
@@ -263,7 +286,11 @@ query ListSchedulableWorkOrders @auth(level: USER) @retired {
 # A deleted order keeps its status, so it has to be left out explicitly.
 query ListAssignedWorkOrders @auth(level: USER) {
   workOrders(
-    where: { status: { in: [ASSIGNED, IN_PROGRESS] }, deletedAt: { isNull: true } }
+    where: {
+      status: { in: [ASSIGNED, IN_PROGRESS] }
+      deletedAt: { isNull: true }
+      workshopMonth: { isNull: true }
+    }
     orderBy: { code: ASC }
     limit: 1000
   ) {
@@ -391,6 +418,7 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     invoicedAt
     externalCode
     deletedAt
+    workshopMonth
     customer {
       name
       contactName

@@ -68,6 +68,29 @@ decidir, `true` = realizado, `false` = no procedía.
 `deletedAt` marca las órdenes eliminadas: siguen existiendo y se pueden buscar,
 pero no aparecen en la lista salvo que se pida verlas.
 
+### Órdenes de taller
+
+Las horas que no son de ningún barco (trabajo en el propio taller) se fichan en
+las **órdenes de taller**: una por localización y mes, con código
+`TALLER-A-2026-10` (`A`, `V` o `S`). Son `WorkOrder` normales con
+`workshopMonth` relleno ("2026-10"), así que fichar, la regla de un solo turno
+a la vez, el registro de horas y el correo diario funcionan igual que con
+cualquier orden. Lo demás no les aplica: no llevan presupuesto, trabajos,
+informe ni gestión administrativa, y cuelgan de un cliente interno ("Taller
+Elías Blanco") con una "embarcación" por localización, porque una orden
+necesita ambos.
+
+No las crea nadie a mano. `ensureWorkshopOrders` (cada noche a las 00:05, hora
+de España) crea las tres del mes si faltan, ya "En progreso"; asigna a quien
+tenga `orders:assignable` y aún no esté en ellas (un técnico nuevo las tiene al
+día siguiente); y completa las de meses anteriores. Un turno que siga abierto
+al cerrar el mes no se cierra solo: queda en Turnos con "Cerrar" para que
+administración ponga la hora real.
+
+Se ven en dos sitios: las del mes, arriba en Asignaciones; todas, en "Órdenes
+de taller". Las listas de órdenes reales (la lista, el calendario) las
+excluyen filtrando por `workshopMonth` nulo.
+
 ## Intervenciones
 
 **Intervention** digitaliza el parte de recepción en papel ("Orden de

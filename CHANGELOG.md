@@ -6,6 +6,19 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 1 de octubre de 2026
+
+- Órdenes de taller: cada mes hay una orden por localización (Algeciras, La
+  Línea y Sotogrande) para fichar las horas de trabajo en el taller. Las crea
+  el sistema solo, con todos los técnicos asignables ya dentro, y cierra las
+  del mes anterior. No llevan presupuesto ni nada más: solo horas.
+  - En Asignaciones salen arriba del todo, las tres en una fila. Se ficha en
+    ellas igual que en cualquier orden, y tampoco se puede estar en dos a la
+    vez.
+  - En el inicio hay un botón nuevo, "Órdenes de taller", con todos los meses
+    y las horas de cada orden. No se mezclan con la lista de órdenes ni con el
+    calendario.
+
 ## 30 de septiembre de 2026
 
 - Arreglado: las órdenes eliminadas seguían saliendo en las Asignaciones de

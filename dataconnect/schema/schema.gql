@@ -234,6 +234,16 @@ type WorkOrder @table(name: "work_orders") {
   # functions/index.js). Hidden from the default orders list unless the
   # "mostrar eliminadas" filter is on - see OrdersListPage.tsx.
   deletedAt: Timestamp
+  # Set ("YYYY-MM") only on the workshop orders: one per location and month,
+  # for work done in the workshop itself rather than on a customer's boat.
+  # They're plain orders so clocking in, the one-shift-at-a-time rule and the
+  # hours log all work on them unchanged, but they carry nothing else - no
+  # quote, no customer to speak of, no report - and the system makes them
+  # (ensureWorkshopOrders in functions/index.js): created IN_PROGRESS with
+  # every orders:assignable user on them, completed when their month is over.
+  # Every list of real orders filters on this being null; their own screen
+  # and the top of Asignaciones are where they show.
+  workshopMonth: String
 }
 
 # The list of jobs to perform, captured at order creation.
