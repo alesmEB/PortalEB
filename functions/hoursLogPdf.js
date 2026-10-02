@@ -73,6 +73,66 @@ function closedMinutes(shifts) {
   return shifts.reduce((sum, shift) => sum + (shift.durationMinutes ?? 0), 0)
 }
 
+const ROUNDING_MS = 5 * 60 * 1000
+
+/**
+ * The report counts in five-minute steps, always in the technician's favour:
+ * the clock-in goes down to the previous :00/:05 and the clock-out up to the
+ * next one. Only here - the database and the page keep the exact times. The
+ * duration is recomputed from the rounded pair so a row's hours match the
+ * times printed next to them, and the totals match the rows.
+ *
+ * Rounding each shift on its own would count the same minutes twice whenever
+ * a technician goes from one order straight into the next (out at 13:51 ->
+ * 13:55, in at 13:52 -> 13:50). So a shift that starts after the previous one
+ * of the same technician ended, but before its rounded end, starts at that
+ * rounded end instead: the minutes stay with the order they were first given
+ * to and the day adds up. Shifts that really overlap in the database are left
+ * alone - that's something to see, not to paper over.
+ *
+ * `neighbours` are other shifts of the same technicians that aren't part of
+ * the report (one order's log knows nothing of the order worked just before);
+ * they only say where a shift may start, so a shift prints the same whichever
+ * report it appears in.
+ *
+ * Madrid's offset is a whole number of hours, so rounding the instant rounds
+ * the wall-clock minute too.
+ */
+function roundShiftsForReport(shifts, neighbours = []) {
+  const reported = new Set(shifts.map((s) => s.id))
+  const timeline = [...shifts, ...neighbours.filter((s) => !reported.has(s.id))].sort(
+    (a, b) => new Date(a.clockIn) - new Date(b.clockIn),
+  )
+
+  const rounded = new Map()
+  const previousByTechnician = new Map()
+  for (const shift of timeline) {
+    const actualIn = new Date(shift.clockIn).getTime()
+    const previous = previousByTechnician.get(shift.technicianId)
+    let clockIn = Math.floor(actualIn / ROUNDING_MS) * ROUNDING_MS
+    if (previous && actualIn >= previous.actualOut && clockIn < previous.roundedOut) clockIn = previous.roundedOut
+
+    if (!shift.clockOut) {
+      previousByTechnician.delete(shift.technicianId)
+      rounded.set(shift.id, { ...shift, clockIn: new Date(clockIn).toISOString() })
+      continue
+    }
+    const actualOut = new Date(shift.clockOut).getTime()
+    // Seconds are dropped first: a clock-out at 10:00:30 reads "10:00" and
+    // must stay there, not jump to 10:05.
+    const outMinute = Math.floor(actualOut / 60000) * 60000
+    const clockOut = Math.max(clockIn, Math.ceil(outMinute / ROUNDING_MS) * ROUNDING_MS)
+    previousByTechnician.set(shift.technicianId, { actualOut, roundedOut: clockOut })
+    rounded.set(shift.id, {
+      ...shift,
+      clockIn: new Date(clockIn).toISOString(),
+      clockOut: new Date(clockOut).toISOString(),
+      durationMinutes: (clockOut - clockIn) / 60000,
+    })
+  }
+  return shifts.map((s) => rounded.get(s.id))
+}
+
 const styles = StyleSheet.create({
   page: { paddingTop: 32, paddingHorizontal: 32, paddingBottom: 84, fontSize: 9, fontFamily: 'Helvetica', color: '#0f172a' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
@@ -114,6 +174,7 @@ const styles = StyleSheet.create({
   colTimes: { width: 110 },
   colDuration: { width: 60, color: '#64748b' },
   colOrder: { width: 62, fontWeight: 700, color: '#0369a1' },
+  colExternal: { width: 58, color: '#0f172a' },
   colBoat: { flex: 1, color: '#475569' },
   colNote: { width: 70, color: '#b45309', textAlign: 'right' },
   muted: { color: '#94a3b8' },
@@ -159,6 +220,7 @@ function shiftRow(shift) {
       { style: styles.colOrder },
       shift.workOrder.deleted ? `${shift.workOrder.code}*` : shift.workOrder.code,
     ),
+    React.createElement(Text, { style: styles.colExternal }, shift.workOrder.externalCode ?? ''),
     React.createElement(Text, { style: styles.colBoat }, shift.workOrder.boatName ?? ''),
     React.createElement(Text, { style: styles.colNote }, shift.recordedOffline ? 'sin conexión' : ''),
   )
@@ -168,10 +230,15 @@ function shiftRow(shift) {
  * Groups the shifts the same way the page does (src/pages/HoursLogPage.tsx):
  * a range lists every assignable technician each day (the empty ones in one
  * line, since who didn't clock in is information too); one order's log only
- * lists who worked on it.
+ * lists who worked on it. Unlike the page, the shifts come out rounded (see
+ * roundShiftsForReport) - and since the daily e-mail takes its figures from
+ * here too, its text agrees with the PDF it attaches.
  */
-function buildDays({ technicians, timeLogs, dayKeys, technicianId }) {
-  const shifts = technicianId ? timeLogs.filter((s) => s.technicianId === technicianId) : timeLogs
+function buildDays({ technicians, timeLogs, dayKeys, technicianId, neighbourLogs }) {
+  const shifts = roundShiftsForReport(
+    technicianId ? timeLogs.filter((s) => s.technicianId === technicianId) : timeLogs,
+    neighbourLogs ?? [],
+  )
   const names = new Map(technicians.map((t) => [t.id, t.displayName]))
   for (const s of timeLogs) if (!names.has(s.technicianId)) names.set(s.technicianId, s.technicianName)
   const nameOrder = [...names.keys()]
@@ -202,14 +269,14 @@ function buildDays({ technicians, timeLogs, dayKeys, technicianId }) {
 }
 
 function buildHoursLogDocument(data) {
-  const { orderCode, dayKeys, technicianName, generatedAt } = data
+  const { orderCode, orderExternalCode, dayKeys, technicianName, generatedAt } = data
   const days = buildDays(data)
   const totalShifts = days.reduce((sum, d) => sum + d.shiftCount, 0)
   const totalMinutes = days.reduce((sum, d) => sum + d.minutes, 0)
   const hasDeleted = days.some((d) => d.worked.some((t) => t.shifts.some((s) => s.workOrder.deleted)))
 
   let period
-  if (orderCode) period = `Orden ${orderCode}`
+  if (orderCode) period = orderExternalCode ? `Orden ${orderCode} · ${orderExternalCode}` : `Orden ${orderCode}`
   else if (dayKeys.length === 1) period = formatDayHeading(dayKeys[0])
   else period = `Del ${formatDayKey(dayKeys[0])} al ${formatDayKey(dayKeys[dayKeys.length - 1])}`
 
@@ -324,6 +391,13 @@ function buildHoursLogDocument(data) {
 
       hasDeleted
         ? React.createElement(Text, { style: [styles.muted, { marginTop: 4 }] }, '* Orden eliminada.')
+        : null,
+      totalShifts > 0
+        ? React.createElement(
+            Text,
+            { style: [styles.muted, { marginTop: 4 }] },
+            'Horas redondeadas a 5 minutos: la entrada hacia abajo y la salida hacia arriba. Al cambiar de orden, la nueva empieza donde acaba la anterior.',
+          )
         : null,
 
       React.createElement(

@@ -12,14 +12,15 @@ export interface HoursLogShift {
   recordedOffline: boolean
   technicianId: string
   technicianName: string
-  workOrder: { id: string; code: string; boatName: string | null; deleted: boolean }
+  /** `externalCode`: the order's number in the internal management system, if set. */
+  workOrder: { id: string; code: string; externalCode?: string | null; boatName: string | null; deleted: boolean }
 }
 
 export interface HoursLogResult {
   /** Active users holding orders:assignable, alphabetically. */
   technicians: { id: string; displayName: string }[]
   /** Set when the log was asked for one order. */
-  order: { id: string; code: string } | null
+  order: { id: string; code: string; externalCode?: string | null } | null
   /** Oldest first. */
   timeLogs: HoursLogShift[]
 }

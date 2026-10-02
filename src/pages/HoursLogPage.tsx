@@ -103,6 +103,11 @@ function ShiftRow({ shift, onOpenOrder }: { shift: HoursLogShift; onOpenOrder: (
       >
         {shift.workOrder.code}
       </button>
+      {shift.workOrder.externalCode && (
+        <span className="font-mono text-slate-600" title="Número de orden interno">
+          {shift.workOrder.externalCode}
+        </span>
+      )}
       {shift.workOrder.boatName && (
         <span className="min-w-0 truncate text-slate-500">{shift.workOrder.boatName}</span>
       )}
@@ -495,6 +500,9 @@ export function HoursLogPage() {
                   className="font-mono text-sm font-semibold text-eb-blue hover:underline"
                 >
                   Orden {loaded.data.order.code}
+                  {loaded.data.order.externalCode && (
+                    <span className="ml-1.5 font-normal text-slate-600">· {loaded.data.order.externalCode}</span>
+                  )}
                 </button>
               ) : (
                 <span />

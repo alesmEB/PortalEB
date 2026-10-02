@@ -6,6 +6,18 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 2 de octubre de 2026
+
+- Registro de horas: junto a nuestro número de orden sale también el número
+  interno, si la orden lo tiene. En la pantalla y en el PDF.
+
+- Registro de horas, en el PDF (el que se descarga y el del correo diario):
+  - Las horas van redondeadas a 5 minutos: la entrada hacia abajo y la salida
+    hacia arriba (de 12:00:49 a 13:51 sale como 12:00 - 13:55). Si el técnico
+    pasa de una orden a otra, la nueva empieza donde acaba la anterior, para
+    no contar dos veces los mismos minutos. Los totales se calculan con esas
+    horas. En pantalla y en Turnos se sigue viendo la hora exacta.
+
 ## 1 de octubre de 2026
 
 - Arreglado: el aviso de "Turno activo" a veces se quedaba en el móvil después

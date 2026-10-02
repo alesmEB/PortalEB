@@ -2416,6 +2416,7 @@ const HOURS_LOG_TIME_LOG_FIELDS = `
   workOrder {
     id
     code
+    externalCode
     deletedAt
     boat {
       name
@@ -2434,9 +2435,24 @@ const LIST_ORDER_TIME_LOGS_QUERY = `
     workOrders(where: { code: { eq: $code } }, limit: 1) {
       id
       code
+      externalCode
       timeLogs: timeLogs_on_workOrder(orderBy: { clockIn: ASC }, limit: 2000) {
         ${HOURS_LOG_TIME_LOG_FIELDS}
       }
+    }
+  }
+`
+const LIST_TECHNICIANS_TIME_LOGS_IN_RANGE_QUERY = `
+  query ListTechniciansTimeLogsInRangeAdmin($technicianIds: [String!]!, $from: Timestamp!, $to: Timestamp!) {
+    timeLogs(
+      where: { technicianId: { in: $technicianIds }, clockIn: { ge: $from, le: $to } }
+      orderBy: { clockIn: ASC }
+      limit: 5000
+    ) {
+      id
+      technicianId
+      clockIn
+      clockOut
     }
   }
 `
@@ -2470,7 +2486,7 @@ async function loadHoursLog({ from, to, orderCode }) {
     if (!found) {
       throw new HttpsError('not-found', `No existe ninguna orden con el código ${code}.`)
     }
-    order = { id: found.id, code: found.code }
+    order = { id: found.id, code: found.code, externalCode: found.externalCode ?? null }
     timeLogs = found.timeLogs
   } else {
     const fromDate = new Date(from)
@@ -2510,11 +2526,31 @@ async function loadHoursLog({ from, to, orderCode }) {
       workOrder: {
         id: log.workOrder.id,
         code: log.workOrder.code,
+        externalCode: log.workOrder.externalCode ?? null,
         boatName: log.workOrder.boat?.name ?? null,
         deleted: !!log.workOrder.deletedAt,
       },
     })),
   }
+}
+
+// One order's log doesn't include what its technicians did on other orders,
+// but the PDF's rounding needs it: a shift that follows another one starts
+// where that one's rounded end is (see roundShiftsForReport in
+// hoursLogPdf.js). Without this, the same shift would print five minutes
+// longer in the order's PDF than in the day's.
+async function loadNeighbourShifts(timeLogs) {
+  if (timeLogs.length === 0) return []
+  const clockIns = timeLogs.map((log) => new Date(log.clockIn).getTime())
+  const res = await dataConnect.executeGraphqlRead(LIST_TECHNICIANS_TIME_LOGS_IN_RANGE_QUERY, {
+    variables: {
+      technicianIds: [...new Set(timeLogs.map((log) => log.technicianId))],
+      // A day back is plenty: only the shift ended minutes before matters.
+      from: new Date(Math.min(...clockIns) - 24 * 60 * 60 * 1000).toISOString(),
+      to: new Date(Math.max(...clockIns)).toISOString(),
+    },
+  })
+  return res.data.timeLogs
 }
 
 // Backs the "Registro de horas" page. The day boundaries come from the
@@ -2542,8 +2578,10 @@ exports.exportTimeLogsPdf = onCall(async (request) => {
 
   let log
   let dayKeys = null
+  let neighbourLogs = []
   if (typeof orderCode === 'string' && orderCode.trim()) {
     log = await loadHoursLog({ orderCode })
+    neighbourLogs = await loadNeighbourShifts(log.timeLogs)
   } else {
     const dayPattern = /^\d{4}-\d{2}-\d{2}$/
     if (!dayPattern.test(fromDay ?? '') || !dayPattern.test(toDay ?? '') || toDay < fromDay) {
@@ -2565,10 +2603,12 @@ exports.exportTimeLogsPdf = onCall(async (request) => {
 
   const buffer = await renderHoursLogPdfBuffer({
     ...log,
+    neighbourLogs,
     dayKeys,
     technicianId: technicianId || null,
     technicianName,
     orderCode: log.order?.code ?? null,
+    orderExternalCode: log.order?.externalCode ?? null,
     generatedAt: new Date(),
   })
   return { pdfBase64: buffer.toString('base64') }
