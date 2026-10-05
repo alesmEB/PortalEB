@@ -6,6 +6,13 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 5 de octubre de 2026
+
+- Lista de órdenes: en las completadas, "Ajustada", "Protocolo" y "Facturada"
+  salen en columna debajo del estado, cada una con su icono. Están siempre las
+  tres: en gris mientras faltan y en color cuando ya se han hecho. Solo las ve
+  quien ya las veía.
+
 ## 2 de octubre de 2026
 
 - Registro de horas: junto a nuestro número de orden sale también el número

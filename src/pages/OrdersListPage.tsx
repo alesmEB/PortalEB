@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   ChevronDown,
+  ClipboardCheck,
+  FileCheck2,
+  FileX2,
   MessageCircle,
+  Receipt,
   SlidersHorizontal,
   Trash2,
   Wrench,
@@ -67,6 +71,52 @@ const ADMIN_PROCESS_FILTERS: { value: string; label: string; matches: (order: Or
     },
     { value: 'INVOICED', label: 'Facturadas', matches: (o) => !!o.invoicedAt },
   ]
+
+/** The three post-completion steps as a column under the status, all three
+ * always listed so what's still missing shows as plainly as what's done: grey
+ * while pending, in colour once passed. A protocol that "no procedía" is a
+ * passed step too, told apart by its icon and tooltip. */
+function AdminProcessSteps({ order }: { order: OrderRow }) {
+  const protocolSkipped = !!order.serviceProtocolAt && order.serviceProtocolDone === false
+  const steps = [
+    {
+      label: 'Ajustada',
+      Icon: ClipboardCheck,
+      done: !!order.adjustedAt,
+      title: order.adjustedAt ? 'Ajustada' : 'Ajuste: pendiente',
+    },
+    {
+      label: 'Protocolo',
+      Icon: protocolSkipped ? FileX2 : FileCheck2,
+      done: !!order.serviceProtocolAt,
+      title: !order.serviceProtocolAt
+        ? 'Protocolo de servicio: pendiente'
+        : protocolSkipped
+          ? 'Protocolo de servicio: no procedía'
+          : 'Protocolo de servicio: realizado',
+    },
+    {
+      label: 'Facturada',
+      Icon: Receipt,
+      done: !!order.invoicedAt,
+      title: order.invoicedAt ? 'Facturada' : 'Facturación: pendiente',
+    },
+  ]
+  return (
+    <ul className="flex flex-col items-end gap-0.5">
+      {steps.map(({ label, Icon, done, title }) => (
+        <li
+          key={label}
+          title={title}
+          className={`flex items-center gap-1 text-xs ${done ? 'font-medium text-eb-teal-dark' : 'text-slate-400 opacity-50'}`}
+        >
+          <Icon className="h-3.5 w-3.5" />
+          {label}
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 export function OrdersListPage() {
   const navigate = useNavigate()
@@ -393,10 +443,14 @@ export function OrdersListPage() {
             <div className="flex items-start justify-between gap-2">
               <button
                 onClick={() => navigate(`/orders/${order.id}`, { state: { from: listPath } })}
-                className="flex-1 text-left"
+                className="min-w-0 flex-1 text-left"
               >
-                <div className="flex items-center justify-between">
-                  <p className="font-mono text-sm font-semibold text-eb-blue-dark">
+                {/* From sm up the status column (with the admin steps under
+                    it) spans both rows, so the steps sit beside the customer
+                    lines instead of pushing them down. On a phone there's no
+                    room for that: the text takes the full width below. */}
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 sm:grid-rows-[auto_1fr]">
+                  <p className="col-start-1 row-start-1 py-1 font-mono text-sm font-semibold text-eb-blue-dark">
                     {order.code}
                     {order.externalCode && (
                       <span className="ml-1.5 font-sans font-normal text-slate-400">
@@ -404,73 +458,60 @@ export function OrdersListPage() {
                       </span>
                     )}
                   </p>
-                  <div className="flex items-center gap-2">
-                    {order.incidents.length > 0 && (
+                  <div className="col-span-2 row-start-2 min-w-0 break-words sm:col-span-1 sm:col-start-1">
+                    <p className="text-sm text-slate-700">
+                      {order.customer.name} · {order.boat.name}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {orderLocationLabel[order.locationCode]} · {order.assetLocation}
+                    </p>
+                    {order.tasks.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5">
+                        {order.tasks.map((task, i) => (
+                          <li
+                            key={i}
+                            className={`flex items-start gap-1.5 text-xs ${
+                              task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-600'
+                            }`}
+                          >
+                            <span
+                              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                                task.isCompleted ? 'bg-eb-teal' : 'bg-slate-300'
+                              }`}
+                            />
+                            {task.description}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="col-start-2 row-start-1 flex flex-col items-end gap-1.5 sm:row-span-2">
+                    <div className="flex items-center gap-2">
+                      {order.incidents.length > 0 && (
+                        <span
+                          className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700"
+                          title="Incidencias reportadas"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          {order.incidents.length}
+                        </span>
+                      )}
+                      {order.deletedAt && (
+                        <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-600">
+                          Eliminada
+                        </span>
+                      )}
                       <span
-                        className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700"
-                        title="Incidencias reportadas"
+                        className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}
                       >
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        {order.incidents.length}
+                        {workOrderStatusLabel[order.status]}
                       </span>
+                    </div>
+                    {canViewAdminProcess && order.status === WorkOrderStatus.COMPLETED && (
+                      <AdminProcessSteps order={order} />
                     )}
-                    {order.deletedAt && (
-                      <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-600">
-                        Eliminada
-                      </span>
-                    )}
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}
-                    >
-                      {workOrderStatusLabel[order.status]}
-                    </span>
                   </div>
                 </div>
-                {canViewAdminProcess &&
-                  (order.adjustedAt || order.serviceProtocolAt || order.invoicedAt) && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {order.adjustedAt && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
-                          Ajustada
-                        </span>
-                      )}
-                      {order.serviceProtocolAt && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
-                          Protocolo {order.serviceProtocolDone ? 'realizado' : 'no procedía'}
-                        </span>
-                      )}
-                      {order.invoicedAt && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
-                          Facturada
-                        </span>
-                      )}
-                    </div>
-                  )}
-                <p className="mt-1 text-sm text-slate-700">
-                  {order.customer.name} · {order.boat.name}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {orderLocationLabel[order.locationCode]} · {order.assetLocation}
-                </p>
-                {order.tasks.length > 0 && (
-                  <ul className="mt-1.5 space-y-0.5">
-                    {order.tasks.map((task, i) => (
-                      <li
-                        key={i}
-                        className={`flex items-start gap-1.5 text-xs ${
-                          task.isCompleted ? 'text-slate-400 line-through' : 'text-slate-600'
-                        }`}
-                      >
-                        <span
-                          className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                            task.isCompleted ? 'bg-eb-teal' : 'bg-slate-300'
-                          }`}
-                        />
-                        {task.description}
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </button>
               <HasPermission permission="chat:write">
                 <button
