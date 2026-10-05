@@ -46,7 +46,8 @@ export function NewOrderPage() {
   const [existingEngines, setExistingEngines] = useState<EngineDraft[]>([])
   const [newEngines, setNewEngines] = useState<EngineDraft[]>([{ ...emptyEngine }])
 
-  const [assetLocation, setAssetLocation] = useState('')
+  // A visit outside our locations ("Cádiz") is where the boat is.
+  const [assetLocation, setAssetLocation] = useState(fromAppointment?.customLocation ?? '')
   const [tasks, setTasks] = useState<string[]>([fromAppointment?.title ?? ''])
   const [comments, setComments] = useState(fromAppointment?.notes ?? '')
 

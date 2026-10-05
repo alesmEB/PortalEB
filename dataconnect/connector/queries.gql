@@ -329,6 +329,7 @@ query ListCalendarAppointments @auth(level: USER) {
     title
     boatDetails
     locationCode
+    customLocation
     notes
     remarks
     closedAt
@@ -354,6 +355,7 @@ query ListCalendarAppointmentDates @auth(level: USER) {
       title
       boatDetails
       locationCode
+      customLocation
       notes
       remarks
       closedAt

@@ -52,6 +52,14 @@ type Appointment = ListCalendarAppointmentsData['calendarAppointments'][number]
 type AppointmentEntry =
   ListCalendarAppointmentDatesData['calendarAppointmentDates'][number]
 
+function appointmentLocationLabel(appointment: {
+  locationCode?: OrderLocation | null
+  customLocation?: string | null
+}) {
+  if (appointment.customLocation) return appointment.customLocation
+  return appointment.locationCode ? orderLocationLabel[appointment.locationCode] : ''
+}
+
 function taskProgressLabel(tasks: { isCompleted: boolean }[]) {
   if (tasks.length === 0) return null
   const done = tasks.filter((t) => t.isCompleted).length
@@ -227,7 +235,8 @@ export function CalendarPage() {
       id: appointment.id,
       title: appointment.title,
       boatDetails: appointment.boatDetails,
-      locationCode: appointment.locationCode,
+      locationCode: appointment.locationCode ?? null,
+      customLocation: appointment.customLocation,
       notes: appointment.notes,
     }
     navigate('/orders/new', { state: { fromAppointment } })
@@ -458,7 +467,7 @@ export function CalendarPage() {
                         }}
                         title={`Cita · ${entry.appointment.title}${
                           entry.appointment.boatDetails ? ` · ${entry.appointment.boatDetails}` : ''
-                        } · ${orderLocationLabel[entry.appointment.locationCode]}${
+                        } · ${appointmentLocationLabel(entry.appointment)}${
                           entry.appointment.workOrder ? ` · Orden ${entry.appointment.workOrder.code}` : ''
                         }${entry.appointment.remarks ? ` · Notas: ${entry.appointment.remarks}` : ''}`}
                         className={`block w-full cursor-pointer rounded border px-1 py-0.5 text-left text-[9px] ${
@@ -492,7 +501,7 @@ export function CalendarPage() {
                         <p className="mt-0.5 flex items-center gap-0.5 opacity-80">
                           <MapPin className="h-2.5 w-2.5 shrink-0" />
                           <span className="truncate">
-                            {orderLocationLabel[entry.appointment.locationCode]}
+                            {appointmentLocationLabel(entry.appointment)}
                           </span>
                         </p>
                         {entry.appointment.remarks && (
@@ -642,14 +651,14 @@ export function CalendarPage() {
                               onClick={() => navigate(`/orders/${appointment.workOrderId}`)}
                               className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] hover:underline ${appointmentPillClass[status]}`}
                             >
-                              Orden {appointment.workOrder?.code} · {orderLocationLabel[appointment.locationCode]}
+                              Orden {appointment.workOrder?.code} · {appointmentLocationLabel(appointment)}
                             </button>
                           ) : (
                             <span
                               className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] ${appointmentPillClass[status]}`}
                             >
                               {status === 'done' ? 'Completada' : 'Cita'} ·{' '}
-                              {orderLocationLabel[appointment.locationCode]}
+                              {appointmentLocationLabel(appointment)}
                             </span>
                           )}
                           {appointment.notes && (
@@ -786,7 +795,7 @@ export function CalendarPage() {
                         >
                           <p className="text-sm font-semibold text-amber-900">{appointment.title}</p>
                           <p className="text-xs text-amber-800">
-                            {orderLocationLabel[appointment.locationCode]}
+                            {appointmentLocationLabel(appointment)}
                             {appointment.boatDetails && ` · ${appointment.boatDetails}`}
                           </p>
                           {appointment.notes && (
@@ -904,7 +913,7 @@ export function CalendarPage() {
                             }`}
                           />
                           <span className="flex-1 truncate">
-                            {appointment.title} · {orderLocationLabel[appointment.locationCode]}
+                            {appointment.title} · {appointmentLocationLabel(appointment)}
                           </span>
                           <button
                             onClick={() => setEditingRemarksId(appointment.id)}
@@ -999,6 +1008,8 @@ export function CalendarPage() {
   )
 }
 
+const OTHER_LOCATION = 'OTHER'
+
 /** Create/edit dialog for a calendar appointment - the boat is free text
  * because these are visits to boats the system has no record of yet. */
 function AppointmentModal({
@@ -1018,10 +1029,14 @@ function AppointmentModal({
 }) {
   const [title, setTitle] = useState(appointment?.title ?? '')
   const [boatDetails, setBoatDetails] = useState(appointment?.boatDetails ?? '')
-  const [locationCode, setLocationCode] = useState<OrderLocation>(
-    appointment?.locationCode ?? OrderLocation.ALGECIRAS,
+  // OTHER_LOCATION picks the free-text field instead of one of our three.
+  const [locationChoice, setLocationChoice] = useState<OrderLocation | typeof OTHER_LOCATION>(
+    appointment?.customLocation ? OTHER_LOCATION : (appointment?.locationCode ?? OrderLocation.ALGECIRAS),
   )
+  const [customLocation, setCustomLocation] = useState(appointment?.customLocation ?? '')
   const [notes, setNotes] = useState(appointment?.notes ?? '')
+  const isOtherLocation = locationChoice === OTHER_LOCATION
+  const canSubmit = !!title.trim() && (!isOtherLocation || !!customLocation.trim())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1035,7 +1050,9 @@ function AppointmentModal({
       const input: CalendarAppointmentInput = {
         title: title.trim(),
         boatDetails: boatDetails.trim() || undefined,
-        locationCode,
+        ...(locationChoice === OTHER_LOCATION
+          ? { customLocation: customLocation.trim() }
+          : { locationCode: locationChoice }),
         notes: notes.trim() || undefined,
       }
       if (appointment) {
@@ -1082,8 +1099,8 @@ function AppointmentModal({
           <label className="block text-xs font-medium text-slate-500">
             Localización
             <select
-              value={locationCode}
-              onChange={(e) => setLocationCode(e.target.value as OrderLocation)}
+              value={locationChoice}
+              onChange={(e) => setLocationChoice(e.target.value as OrderLocation | typeof OTHER_LOCATION)}
               className={`mt-1 ${inputClass}`}
             >
               {Object.values(OrderLocation).map((loc) => (
@@ -1091,8 +1108,19 @@ function AppointmentModal({
                   {orderLocationLabel[loc]}
                 </option>
               ))}
+              <option value={OTHER_LOCATION}>Otra...</option>
             </select>
           </label>
+          {isOtherLocation && (
+            <input
+              placeholder="Dónde (por ejemplo, Cádiz)"
+              value={customLocation}
+              onChange={(e) => setCustomLocation(e.target.value)}
+              maxLength={80}
+              autoFocus
+              className={inputClass}
+            />
+          )}
           <label className="block text-xs font-medium text-slate-500">
             Comentarios de la actuación (opcional)
             <textarea
@@ -1127,7 +1155,7 @@ function AppointmentModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting || !title.trim()}
+            disabled={submitting || !canSubmit}
             className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             {submitting ? 'Guardando...' : appointment ? 'Guardar cambios' : 'Crear cita'}

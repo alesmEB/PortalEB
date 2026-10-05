@@ -134,7 +134,9 @@ Dos cosas distintas comparten la rejilla:
   **CalendarAppointmentDate** guarda un día por fila, igual que las órdenes.
   Tienen dos textos: `notes` es el trabajo que hay que hacer (la segunda línea
   del chip) y `remarks` son notas libres que se escriben en cualquier momento,
-  también después de completarla.
+  también después de completarla. La localización es una de las tres
+  (`locationCode`) u otra en texto libre (`customLocation`, "Cádiz"), nunca
+  las dos: una visita puede ser lejos de los talleres.
 
 Una cita nace de dos formas: desde el panel "Citas sin orden", sin día, y se
 coloca después con los chips de la semana; o pulsando un día en la vista Mes,
@@ -148,7 +150,8 @@ Al **completar** una cita se elige cómo acabó, y su ficha cambia de color
 - **Sin orden**: pasa a gris. Se puede reabrir desde "Ver citas completadas".
 - **Con orden** (solo quien tiene `orders:create`): se abre Nueva orden
   rellenada con la localización, la embarcación, el trabajo como primera tarea
-  y los comentarios. La cita no cambia hasta que esa orden se guarda: entonces
+  y los comentarios. Si la cita era en otro sitio, ese texto va a la ubicación
+  de la embarcación y la localización de la orden queda por elegir. La cita no cambia hasta que esa orden se guarda: entonces
   `createWorkOrder` la completa y la enlaza (`workOrderId`), pasa a morado y su
   ficha lleva a la orden. Si se sale del formulario sin crearla, la cita sigue
   pendiente. Una cita con orden no se puede reabrir ni eliminar, y el

@@ -281,7 +281,11 @@ type CalendarAppointment @table(name: "calendar_appointments") {
   title: String!
   # Free text on purpose - these are boats we have no record of yet.
   boatDetails: String
-  locationCode: OrderLocation!
+  # Exactly one of these two: one of our three locations, or free text for a
+  # visit anywhere else ("Cádiz") - appointments aren't tied to a workshop the
+  # way orders are. The order made from one still has to pick one of the three.
+  locationCode: OrderLocation
+  customLocation: String
   # The job itself ("Comentarios de la actuación"), set with the appointment
   # and shown as the second line of its chip.
   notes: String

@@ -43,7 +43,10 @@ export interface OrderFromAppointment {
   id: string
   title: string
   boatDetails?: string | null
-  locationCode: OrderLocation
+  /** Null when the appointment was somewhere else (`customLocation`): the
+   * order still has to pick one of ours. */
+  locationCode: OrderLocation | null
+  customLocation?: string | null
   notes?: string | null
 }
 

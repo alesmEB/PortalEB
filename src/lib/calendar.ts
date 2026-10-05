@@ -24,7 +24,9 @@ export interface CalendarAppointmentInput {
   title: string
   /** Free text - these are boats with no record in the system yet. */
   boatDetails?: string
-  locationCode: 'ALGECIRAS' | 'LA_LINEA' | 'SOTOGRANDE'
+  /** One of these two: our own location, or free text for anywhere else. */
+  locationCode?: 'ALGECIRAS' | 'LA_LINEA' | 'SOTOGRANDE'
+  customLocation?: string
   notes?: string
 }
 

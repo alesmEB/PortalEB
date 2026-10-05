@@ -2965,7 +2965,8 @@ const CREATE_CALENDAR_APPOINTMENT_MUTATION = `
   mutation CreateCalendarAppointmentAdmin(
     $title: String!
     $boatDetails: String
-    $locationCode: OrderLocation!
+    $locationCode: OrderLocation
+    $customLocation: String
     $notes: String
     $createdById: String!
   ) {
@@ -2974,12 +2975,16 @@ const CREATE_CALENDAR_APPOINTMENT_MUTATION = `
         title: $title
         boatDetails: $boatDetails
         locationCode: $locationCode
+        customLocation: $customLocation
         notes: $notes
         createdById: $createdById
       }
     )
   }
 `
+// Two versions because switching an appointment between one of our locations
+// and a free-text one has to clear the other field, and a null only clears in
+// an _update when it's written as a literal.
 const UPDATE_CALENDAR_APPOINTMENT_MUTATION = `
   mutation UpdateCalendarAppointmentAdmin(
     $id: UUID!
@@ -2990,7 +2995,33 @@ const UPDATE_CALENDAR_APPOINTMENT_MUTATION = `
   ) {
     calendarAppointment_update(
       id: $id
-      data: { title: $title, boatDetails: $boatDetails, locationCode: $locationCode, notes: $notes }
+      data: {
+        title: $title
+        boatDetails: $boatDetails
+        locationCode: $locationCode
+        customLocation: null
+        notes: $notes
+      }
+    )
+  }
+`
+const UPDATE_CALENDAR_APPOINTMENT_CUSTOM_LOCATION_MUTATION = `
+  mutation UpdateCalendarAppointmentCustomLocationAdmin(
+    $id: UUID!
+    $title: String!
+    $boatDetails: String
+    $customLocation: String!
+    $notes: String
+  ) {
+    calendarAppointment_update(
+      id: $id
+      data: {
+        title: $title
+        boatDetails: $boatDetails
+        locationCode: null
+        customLocation: $customLocation
+        notes: $notes
+      }
     )
   }
 `
@@ -3044,18 +3075,27 @@ async function getCalendarAppointment(appointmentId) {
   return res.data.calendarAppointment
 }
 
+const CUSTOM_LOCATION_MAX_LENGTH = 80
+
+// Either `locationCode` (one of ours) or `customLocation` (free text), never
+// both: the other one always comes back null.
 function appointmentFields(data) {
-  const { title, boatDetails, locationCode, notes } = data ?? {}
+  const { title, boatDetails, locationCode, customLocation, notes } = data ?? {}
   if (typeof title !== 'string' || !title.trim()) {
     throw new HttpsError('invalid-argument', 'La cita necesita un título.')
   }
-  if (!ORDER_LOCATIONS.includes(locationCode)) {
-    throw new HttpsError('invalid-argument', 'Localización inválida.')
+  const custom = typeof customLocation === 'string' ? customLocation.trim() : ''
+  if (custom.length > CUSTOM_LOCATION_MAX_LENGTH) {
+    throw new HttpsError('invalid-argument', `La localización no puede pasar de ${CUSTOM_LOCATION_MAX_LENGTH} caracteres.`)
+  }
+  if (!custom && !ORDER_LOCATIONS.includes(locationCode)) {
+    throw new HttpsError('invalid-argument', 'Elige una localización o escribe cuál es.')
   }
   return {
     title: title.trim(),
     boatDetails: typeof boatDetails === 'string' && boatDetails.trim() ? boatDetails.trim() : null,
-    locationCode,
+    locationCode: custom ? null : locationCode,
+    customLocation: custom || null,
     notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
   }
 }
@@ -3077,9 +3117,16 @@ exports.updateCalendarAppointment = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Falta el identificador de la cita.')
   }
 
-  await dataConnect.executeGraphql(UPDATE_CALENDAR_APPOINTMENT_MUTATION, {
-    variables: { id: appointmentId, ...appointmentFields(request.data) },
-  })
+  const { locationCode, customLocation, ...fields } = appointmentFields(request.data)
+  if (customLocation) {
+    await dataConnect.executeGraphql(UPDATE_CALENDAR_APPOINTMENT_CUSTOM_LOCATION_MUTATION, {
+      variables: { id: appointmentId, ...fields, customLocation },
+    })
+  } else {
+    await dataConnect.executeGraphql(UPDATE_CALENDAR_APPOINTMENT_MUTATION, {
+      variables: { id: appointmentId, ...fields, locationCode },
+    })
+  }
   return { success: true }
 })
 

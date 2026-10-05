@@ -8,6 +8,11 @@ tu versión.
 
 ## 5 de octubre de 2026
 
+- Calendario: al crear o editar una cita, además de Algeciras, La Línea y
+  Sotogrande se puede elegir "Otra..." y escribir dónde es (por ejemplo,
+  Cádiz). Si de esa cita sale una orden, ese sitio pasa a la ubicación de la
+  embarcación y la localización de la orden se elige a mano.
+
 - Lista de órdenes: en las completadas, "Ajustada", "Protocolo" y "Facturada"
   salen en columna debajo del estado, cada una con su icono. Están siempre las
   tres: en gris mientras faltan y en color cuando ya se han hecho. Solo las ve
