@@ -25,7 +25,11 @@ type PendingAttachment = { file: File; type: ChatAttachmentType }
 export function ChatPage() {
   const { kind, orderId } = useParams<{ kind: ChatKind; orderId: string }>()
   const location = useLocation()
-  const backTo = (location.state as { from?: string } | null)?.from ?? '/orders'
+  // `fromState` is the opener's own router state: an order opened from
+  // Asignaciones passes it along so that, back on the order, "Volver" still
+  // leads to Asignaciones instead of falling back to the orders list.
+  const routerState = location.state as { from?: string; fromState?: unknown } | null
+  const backTo = routerState?.from ?? '/orders'
   const { profile } = useAuth()
   const [messages, setMessages] = useState<ChatMessage[] | null>(null)
   const [text, setText] = useState('')
@@ -101,7 +105,7 @@ export function ChatPage() {
 
   return (
     <div className="flex flex-1 flex-col p-4">
-      <BackButton to={backTo} />
+      <BackButton to={backTo} state={routerState?.fromState} />
       <h1 className="text-lg font-semibold text-eb-blue-dark">{titleByKind[kind]}</h1>
 
       <div className="mt-4 flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white/90 p-4">

@@ -6,6 +6,13 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 6 de octubre de 2026
+
+- Arreglado: al abrir una orden desde Asignaciones, entrar en uno de sus chats
+  y volver, el siguiente "Volver" llevaba a la lista de órdenes. Ahora vuelve
+  a Asignaciones. Lo mismo desde la lista de órdenes: se conservan los filtros
+  aunque se pase por el chat.
+
 ## 5 de octubre de 2026
 
 - Calendario: al crear o editar una cita, además de Algeciras, La Línea y

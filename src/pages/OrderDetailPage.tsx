@@ -1638,7 +1638,11 @@ export function OrderDetailPage() {
         {!isWorkshop && (
           <HasPermission permission="chat:write">
             <button
-              onClick={() => navigate(`/chat/client/${order.id}`, { state: { from: `/orders/${order.id}` } })}
+              onClick={() =>
+                navigate(`/chat/client/${order.id}`, {
+                  state: { from: `/orders/${order.id}`, fromState: routerState },
+                })
+              }
               className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
             >
               Chat con cliente
@@ -1652,7 +1656,9 @@ export function OrderDetailPage() {
           <HasPermission permission="chat:write">
             <button
               onClick={() =>
-                navigate(`/chat/technicians/${order.id}`, { state: { from: `/orders/${order.id}` } })
+                navigate(`/chat/technicians/${order.id}`, {
+                  state: { from: `/orders/${order.id}`, fromState: routerState },
+                })
               }
               className="relative rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:border-eb-blue hover:text-eb-blue"
             >
