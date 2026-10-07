@@ -242,6 +242,7 @@ query ListWorkshopOrders @auth(level: USER) {
   ) {
     id
     code
+    externalCode
     status
     locationCode
     workshopMonth

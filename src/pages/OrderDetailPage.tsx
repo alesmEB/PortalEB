@@ -1446,7 +1446,8 @@ export function OrderDetailPage() {
   // A workshop order (see WorkOrder.workshopMonth) is only somewhere to clock
   // hours: no customer, quote, job list, report or closing process, and the
   // system assigns and completes it. Everything about those is hidden, which
-  // leaves clocking in, who's on it, the shifts and the notes.
+  // leaves clocking in, who's on it, the shifts, the notes and the internal
+  // order number - the office files these hours under one of its own too.
   const isWorkshop = !!order.workshopMonth
   // Whoever can create an order can also correct its job list, but only
   // while the order can still change: a completed order's jobs are already
@@ -1513,9 +1514,7 @@ export function OrderDetailPage() {
         </p>
       )}
 
-      {!isWorkshop && (
-        <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />
-      )}
+      <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />
 
       <HasPermission permission="orders:notes">
         <NotesSection notes={order.notes} workOrderId={order.id} onAdded={loadOrder} />

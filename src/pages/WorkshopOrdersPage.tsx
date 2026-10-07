@@ -135,7 +135,12 @@ export function WorkshopOrdersPage() {
                         </span>
                       )}
                     </p>
-                    <p className="mt-1 font-mono text-[11px] text-slate-400">{order.code}</p>
+                    <p className="mt-1 font-mono text-[11px] text-slate-400">
+                      {order.code}
+                      {order.externalCode && (
+                        <span className="text-slate-600"> · {order.externalCode}</span>
+                      )}
+                    </p>
                   </button>
                 )
               })}

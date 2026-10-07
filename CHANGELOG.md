@@ -6,6 +6,12 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 7 de octubre de 2026
+
+- Órdenes de taller: ya se les puede poner el número de orden interno, igual
+  que al resto de órdenes. Se ve en la orden, en la lista de "Órdenes de
+  taller" y en el registro de horas.
+
 ## 6 de octubre de 2026
 
 - Arreglado: al abrir una orden desde Asignaciones, entrar en uno de sus chats
