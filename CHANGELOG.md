@@ -6,6 +6,12 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 8 de octubre de 2026
+
+- Arreglado: en el PDF del registro de horas, el número interno de una orden
+  de taller se montaba encima de nuestro código (`TALLER-S-2026-10`), que es
+  más largo que el de una orden normal. Ahora cada uno tiene su hueco.
+
 ## 7 de octubre de 2026
 
 - Órdenes de taller: ya se les puede poner el número de orden interno, igual

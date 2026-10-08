@@ -173,7 +173,9 @@ const styles = StyleSheet.create({
   shiftRow: { flexDirection: 'row', paddingVertical: 1 },
   colTimes: { width: 110 },
   colDuration: { width: 60, color: '#64748b' },
-  colOrder: { width: 62, fontWeight: 700, color: '#0369a1' },
+  // Wide enough for a workshop order's code ("TALLER-S-2026-10"), which is
+  // half as long again as a normal one and would run into the next column.
+  colOrder: { width: 98, fontWeight: 700, color: '#0369a1' },
   colExternal: { width: 58, color: '#0f172a' },
   colBoat: { flex: 1, color: '#475569' },
   colNote: { width: 70, color: '#b45309', textAlign: 'right' },
