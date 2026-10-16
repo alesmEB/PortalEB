@@ -6,6 +6,18 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 16 de octubre de 2026
+
+- Nueva orden: los campos obligatorios llevan un asterisco rojo. Si falta
+  alguno, "Crear orden" ya no se queda gris sin más: al pulsarlo dice qué
+  falta y lo marca en rojo. También avisa de un motor a medias, que antes se
+  descartaba sin decir nada.
+
+- Lista de órdenes: nueva vista compacta, que se activa en los filtros. Cada
+  orden ocupa dos filas: en la primera el número de orden, el interno, la
+  embarcación, el cliente y la ubicación; en la segunda, los trabajos. Se
+  mantiene al recargar y al volver de una orden.
+
 ## 8 de octubre de 2026
 
 - Arreglado: en el PDF del registro de horas, el número interno de una orden

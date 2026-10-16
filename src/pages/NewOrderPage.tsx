@@ -20,6 +20,24 @@ interface EngineDraft {
 
 const emptyEngine: EngineDraft = { engineType: '', chassisNumber: '', propellerSerialNumber: '' }
 
+type RequiredField =
+  | 'location'
+  | 'customerName'
+  | 'contactName'
+  | 'phone'
+  | 'boatName'
+  | 'assetLocation'
+  | 'engines'
+  | 'tasks'
+
+function RequiredMark() {
+  return (
+    <span className="ml-0.5 text-red-600" aria-hidden="true">
+      *
+    </span>
+  )
+}
+
 export function NewOrderPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -52,6 +70,8 @@ export function NewOrderPage() {
   const [comments, setComments] = useState(fromAppointment?.notes ?? '')
 
   const [submitting, setSubmitting] = useState(false)
+  // Off until the first try: a fresh form all in red would only be noise.
+  const [showMissing, setShowMissing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successCode, setSuccessCode] = useState<string | null>(null)
   const [successReportUrl, setSuccessReportUrl] = useState<string | null>(null)
@@ -143,15 +163,39 @@ export function NewOrderPage() {
   )
   const filledTasks = tasks.map((t) => t.trim()).filter(Boolean)
 
-  const canSubmit = useMemo(() => {
-    if (!locationCode) return false
-    if (!customerName.trim()) return false
-    if (!selectedCustomerId && (!contactName.trim() || !phone.trim())) return false
-    if (!boatName.trim()) return false
-    if (!assetLocation.trim()) return false
-    if (existingEngines.length + filledNewEngines.length === 0) return false
-    if (filledTasks.length === 0) return false
-    return true
+  // A new engine row only half filled in used to be dropped without a word.
+  const halfFilledEngine = newEngines.some((engine) => {
+    const parts = [engine.engineType, engine.chassisNumber, engine.propellerSerialNumber].map((p) =>
+      p.trim(),
+    )
+    return parts.some(Boolean) && !parts.every(Boolean)
+  })
+
+  // What's still missing, named as the form names it. The button stays
+  // pressable on purpose: greyed out it didn't say why, and a form with no
+  // phone number looked ready to go. Pressing it lists what's left and marks
+  // those fields instead.
+  const missing = useMemo(() => {
+    const list: { field: RequiredField; label: string }[] = []
+    if (!locationCode) list.push({ field: 'location', label: 'Localización' })
+    if (!customerName.trim()) list.push({ field: 'customerName', label: 'Nombre de empresa/particular' })
+    if (!selectedCustomerId && !contactName.trim()) {
+      list.push({ field: 'contactName', label: 'Nombre del responsable' })
+    }
+    if (!selectedCustomerId && !phone.trim()) {
+      list.push({ field: 'phone', label: 'Teléfono del responsable' })
+    }
+    if (!boatName.trim()) list.push({ field: 'boatName', label: 'Nombre de la embarcación/máquina' })
+    if (!assetLocation.trim()) {
+      list.push({ field: 'assetLocation', label: 'Ubicación de la embarcación/máquina' })
+    }
+    if (halfFilledEngine) {
+      list.push({ field: 'engines', label: 'Un motor a medias: rellena sus tres datos o vacíalo' })
+    } else if (existingEngines.length + filledNewEngines.length === 0) {
+      list.push({ field: 'engines', label: 'Al menos un motor, con sus tres datos' })
+    }
+    if (filledTasks.length === 0) list.push({ field: 'tasks', label: 'Al menos un trabajo a realizar' })
+    return list
   }, [
     locationCode,
     customerName,
@@ -160,13 +204,25 @@ export function NewOrderPage() {
     phone,
     boatName,
     assetLocation,
+    halfFilledEngine,
     existingEngines.length,
     filledNewEngines.length,
     filledTasks.length,
   ])
 
+  function isMissing(field: RequiredField) {
+    return showMissing && missing.some((m) => m.field === field)
+  }
+
+  function inputBorder(field: RequiredField) {
+    return isMissing(field) ? 'border-red-400 bg-red-50' : 'border-slate-300'
+  }
+
   async function handleSubmit() {
-    if (!canSubmit || !locationCode) return
+    if (missing.length > 0 || !locationCode) {
+      setShowMissing(true)
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -247,6 +303,9 @@ export function NewOrderPage() {
     <div className="flex-1 p-4">
       <BackButton to={fromAppointment ? '/calendar' : '/'} />
       <h1 className="text-lg font-semibold text-eb-blue-dark">Nueva orden de trabajo</h1>
+      <p className="mt-0.5 text-xs text-slate-500">
+        Los campos con <span className="text-red-600">*</span> son obligatorios.
+      </p>
       {fromAppointment && (
         <p className="mt-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
           Datos traídos de la cita «{fromAppointment.title}». Revisa y completa lo que falta: al
@@ -256,7 +315,13 @@ export function NewOrderPage() {
       )}
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-eb-teal-dark">Localización</h2>
+        <h2 className="text-sm font-semibold text-eb-teal-dark">
+          Localización
+          <RequiredMark />
+        </h2>
+        {isMissing('location') && (
+          <p className="mt-1 text-xs text-red-600">Elige la localización de la orden.</p>
+        )}
         <div className="mt-2 flex flex-wrap gap-2">
           {Object.values(OrderLocation).map((loc) => (
             <button
@@ -298,12 +363,13 @@ export function NewOrderPage() {
 
         <label className="mt-2 block text-sm font-medium text-slate-600">
           Nombre de empresa/particular
+          <RequiredMark />
           <input
             list="customer-names"
             value={customerName}
             disabled={!!selectedBoatId}
             onChange={(e) => handleCustomerNameChange(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue disabled:bg-slate-100 disabled:text-slate-500"
+            className={`mt-1 w-full rounded-lg border ${inputBorder('customerName')} px-3 py-2 text-base outline-none focus:border-eb-blue disabled:bg-slate-100 disabled:text-slate-500`}
           />
           <datalist id="customer-names">
             {customers.map((c) => (
@@ -314,21 +380,23 @@ export function NewOrderPage() {
 
         <label className="mt-3 block text-sm font-medium text-slate-600">
           Nombre del responsable
+          <RequiredMark />
           <input
             value={contactName}
             disabled={!!selectedCustomerId}
             onChange={(e) => setContactName(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue disabled:bg-slate-100 disabled:text-slate-500"
+            className={`mt-1 w-full rounded-lg border ${inputBorder('contactName')} px-3 py-2 text-base outline-none focus:border-eb-blue disabled:bg-slate-100 disabled:text-slate-500`}
           />
         </label>
 
         <label className="mt-3 block text-sm font-medium text-slate-600">
           Teléfono del responsable
+          <RequiredMark />
           <input
             value={phone}
             disabled={!!selectedCustomerId}
             onChange={(e) => setPhone(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue disabled:bg-slate-100 disabled:text-slate-500"
+            className={`mt-1 w-full rounded-lg border ${inputBorder('phone')} px-3 py-2 text-base outline-none focus:border-eb-blue disabled:bg-slate-100 disabled:text-slate-500`}
           />
         </label>
       </section>
@@ -345,11 +413,12 @@ export function NewOrderPage() {
 
         <label className="mt-2 block text-sm font-medium text-slate-600">
           Nombre
+          <RequiredMark />
           <input
             list="boat-names"
             value={boatName}
             onChange={(e) => handleBoatNameChange(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue"
+            className={`mt-1 w-full rounded-lg border ${inputBorder('boatName')} px-3 py-2 text-base outline-none focus:border-eb-blue`}
           />
           <datalist id="boat-names">
             {(selectedCustomerId
@@ -380,11 +449,12 @@ export function NewOrderPage() {
 
         <label className="mt-3 block text-sm font-medium text-slate-600">
           Ubicación de la embarcación/máquina
+          <RequiredMark />
           <input
             value={assetLocation}
             onChange={(e) => setAssetLocation(e.target.value)}
             placeholder="Ej. Muelle 3, pantalán B"
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue"
+            className={`mt-1 w-full rounded-lg border ${inputBorder('assetLocation')} px-3 py-2 text-base outline-none focus:border-eb-blue`}
           />
         </label>
 
@@ -405,26 +475,34 @@ export function NewOrderPage() {
         <div className="mt-4">
           <p className="text-xs font-medium text-slate-500">
             {existingEngines.length > 0 ? 'Añadir motor nuevo' : 'Motores'}
+            {existingEngines.length === 0 && <RequiredMark />}
           </p>
+          {isMissing('engines') && (
+            <p className="mt-1 text-xs text-red-600">
+              {halfFilledEngine
+                ? 'Hay un motor a medias: rellena tipo, nº chasis y nº serie del propulsor, o vacíalo.'
+                : 'Añade al menos un motor con sus tres datos.'}
+            </p>
+          )}
           {newEngines.map((engine, i) => (
             <div key={i} className="mt-2 grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-3">
               <input
                 placeholder="Tipo de motor"
                 value={engine.engineType}
                 onChange={(e) => updateNewEngine(i, 'engineType', e.target.value)}
-                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-eb-blue"
+                className={`rounded-lg border ${inputBorder('engines')} px-2 py-1.5 text-sm outline-none focus:border-eb-blue`}
               />
               <input
                 placeholder="Nº chasis del motor"
                 value={engine.chassisNumber}
                 onChange={(e) => updateNewEngine(i, 'chassisNumber', e.target.value)}
-                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-eb-blue"
+                className={`rounded-lg border ${inputBorder('engines')} px-2 py-1.5 text-sm outline-none focus:border-eb-blue`}
               />
               <input
                 placeholder="Nº serie del propulsor"
                 value={engine.propellerSerialNumber}
                 onChange={(e) => updateNewEngine(i, 'propellerSerialNumber', e.target.value)}
-                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-eb-blue"
+                className={`rounded-lg border ${inputBorder('engines')} px-2 py-1.5 text-sm outline-none focus:border-eb-blue`}
               />
             </div>
           ))}
@@ -439,14 +517,20 @@ export function NewOrderPage() {
       </section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos a realizar</h2>
+        <h2 className="text-sm font-semibold text-eb-teal-dark">
+          Trabajos a realizar
+          <RequiredMark />
+        </h2>
+        {isMissing('tasks') && (
+          <p className="mt-1 text-xs text-red-600">Escribe al menos un trabajo.</p>
+        )}
         {tasks.map((task, i) => (
           <div key={i} className="mt-2 flex gap-2">
             <input
               value={task}
               onChange={(e) => updateTask(i, e.target.value)}
               placeholder={`Tarea ${i + 1}`}
-              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-base outline-none focus:border-eb-blue"
+              className={`flex-1 rounded-lg border ${inputBorder('tasks')} px-3 py-2 text-base outline-none focus:border-eb-blue`}
             />
             {tasks.length > 1 && (
               <button
@@ -482,9 +566,20 @@ export function NewOrderPage() {
 
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
+      {showMissing && missing.length > 0 && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="font-semibold">Falta por rellenar:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {missing.map((m) => (
+              <li key={m.label}>{m.label}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <button
         type="button"
-        disabled={!canSubmit || submitting}
+        disabled={submitting}
         onClick={handleSubmit}
         className="mt-6 w-full rounded-lg bg-eb-teal py-3 text-base font-semibold text-white transition-colors hover:bg-eb-teal-dark disabled:opacity-50"
       >
