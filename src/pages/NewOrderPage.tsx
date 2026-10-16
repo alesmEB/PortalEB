@@ -311,6 +311,8 @@ export function NewOrderPage() {
           Datos traídos de la cita «{fromAppointment.title}». Revisa y completa lo que falta: al
           crear la orden, la cita quedará completada en el calendario, en morado. Si sales sin
           crearla, la cita sigue pendiente.
+          {fromAppointment.externalCode &&
+            ` La orden se creará con el nº de orden interno ${fromAppointment.externalCode}.`}
         </p>
       )}
 

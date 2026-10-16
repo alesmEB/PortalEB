@@ -8,6 +8,10 @@ tu versión.
 
 ## 16 de octubre de 2026
 
+- Calendario: las citas pueden llevar el número de orden interno, por si el
+  trabajo ya tiene orden abierta en el sistema de facturación. Se ve en la
+  cita, y si de ella sale una orden, la orden se crea ya con ese número.
+
 - Nueva orden: los campos obligatorios llevan un asterisco rojo. Si falta
   alguno, "Crear orden" ya no se queda gris sin más: al pulsarlo dice qué
   falta y lo marca en rojo. También avisa de un motor a medias, que antes se

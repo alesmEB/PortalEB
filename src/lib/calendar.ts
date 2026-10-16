@@ -27,6 +27,8 @@ export interface CalendarAppointmentInput {
   /** One of these two: our own location, or free text for anywhere else. */
   locationCode?: 'ALGECIRAS' | 'LA_LINEA' | 'SOTOGRANDE'
   customLocation?: string
+  /** The billing system's order number, if the job already has one there. */
+  externalCode?: string
   notes?: string
 }
 

@@ -99,6 +99,7 @@ const CREATE_WORK_ORDER_MUTATION = `
     $createdById: String!
     $assetLocation: String!
     $description: String
+    $externalCode: String
   ) {
     workOrder_insert(
       data: {
@@ -110,6 +111,7 @@ const CREATE_WORK_ORDER_MUTATION = `
         createdById: $createdById
         assetLocation: $assetLocation
         description: $description
+        externalCode: $externalCode
       }
     )
   }
@@ -935,6 +937,9 @@ exports.createWorkOrder = onCall(async (request) => {
       createdById: callerUid,
       assetLocation: assetLocation.trim(),
       description: description || null,
+      // Read from the appointment here, not sent by the form: it's the
+      // billing system's number, and the order gets the one on record.
+      externalCode: fromAppointment?.externalCode ?? null,
     },
   })
   const workOrderId = workOrderRes.data.workOrder_insert.id
@@ -951,7 +956,10 @@ exports.createWorkOrder = onCall(async (request) => {
       actorId: callerUid,
       eventType: 'ORDER_CREATED',
       metadata: fromAppointment
-        ? { fromAppointment: { id: fromAppointment.id, title: fromAppointment.title } }
+        ? {
+            fromAppointment: { id: fromAppointment.id, title: fromAppointment.title },
+            ...(fromAppointment.externalCode ? { externalCode: fromAppointment.externalCode } : {}),
+          }
         : null,
     },
   })
@@ -2967,6 +2975,7 @@ const CREATE_CALENDAR_APPOINTMENT_MUTATION = `
     $boatDetails: String
     $locationCode: OrderLocation
     $customLocation: String
+    $externalCode: String
     $notes: String
     $createdById: String!
   ) {
@@ -2976,6 +2985,7 @@ const CREATE_CALENDAR_APPOINTMENT_MUTATION = `
         boatDetails: $boatDetails
         locationCode: $locationCode
         customLocation: $customLocation
+        externalCode: $externalCode
         notes: $notes
         createdById: $createdById
       }
@@ -2991,6 +3001,7 @@ const UPDATE_CALENDAR_APPOINTMENT_MUTATION = `
     $title: String!
     $boatDetails: String
     $locationCode: OrderLocation!
+    $externalCode: String
     $notes: String
   ) {
     calendarAppointment_update(
@@ -3000,6 +3011,7 @@ const UPDATE_CALENDAR_APPOINTMENT_MUTATION = `
         boatDetails: $boatDetails
         locationCode: $locationCode
         customLocation: null
+        externalCode: $externalCode
         notes: $notes
       }
     )
@@ -3011,6 +3023,7 @@ const UPDATE_CALENDAR_APPOINTMENT_CUSTOM_LOCATION_MUTATION = `
     $title: String!
     $boatDetails: String
     $customLocation: String!
+    $externalCode: String
     $notes: String
   ) {
     calendarAppointment_update(
@@ -3020,6 +3033,7 @@ const UPDATE_CALENDAR_APPOINTMENT_CUSTOM_LOCATION_MUTATION = `
         boatDetails: $boatDetails
         locationCode: null
         customLocation: $customLocation
+        externalCode: $externalCode
         notes: $notes
       }
     )
@@ -3055,6 +3069,7 @@ const GET_CALENDAR_APPOINTMENT_QUERY = `
     calendarAppointment(id: $id) {
       id
       title
+      externalCode
       closedAt
       workOrderId
     }
@@ -3080,7 +3095,7 @@ const CUSTOM_LOCATION_MAX_LENGTH = 80
 // Either `locationCode` (one of ours) or `customLocation` (free text), never
 // both: the other one always comes back null.
 function appointmentFields(data) {
-  const { title, boatDetails, locationCode, customLocation, notes } = data ?? {}
+  const { title, boatDetails, locationCode, customLocation, externalCode, notes } = data ?? {}
   if (typeof title !== 'string' || !title.trim()) {
     throw new HttpsError('invalid-argument', 'La cita necesita un título.')
   }
@@ -3096,6 +3111,7 @@ function appointmentFields(data) {
     boatDetails: typeof boatDetails === 'string' && boatDetails.trim() ? boatDetails.trim() : null,
     locationCode: custom ? null : locationCode,
     customLocation: custom || null,
+    externalCode: typeof externalCode === 'string' && externalCode.trim() ? externalCode.trim() : null,
     notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
   }
 }

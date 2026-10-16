@@ -286,6 +286,11 @@ type CalendarAppointment @table(name: "calendar_appointments") {
   # way orders are. The order made from one still has to pick one of the three.
   locationCode: OrderLocation
   customLocation: String
+  # The job's number in the company's billing system when it already has
+  # one there before any work order exists here - same free text as
+  # WorkOrder.externalCode, and carried over to it when the appointment
+  # becomes an order (see createWorkOrder).
+  externalCode: String
   # The job itself ("Comentarios de la actuación"), set with the appointment
   # and shown as the second line of its chip.
   notes: String

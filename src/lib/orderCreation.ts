@@ -47,6 +47,8 @@ export interface OrderFromAppointment {
    * order still has to pick one of ours. */
   locationCode: OrderLocation | null
   customLocation?: string | null
+  /** Only to say so on the form: the server copies it from the appointment. */
+  externalCode?: string | null
   notes?: string | null
 }
 

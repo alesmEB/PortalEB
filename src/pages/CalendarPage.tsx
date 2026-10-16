@@ -237,6 +237,7 @@ export function CalendarPage() {
       boatDetails: appointment.boatDetails,
       locationCode: appointment.locationCode ?? null,
       customLocation: appointment.customLocation,
+      externalCode: appointment.externalCode,
       notes: appointment.notes,
     }
     navigate('/orders/new', { state: { fromAppointment } })
@@ -468,6 +469,8 @@ export function CalendarPage() {
                         title={`Cita · ${entry.appointment.title}${
                           entry.appointment.boatDetails ? ` · ${entry.appointment.boatDetails}` : ''
                         } · ${appointmentLocationLabel(entry.appointment)}${
+                          entry.appointment.externalCode ? ` · Nº interno ${entry.appointment.externalCode}` : ''
+                        }${
                           entry.appointment.workOrder ? ` · Orden ${entry.appointment.workOrder.code}` : ''
                         }${entry.appointment.remarks ? ` · Notas: ${entry.appointment.remarks}` : ''}`}
                         className={`block w-full cursor-pointer rounded border px-1 py-0.5 text-left text-[9px] ${
@@ -613,6 +616,11 @@ export function CalendarPage() {
                               <p className="text-xs font-semibold">{appointment.title}</p>
                               {appointment.boatDetails && (
                                 <p className="text-xs opacity-90">{appointment.boatDetails}</p>
+                              )}
+                              {appointment.externalCode && (
+                                <p className="font-mono text-[11px] font-bold italic opacity-90">
+                                  {appointment.externalCode}
+                                </p>
                               )}
                             </div>
                             {/* Unlike the days and the ✕, notes stay editable
@@ -797,6 +805,9 @@ export function CalendarPage() {
                           <p className="text-xs text-amber-800">
                             {appointmentLocationLabel(appointment)}
                             {appointment.boatDetails && ` · ${appointment.boatDetails}`}
+                            {appointment.externalCode && (
+                              <span className="font-mono font-bold italic"> · {appointment.externalCode}</span>
+                            )}
                           </p>
                           {appointment.notes && (
                             <p className="mt-0.5 text-xs text-amber-700">{appointment.notes}</p>
@@ -1034,6 +1045,7 @@ function AppointmentModal({
     appointment?.customLocation ? OTHER_LOCATION : (appointment?.locationCode ?? OrderLocation.ALGECIRAS),
   )
   const [customLocation, setCustomLocation] = useState(appointment?.customLocation ?? '')
+  const [externalCode, setExternalCode] = useState(appointment?.externalCode ?? '')
   const [notes, setNotes] = useState(appointment?.notes ?? '')
   const isOtherLocation = locationChoice === OTHER_LOCATION
   const canSubmit = !!title.trim() && (!isOtherLocation || !!customLocation.trim())
@@ -1053,6 +1065,7 @@ function AppointmentModal({
         ...(locationChoice === OTHER_LOCATION
           ? { customLocation: customLocation.trim() }
           : { locationCode: locationChoice }),
+        externalCode: externalCode.trim() || undefined,
         notes: notes.trim() || undefined,
       }
       if (appointment) {
@@ -1121,6 +1134,15 @@ function AppointmentModal({
               className={inputClass}
             />
           )}
+          <label className="block text-xs font-medium text-slate-500">
+            Nº de orden interno (opcional)
+            <input
+              placeholder="Si ya tiene orden en el sistema de facturación"
+              value={externalCode}
+              onChange={(e) => setExternalCode(e.target.value)}
+              className={`mt-1 ${inputClass}`}
+            />
+          </label>
           <label className="block text-xs font-medium text-slate-500">
             Comentarios de la actuación (opcional)
             <textarea

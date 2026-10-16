@@ -136,7 +136,9 @@ Dos cosas distintas comparten la rejilla:
   del chip) y `remarks` son notas libres que se escriben en cualquier momento,
   también después de completarla. La localización es una de las tres
   (`locationCode`) u otra en texto libre (`customLocation`, "Cádiz"), nunca
-  las dos: una visita puede ser lejos de los talleres.
+  las dos: una visita puede ser lejos de los talleres. También puede llevar
+  el número de orden interno (`externalCode`) si el trabajo ya tiene orden
+  en el sistema de facturación; al crear la orden desde la cita, pasa a ella.
 
 Una cita nace de dos formas: desde el panel "Citas sin orden", sin día, y se
 coloca después con los chips de la semana; o pulsando un día en la vista Mes,
