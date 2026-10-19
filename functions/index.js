@@ -340,6 +340,7 @@ const GET_ACTIVE_TIME_LOGS_QUERY = `
     timeLogs(where: { workOrderId: { eq: $workOrderId }, clockOut: { isNull: true } }) {
       id
       clockIn
+      technicianId
     }
   }
 `
@@ -393,6 +394,46 @@ const CLOSED_ORDER_STATUSES = ['COMPLETED', 'CANCELLED']
 
 function pickActiveTimeLog(timeLogs) {
   return timeLogs.find((log) => !CLOSED_ORDER_STATUSES.includes(log.workOrder.status))
+}
+
+// The shift a technician left to start `shift`, when it was on a workshop
+// order that's still open - startWorking closes the previous shift at the
+// exact instant the new one opens, so the two meet on the same timestamp.
+const GET_WORKSHOP_SHIFT_ENDED_AT_QUERY = `
+  query GetWorkshopShiftEndedAtAdmin($technicianId: String!, $at: Timestamp!) {
+    timeLogs(
+      where: {
+        technicianId: { eq: $technicianId }
+        clockOut: { eq: $at }
+        workOrder: {
+          workshopMonth: { isNull: false }
+          status: { eq: IN_PROGRESS }
+          deletedAt: { isNull: true }
+        }
+      }
+      limit: 1
+    ) {
+      workOrder {
+        id
+        code
+        locationCode
+      }
+    }
+  }
+`
+
+// Technicians go from the workshop to a boat and back, and forgot to clock
+// back into the workshop order when the boat job ended - those hours were
+// lost. So when a shift ends, the screen offers to go back to the workshop
+// order it interrupted. Only one step back: workshop -> A -> B offers
+// nothing when B ends, since what came right before was A.
+async function workshopOrderToResume(technicianId, endedShift) {
+  const res = await dataConnect.executeGraphqlRead(GET_WORKSHOP_SHIFT_ENDED_AT_QUERY, {
+    variables: { technicianId, at: endedShift.clockIn },
+  })
+  const workOrder = res.data.timeLogs[0]?.workOrder
+  if (!workOrder || workOrder.id === endedShift.workOrderId) return null
+  return { workOrderId: workOrder.id, code: workOrder.code, locationCode: workOrder.locationCode }
 }
 
 const CLOCK_IN_MUTATION = `
@@ -1498,7 +1539,14 @@ exports.completeOrder = onCall(async (request) => {
     variables: { workOrderId, actorId: callerUid, eventType: 'ORDER_COMPLETED' },
   })
 
-  return { success: true }
+  // Only the one finishing is asked: the others clocked out here aren't
+  // looking at this screen.
+  const myShift = activeLogsRes.data.timeLogs.find((log) => log.technicianId === callerUid)
+  const resumeWorkshop = myShift
+    ? await workshopOrderToResume(callerUid, { clockIn: myShift.clockIn, workOrderId }).catch(() => null)
+    : null
+
+  return { success: true, resumeWorkshop }
 })
 
 // Admin shortcut: technicians aren't using the app day-to-day, so requiring
@@ -2271,7 +2319,13 @@ exports.stopWorking = onCall(async (request) => {
     data: { tag: activeShiftTag(callerUid), action: 'close' },
   }).catch(() => {})
 
-  return { success: true }
+  // Only live: a clock-out replayed from the offline queue has nobody on
+  // screen to answer.
+  const resumeWorkshop = recordedOffline
+    ? null
+    : await workshopOrderToResume(callerUid, active).catch(() => null)
+
+  return { success: true, resumeWorkshop }
 })
 
 const GET_TIME_LOG_FOR_EDIT_QUERY = `

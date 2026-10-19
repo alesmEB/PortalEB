@@ -6,6 +6,17 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 19 de octubre de 2026
+
+- Órdenes de taller: si un técnico estaba fichado en la orden de taller, se
+  pasa a otra orden y deja de trabajar en ella (o la termina), la app le
+  pregunta si quiere volver a la orden de taller. Con un sí, vuelve a fichar
+  en ella al momento.
+
+- La barra de "Turno activo" de abajo se actualiza en cuanto fichas o cierras
+  el turno. Antes podía tardar hasta medio minuto y seguía contando un turno
+  ya cerrado.
+
 ## 16 de octubre de 2026
 
 - Calendario: las citas pueden llevar el número de orden interno, por si el

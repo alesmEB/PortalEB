@@ -17,3 +17,28 @@ export function pickActiveShift<T extends { workOrder: { status: WorkOrderStatus
 ): T | null {
   return logs.find((log) => !isLeftoverShift(log)) ?? null
 }
+
+/** What the "Turno activo" bar needs to show a shift. */
+export interface ActiveShiftSummary {
+  workOrderId: string
+  clockIn: string
+  workOrder: { code: string }
+}
+
+const ACTIVE_SHIFT_CHANGED = 'portaleb:active-shift-changed'
+
+/**
+ * Tells the "Turno activo" bar (ActiveShiftBanner) that a clock-in or
+ * clock-out just happened, with the shift now open (null if none). Without
+ * it the bar only noticed on its next 30-second poll, and kept counting a
+ * shift that was already closed.
+ */
+export function announceActiveShift(shift: ActiveShiftSummary | null) {
+  window.dispatchEvent(new CustomEvent(ACTIVE_SHIFT_CHANGED, { detail: shift }))
+}
+
+export function onActiveShiftAnnounced(listener: (shift: ActiveShiftSummary | null) => void) {
+  const handler = (event: Event) => listener((event as CustomEvent<ActiveShiftSummary | null>).detail)
+  window.addEventListener(ACTIVE_SHIFT_CHANGED, handler)
+  return () => window.removeEventListener(ACTIVE_SHIFT_CHANGED, handler)
+}

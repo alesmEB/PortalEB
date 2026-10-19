@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getMyActiveTimeLog, type GetMyActiveTimeLogData } from '@dataconnect/generated'
+import { getMyActiveTimeLog } from '@dataconnect/generated'
 import { useAuth } from '../contexts/AuthContext'
-import { pickActiveShift } from '../lib/activeShift'
+import { onActiveShiftAnnounced, pickActiveShift, type ActiveShiftSummary } from '../lib/activeShift'
 import { FRESH } from '../lib/dataConnectOptions'
-
-type ActiveLog = GetMyActiveTimeLogData['timeLogs'][number]
 
 function formatElapsed(clockIn: string, now: number) {
   const totalSeconds = Math.max(0, Math.floor((now - new Date(clockIn).getTime()) / 1000))
@@ -23,7 +21,7 @@ function formatElapsed(clockIn: string, now: number) {
 export function ActiveShiftBanner() {
   const { firebaseUser } = useAuth()
   const navigate = useNavigate()
-  const [activeLog, setActiveLog] = useState<ActiveLog | null>(null)
+  const [activeLog, setActiveLog] = useState<ActiveShiftSummary | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -47,8 +45,13 @@ export function ActiveShiftBanner() {
     }
     window.addEventListener('focus', load)
     document.addEventListener('visibilitychange', onVisible)
+    // A clock-in or clock-out on the order page shows here at once.
+    const unsubscribe = onActiveShiftAnnounced((shift) => {
+      if (!cancelled) setActiveLog(shift)
+    })
     return () => {
       cancelled = true
+      unsubscribe()
       clearInterval(interval)
       window.removeEventListener('focus', load)
       document.removeEventListener('visibilitychange', onVisible)

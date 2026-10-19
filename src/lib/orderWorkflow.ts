@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions'
-import type { MediaType } from '@dataconnect/generated'
+import type { MediaType, OrderLocation } from '@dataconnect/generated'
 import { functions } from './firebase'
 
 interface PhotoInput {
@@ -68,9 +68,17 @@ export async function startOrder(workOrderId: string, photos: PhotoInput[]) {
   return res.data
 }
 
+/** The open workshop order a technician left to start the shift that just
+ * ended - the screen offers to clock back into it. */
+export interface ResumeWorkshop {
+  workOrderId: string
+  code: string
+  locationCode: OrderLocation
+}
+
 const callCompleteOrder = httpsCallable<
   { workOrderId: string; photos: PhotoInput[] },
-  { success: boolean }
+  { success: boolean; resumeWorkshop?: ResumeWorkshop | null }
 >(functions, 'completeOrder')
 
 export async function completeOrder(workOrderId: string, photos: PhotoInput[]) {
@@ -234,7 +242,7 @@ export async function startWorking(workOrderId: string, clockIn?: string) {
 
 const callStopWorking = httpsCallable<
   { clockOut?: string } | undefined,
-  { success?: boolean; skipped?: boolean }
+  { success?: boolean; skipped?: boolean; resumeWorkshop?: ResumeWorkshop | null }
 >(functions, 'stopWorking')
 
 /** `clockOut` likewise comes from the offline queue. Replaying one whose

@@ -21,7 +21,7 @@ import { OrderDocumentsViewer, type DocumentOption } from '../components/OrderDo
 import { useAuth } from '../contexts/AuthContext'
 import { useBusyAction } from '../hooks/useBusyAction'
 import { usePermission } from '../hooks/usePermission'
-import { pickActiveShift } from '../lib/activeShift'
+import { announceActiveShift, pickActiveShift } from '../lib/activeShift'
 import {
   subscribeToMessages,
   subscribeToUnreadOrderIds,
@@ -56,7 +56,7 @@ import {
   toggleWorkOrderTask,
   updateWorkOrderTasks,
 } from '../lib/orderWorkflow'
-import type { AdminProcessStep, WorkOrderTaskInput } from '../lib/orderWorkflow'
+import type { AdminProcessStep, ResumeWorkshop, WorkOrderTaskInput } from '../lib/orderWorkflow'
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
 import { formatWorkshopMonth } from '../lib/workshop'
@@ -1134,7 +1134,13 @@ export function OrderDetailPage() {
   const [order, setOrder] = useState<WorkOrder | null | undefined>(undefined)
   const [unreadClientIds, setUnreadClientIds] = useState<Set<string>>(new Set())
   const [unreadTechnicianIds, setUnreadTechnicianIds] = useState<Set<string>>(new Set())
-  const [myActiveLog, setMyActiveLog] = useState<ActiveTimeLog | null>(null)
+  const [myActiveLog, setMyActiveLogState] = useState<ActiveTimeLog | null>(null)
+  // Every change also goes to the "Turno activo" bar, which lives outside
+  // this page and would otherwise lag up to its 30-second poll.
+  const setMyActiveLog = useCallback((log: ActiveTimeLog | null) => {
+    setMyActiveLogState(log)
+    announceActiveShift(log)
+  }, [])
   const [assigning, setAssigning] = useState(false)
   const [reportingIncident, setReportingIncident] = useState(false)
   const [editingTimeLog, setEditingTimeLog] = useState<TimeLogRow | null>(null)
@@ -1197,7 +1203,7 @@ export function OrderDetailPage() {
       if (!snapshot) throw err
       setMyActiveLog(snapshot.data)
     }
-  }, [uid])
+  }, [uid, setMyActiveLog])
 
   const retryLoadOrder = useCallback(() => {
     setLoadError(false)
@@ -1280,11 +1286,29 @@ export function OrderDetailPage() {
   async function handleCompleteOrder(files: File[]) {
     if (!order) return
     setActionError(null)
+    let resume: ResumeWorkshop | null = null
     await runBusy('Subiendo fotos y terminando la orden...', async () => {
       const photos = await uploadOrderPhotos(order, 'final', files)
-      await completeOrder(order.id, photos)
+      resume = (await completeOrder(order.id, photos)).resumeWorkshop ?? null
       setCompletingOrder(false)
       await loadOrder()
+      await loadMyActiveLog()
+    })
+    await offerWorkshopResume(resume)
+  }
+
+  // After a shift ends, back to the workshop order it interrupted, if any
+  // (see workshopOrderToResume in functions/index.js). Asked once the
+  // clock-out is done, so the confirm never sits over the busy veil.
+  async function offerWorkshopResume(resume: ResumeWorkshop | null) {
+    if (!resume) return
+    const proceed = confirm(
+      `Antes de esta orden estabas en la orden de taller de ${orderLocationLabel[resume.locationCode]} ` +
+        `(${resume.code}). ¿Quieres seguir trabajando en ella?`,
+    )
+    if (!proceed) return
+    await runPageAction('Volviendo a la orden de taller...', async () => {
+      await startWorking(resume.workOrderId)
       await loadMyActiveLog()
     })
   }
@@ -1380,9 +1404,10 @@ export function OrderDetailPage() {
       queueStopWorking()
       return
     }
+    let resume: ResumeWorkshop | null = null
     await runPageAction('Cerrando turno...', async () => {
       try {
-        await stopWorking()
+        resume = (await stopWorking()).resumeWorkshop ?? null
       } catch (err) {
         if (!isConnectivityError(err)) throw err
         queueStopWorking()
@@ -1391,6 +1416,7 @@ export function OrderDetailPage() {
       await loadOrder()
       await loadMyActiveLog()
     })
+    await offerWorkshopResume(resume)
   }
 
   async function handleToggleTask(taskId: string, isCompleted: boolean) {
