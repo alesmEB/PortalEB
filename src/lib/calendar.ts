@@ -1,5 +1,16 @@
 import { httpsCallable } from 'firebase/functions'
+import type { OrderLocation } from '@dataconnect/generated'
 import { functions } from './firebase'
+import { orderLocationLabel } from './orderCode'
+
+/** One of our three locations, or the free text of one elsewhere ("Cádiz"). */
+export function appointmentLocationLabel(appointment: {
+  locationCode?: OrderLocation | null
+  customLocation?: string | null
+}) {
+  if (appointment.customLocation) return appointment.customLocation
+  return appointment.locationCode ? orderLocationLabel[appointment.locationCode] : ''
+}
 
 interface SetWorkOrderScheduledDateInput {
   workOrderId: string
@@ -77,6 +88,18 @@ const callSetCalendarAppointmentRemarks = httpsCallable<
 /** The appointment's free notes, in any state; an empty string clears them. */
 export async function setCalendarAppointmentRemarks(appointmentId: string, remarks: string) {
   const res = await callSetCalendarAppointmentRemarks({ appointmentId, remarks })
+  return res.data
+}
+
+const callOpenAppointmentVisit = httpsCallable<{ appointmentId: string }, { workOrderId: string }>(
+  functions,
+  'openAppointmentVisit',
+)
+
+/** The appointment's visit order (made on first use) - where technicians
+ * are assigned and clock in. Requires admin:assigntechnicians. */
+export async function openAppointmentVisit(appointmentId: string) {
+  const res = await callOpenAppointmentVisit({ appointmentId })
   return res.data
 }
 

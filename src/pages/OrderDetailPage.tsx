@@ -60,6 +60,7 @@ import type { AdminProcessStep, ResumeWorkshop, WorkOrderTaskInput } from '../li
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
 import { formatWorkshopMonth } from '../lib/workshop'
+import { appointmentLocationLabel } from '../lib/calendar'
 import { uploadQuotePdf } from '../lib/quoteStorage'
 
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
@@ -1475,6 +1476,12 @@ export function OrderDetailPage() {
   // leaves clocking in, who's on it, the shifts, the notes and the internal
   // order number - the office files these hours under one of its own too.
   const isWorkshop = !!order.workshopMonth
+  // An appointment's visit order (WorkOrder.visitAppointmentId) is the same
+  // kind of thing, except that the office picks who goes: assigning stays.
+  // It's closed or turned into a real order from its appointment, in the
+  // calendar, never from here.
+  const visit = order.visitAppointment ?? null
+  const isInternal = isWorkshop || !!visit
   // Whoever can create an order can also correct its job list, but only
   // while the order can still change: a completed order's jobs are already
   // written into its report, and a cancelled one isn't going anywhere.
@@ -1524,8 +1531,25 @@ export function OrderDetailPage() {
       <p className="text-sm text-slate-500">
         {order.workshopMonth
           ? `Trabajos de taller · ${orderLocationLabel[order.locationCode]} · ${formatWorkshopMonth(order.workshopMonth)}`
-          : `${orderLocationLabel[order.locationCode]} · ${order.assetLocation}`}
+          : visit
+            ? `Cita · ${appointmentLocationLabel(visit)}`
+            : `${orderLocationLabel[order.locationCode]} · ${order.assetLocation}`}
       </p>
+
+      {visit && (
+        <section className="mt-3 rounded-xl border border-amber-300 bg-amber-50/80 p-3 text-sm text-amber-900">
+          <p className="font-semibold">{visit.title}</p>
+          {visit.boatDetails && <p>{visit.boatDetails}</p>}
+          {visit.externalCode && (
+            <p className="font-mono text-xs font-bold italic">Nº interno {visit.externalCode}</p>
+          )}
+          {visit.notes && <p className="mt-1 whitespace-pre-line text-xs">{visit.notes}</p>}
+          <p className="mt-2 text-xs text-amber-700">
+            Orden de la cita, para fichar las horas de la visita. Se completa o se convierte en
+            orden desde la cita, en el calendario.
+          </p>
+        </section>
+      )}
 
       {order.deletedAt && (
         <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
@@ -1540,7 +1564,7 @@ export function OrderDetailPage() {
         </p>
       )}
 
-      <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />
+      {!visit && <ExternalCodeBox workOrder={order} canEdit={canEditExternalCode} onSaved={loadOrder} />}
 
       <HasPermission permission="orders:notes">
         <NotesSection notes={order.notes} workOrderId={order.id} onAdded={loadOrder} />
@@ -1616,7 +1640,7 @@ export function OrderDetailPage() {
             Empezar orden
           </button>
         )}
-        {order.status === WorkOrderStatus.IN_PROGRESS && canManageOrder && (
+        {order.status === WorkOrderStatus.IN_PROGRESS && canManageOrder && !visit && (
           <button
             disabled={busy}
             onClick={() => setCompletingOrder(true)}
@@ -1625,7 +1649,7 @@ export function OrderDetailPage() {
             Terminar orden
           </button>
         )}
-        {!isWorkshop &&
+        {!isInternal &&
           (order.status === WorkOrderStatus.ASSIGNED ||
             order.status === WorkOrderStatus.IN_PROGRESS) && (
           <HasPermission permission="orders:forcecomplete">
@@ -1639,7 +1663,7 @@ export function OrderDetailPage() {
           </HasPermission>
         )}
         {!!myAssignment &&
-          !isWorkshop &&
+          !isInternal &&
           (order.status === WorkOrderStatus.ASSIGNED ||
             order.status === WorkOrderStatus.IN_PROGRESS) && (
             <button
@@ -1660,7 +1684,7 @@ export function OrderDetailPage() {
             {amWorkingHere ? 'Dejar de trabajar' : 'Trabajar en esta orden'}
           </button>
         )}
-        {!isWorkshop && (
+        {!isInternal && (
           <HasPermission permission="chat:write">
             <button
               onClick={() =>
@@ -1677,7 +1701,7 @@ export function OrderDetailPage() {
             </button>
           </HasPermission>
         )}
-        {!isWorkshop && (
+        {!isInternal && (
           <HasPermission permission="chat:write">
             <button
               onClick={() =>
@@ -1696,9 +1720,9 @@ export function OrderDetailPage() {
         )}
       </div>
 
-      {!isWorkshop && <ChatFilesSection orderId={order.id} />}
+      {!isInternal && <ChatFilesSection orderId={order.id} />}
 
-      {!isWorkshop && (
+      {!isInternal && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
@@ -1728,7 +1752,7 @@ export function OrderDetailPage() {
         </section>
       )}
 
-      {!isWorkshop && (
+      {!isInternal && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos a realizar</h2>
@@ -1945,14 +1969,14 @@ export function OrderDetailPage() {
         </ul>
       </section>
 
-      {!isWorkshop && (
+      {!isInternal && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Documentos</h2>
           <OrderDocumentsViewer documents={documentOptions} />
         </section>
       )}
 
-      {canViewAdminProcess && !isWorkshop && order.status === WorkOrderStatus.COMPLETED && (
+      {canViewAdminProcess && !isInternal && order.status === WorkOrderStatus.COMPLETED && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
           <h2 className="text-sm font-semibold text-eb-teal-dark">Gestión administrativa</h2>
           <ul className="mt-2 space-y-2">

@@ -6,6 +6,17 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 26 de octubre de 2026
+
+- Calendario: ya se pueden asignar técnicos a una cita y que fichen en ella.
+  En cada cita hay un botón "Asignar técnicos" que abre la orden de la cita,
+  donde se añaden los técnicos como en cualquier orden. Ellos la ven en
+  Asignaciones como "Cita · …" y fichan igual que siempre; las horas salen en
+  el registro de horas.
+  - Al completar la cita se cierran los turnos que sigan abiertos.
+  - Si de la cita sale una orden, las horas de la visita pasan a esa orden.
+  - Una cita con horas fichadas ya no se puede eliminar: hay que completarla.
+
 ## 19 de octubre de 2026
 
 - Órdenes de taller: si un técnico estaba fichado en la orden de taller, se

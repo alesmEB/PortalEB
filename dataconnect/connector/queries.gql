@@ -123,7 +123,11 @@ query ListAssignableUsers @auth(level: USER) {
 
 # Summary rows for the main orders list screen.
 query ListWorkOrders @auth(level: USER) {
-  workOrders(where: { workshopMonth: { isNull: true } }, orderBy: { createdAt: DESC }, limit: 1000) {
+  workOrders(
+    where: { workshopMonth: { isNull: true }, visitAppointmentId: { isNull: true } }
+    orderBy: { createdAt: DESC }
+    limit: 1000
+  ) {
     id
     code
     externalCode
@@ -225,6 +229,12 @@ query ListMyAssignedWorkOrders @auth(level: USER) {
       status
       locationCode
       workshopMonth
+      visitAppointment {
+        title
+        boatDetails
+        locationCode
+        customLocation
+      }
       boat {
         name
       }
@@ -291,6 +301,7 @@ query ListAssignedWorkOrders @auth(level: USER) {
       status: { in: [ASSIGNED, IN_PROGRESS] }
       deletedAt: { isNull: true }
       workshopMonth: { isNull: true }
+      visitAppointmentId: { isNull: true }
     }
     orderBy: { code: ASC }
     limit: 1000
@@ -339,6 +350,17 @@ query ListCalendarAppointments @auth(level: USER) {
     workOrder {
       code
     }
+    visitOrders: workOrders_on_visitAppointment(where: { deletedAt: { isNull: true } }, limit: 1) {
+      id
+      code
+      status
+      assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }, limit: 100) {
+        technicianId
+        technician {
+          displayName
+        }
+      }
+    }
     createdAt
     scheduledDates: calendarAppointmentDates_on_appointment(orderBy: { date: ASC }) {
       date
@@ -365,6 +387,17 @@ query ListCalendarAppointmentDates @auth(level: USER) {
       workOrderId
       workOrder {
         code
+      }
+      visitOrders: workOrders_on_visitAppointment(where: { deletedAt: { isNull: true } }, limit: 1) {
+        id
+        code
+        status
+        assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }, limit: 100) {
+          technicianId
+          technician {
+            displayName
+          }
+        }
       }
     }
   }
@@ -424,6 +457,15 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     externalCode
     deletedAt
     workshopMonth
+    visitAppointment {
+      id
+      title
+      boatDetails
+      locationCode
+      customLocation
+      notes
+      externalCode
+    }
     customer {
       name
       contactName

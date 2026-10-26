@@ -165,6 +165,22 @@ la cita) y la localización. Una cita sin embarcación sube el trabajo a la
 primera línea. La vista Semana añade cliente, código, estado y técnicos, y
 muestra también la localización de cada orden.
 
+**Técnicos en una cita.** Para mandar técnicos a una cita y que fichen, la
+cita tiene su propia orden interna, igual que las de taller
+(`WorkOrder.visitAppointmentId`, código `CITA-NNNNNN`, en curso, sin cliente
+real ni presupuesto). La crea `openAppointmentVisit` la primera vez que alguien
+con `admin:assigntechnicians` pulsa "Asignar técnicos" en la cita, y desde ahí
+es una orden más: "Añadir técnicos", "Trabajar en esta orden", Turnos, registro
+de horas. No sale en la lista de órdenes ni en "Órdenes asignadas" del
+calendario; en Asignaciones se lee como "Cita · título".
+
+Sigue a su cita: al completarla se completa (cerrando los turnos abiertos), al
+reabrirla vuelve a estar en curso, y no se puede eliminar una cita con horas
+fichadas. Si de la cita sale una orden, `createWorkOrder` convierte esa orden
+interna en la nueva (código real, cliente, embarcación, trabajos), así que las
+horas de la visita quedan en la orden; empieza en "Pendiente de presupuesto"
+con nadie asignado.
+
 ## Lo que no está en PostgreSQL
 
 - **Firestore**: el chat de cada orden (`clientChats/{orderId}`,

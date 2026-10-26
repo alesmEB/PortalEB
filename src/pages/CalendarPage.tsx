@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, MapPin, StickyNote, X } from 'lucide-react'
+import { CalendarDays, MapPin, StickyNote, Users, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -19,8 +19,10 @@ import { BusyOverlay } from '../components/BusyOverlay'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import {
+  appointmentLocationLabel,
   createCalendarAppointment,
   deleteCalendarAppointment,
+  openAppointmentVisit,
   setCalendarAppointmentClosed,
   setCalendarAppointmentRemarks,
   setCalendarAppointmentScheduledDate,
@@ -52,12 +54,43 @@ type Appointment = ListCalendarAppointmentsData['calendarAppointments'][number]
 type AppointmentEntry =
   ListCalendarAppointmentDatesData['calendarAppointmentDates'][number]
 
-function appointmentLocationLabel(appointment: {
-  locationCode?: OrderLocation | null
-  customLocation?: string | null
+type VisitOrder = Appointment['visitOrders'][number]
+
+/** Who's been sent to an appointment - its visit order, see
+ * openAppointmentVisit in functions/index.js - and the way into that order:
+ * for the office to assign people, for them to clock in. */
+function AppointmentVisitRow({
+  visit,
+  canStart,
+  onOpen,
+  small = false,
+}: {
+  visit: VisitOrder | undefined
+  /** May make the visit order when there's none yet. */
+  canStart: boolean
+  onOpen: () => void
+  small?: boolean
 }) {
-  if (appointment.customLocation) return appointment.customLocation
-  return appointment.locationCode ? orderLocationLabel[appointment.locationCode] : ''
+  if (!visit && !canStart) return null
+  const names = visit?.assignments.map((a) => a.technician.displayName) ?? []
+  return (
+    <div className={`mt-1 flex items-center justify-between gap-2 ${small ? 'text-[11px]' : 'text-xs'}`}>
+      <span className="flex min-w-0 items-center gap-1">
+        <Users className="h-3 w-3 shrink-0" />
+        <span className="truncate">{names.length > 0 ? names.join(', ') : 'Sin técnicos'}</span>
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpen()
+        }}
+        className="shrink-0 rounded-md border border-current px-1.5 py-0.5 font-semibold hover:bg-white/60"
+      >
+        {visit ? 'Abrir' : 'Asignar técnicos'}
+      </button>
+    </div>
+  )
 }
 
 function taskProgressLabel(tasks: { isCompleted: boolean }[]) {
@@ -130,6 +163,11 @@ export function CalendarPage() {
   // Same gate as createWorkOrder itself - completing an appointment "con orden"
   // only makes sense for someone who can then create the order.
   const canCreateOrders = usePermission('orders:create') || isLab
+  // Same permission as assigning technicians to any order: the visit order
+  // is made only to assign people to it.
+  const canAssign = usePermission('admin:assigntechnicians')
+  const [openingVisit, setOpeningVisit] = useState(false)
+  const [pageError, setPageError] = useState<string | null>(null)
   const [assignedOrders, setAssignedOrders] = useState<AssignedOrder[] | null>(null)
   const [scheduledEntries, setScheduledEntries] = useState<ScheduledEntry[] | null>(null)
   const [appointments, setAppointments] = useState<Appointment[]>([])
@@ -244,9 +282,34 @@ export function CalendarPage() {
   }
 
   async function handleDeleteAppointment(appointmentId: string) {
-    await deleteCalendarAppointment(appointmentId)
+    setPageError(null)
+    try {
+      await deleteCalendarAppointment(appointmentId)
+    } catch (err) {
+      setConfirmingDeleteId(null)
+      setPageError(err instanceof Error ? err.message : 'No se pudo eliminar la cita.')
+      return
+    }
     setConfirmingDeleteId(null)
     load()
+  }
+
+  // To the appointment's visit order, making it first if it isn't there yet.
+  async function openVisit(appointmentId: string, visit: VisitOrder | undefined) {
+    if (visit) {
+      navigate(`/orders/${visit.id}`, { state: { from: '/calendar' } })
+      return
+    }
+    setPageError(null)
+    setOpeningVisit(true)
+    try {
+      const { workOrderId } = await openAppointmentVisit(appointmentId)
+      navigate(`/orders/${workOrderId}`, { state: { from: '/calendar' } })
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'No se pudo preparar la orden de la cita.')
+    } finally {
+      setOpeningVisit(false)
+    }
   }
 
   async function handleToggle(workOrderId: string, dateKey: string, scheduled: boolean) {
@@ -272,6 +335,15 @@ export function CalendarPage() {
   return (
     <div className="flex flex-1 flex-col p-4">
       <BackButton to="/" />
+      <BusyOverlay label={openingVisit ? 'Preparando la orden de la cita...' : null} />
+      {pageError && (
+        <div className="mb-3 flex items-start justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          <span>{pageError}</span>
+          <button onClick={() => setPageError(null)} className="shrink-0 font-semibold underline">
+            Cerrar
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold text-eb-blue-dark">
@@ -622,6 +694,12 @@ export function CalendarPage() {
                                   {appointment.externalCode}
                                 </p>
                               )}
+                              <AppointmentVisitRow
+                                small
+                                visit={appointment.visitOrders[0]}
+                                canStart={canAssign && status === 'open'}
+                                onOpen={() => openVisit(appointment.id, appointment.visitOrders[0])}
+                              />
                             </div>
                             {/* Unlike the days and the ✕, notes stay editable
                                 once the appointment is completed. */}
@@ -837,6 +915,13 @@ export function CalendarPage() {
                             <X className="h-4 w-4" />
                           </button>
                         </div>
+                      </div>
+                      <div className="text-amber-900">
+                        <AppointmentVisitRow
+                          visit={appointment.visitOrders[0]}
+                          canStart={canAssign}
+                          onOpen={() => openVisit(appointment.id, appointment.visitOrders[0])}
+                        />
                       </div>
 
                       {confirmingDeleteId === appointment.id && (

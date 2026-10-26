@@ -12,6 +12,7 @@ import { HasPermission } from '../components/HasPermission'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
 import { pickActiveShift } from '../lib/activeShift'
+import { appointmentLocationLabel } from '../lib/calendar'
 import { subscribeToUnreadOrderIds } from '../lib/chat'
 import { FRESH } from '../lib/dataConnectOptions'
 import { formatSnapshotTime, readSnapshot, writeSnapshot } from '../lib/offlineStore'
@@ -159,12 +160,30 @@ export function AssignmentsPage() {
                 }
                 className="flex flex-1 items-center justify-between text-left"
               >
-                <div>
-                  <p className="font-mono text-sm font-semibold text-eb-blue-dark">
-                    {assignment.workOrder.code}
-                  </p>
-                  <p className="text-sm text-slate-500">{assignment.workOrder.boat.name}</p>
-                </div>
+                {/* An appointment's visit order reads as the appointment: its
+                    code is only a number for the hours log. */}
+                {assignment.workOrder.visitAppointment ? (
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">
+                      Cita · {assignment.workOrder.visitAppointment.title}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {[
+                        assignment.workOrder.visitAppointment.boatDetails,
+                        appointmentLocationLabel(assignment.workOrder.visitAppointment),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="font-mono text-sm font-semibold text-eb-blue-dark">
+                      {assignment.workOrder.code}
+                    </p>
+                    <p className="text-sm text-slate-500">{assignment.workOrder.boat.name}</p>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   {(assignment.isAllowed || assignment.isLead) && (
                     <span className="rounded-full bg-eb-blue/10 px-2.5 py-0.5 text-xs text-eb-blue-dark">
@@ -178,22 +197,25 @@ export function AssignmentsPage() {
                   </span>
                 </div>
               </button>
-              <HasPermission permission="chat:write">
-                <button
-                  onClick={() =>
-                    navigate(`/chat/technicians/${assignment.workOrder.id}`, {
-                      state: { from: '/assignments' },
-                    })
-                  }
-                  className="relative rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue"
-                  title="Chat con técnicos"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  {unreadOrderIds.has(assignment.workOrder.id) && (
-                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
-                  )}
-                </button>
-              </HasPermission>
+              {/* No chat on a visit order, same as on the order screen. */}
+              {!assignment.workOrder.visitAppointment && (
+                <HasPermission permission="chat:write">
+                  <button
+                    onClick={() =>
+                      navigate(`/chat/technicians/${assignment.workOrder.id}`, {
+                        state: { from: '/assignments' },
+                      })
+                    }
+                    className="relative rounded-lg border border-slate-300 p-2 text-slate-500 hover:border-eb-blue hover:text-eb-blue"
+                    title="Chat con técnicos"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    {unreadOrderIds.has(assignment.workOrder.id) && (
+                      <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
+                    )}
+                  </button>
+                </HasPermission>
+              )}
             </div>
           )
         })}

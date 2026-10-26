@@ -116,6 +116,40 @@ const CREATE_WORK_ORDER_MUTATION = `
     )
   }
 `
+// The visit order taking on everything a new order gets. Status, createdAt
+// and the visit link are reset by hand: insert would have set them.
+const PROMOTE_VISIT_ORDER_MUTATION = `
+  mutation PromoteVisitOrderAdmin(
+    $id: UUID!
+    $code: String!
+    $locationCode: OrderLocation!
+    $sequenceNumber: Int!
+    $customerId: UUID!
+    $boatId: UUID!
+    $createdById: String!
+    $assetLocation: String!
+    $description: String
+    $externalCode: String
+  ) {
+    workOrder_update(
+      id: $id
+      data: {
+        code: $code
+        locationCode: $locationCode
+        sequenceNumber: $sequenceNumber
+        customerId: $customerId
+        boatId: $boatId
+        createdById: $createdById
+        assetLocation: $assetLocation
+        description: $description
+        externalCode: $externalCode
+        status: PENDING_QUOTE
+        completedAt: null
+        visitAppointmentId: null
+      }
+    )
+  }
+`
 const CREATE_WORK_ORDER_TASK_MUTATION = `
   mutation CreateWorkOrderTaskAdmin($workOrderId: UUID!, $description: String!) {
     workOrderTask_insert(data: { workOrderId: $workOrderId, description: $description })
@@ -294,6 +328,9 @@ const GET_ORDER_ASSIGNMENTS_QUERY = `
   query GetOrderAssignmentsAdmin($workOrderId: UUID!) {
     workOrder(id: $workOrderId) {
       status
+      visitAppointment {
+        title
+      }
     }
     technicianAssignments(where: { workOrderId: { eq: $workOrderId }, unassignedAt: { isNull: true } }) {
       technicianId
@@ -968,22 +1005,39 @@ exports.createWorkOrder = onCall(async (request) => {
     .executeGraphql(UPSERT_ORDER_SEQUENCE_MUTATION, { variables: { locationCode, lastNumber: sequenceNumber } })
     .catch(() => {})
 
-  const workOrderRes = await dataConnect.executeGraphql(CREATE_WORK_ORDER_MUTATION, {
-    variables: {
-      code,
-      locationCode,
-      sequenceNumber,
-      customerId,
-      boatId,
-      createdById: callerUid,
-      assetLocation: assetLocation.trim(),
-      description: description || null,
-      // Read from the appointment here, not sent by the form: it's the
-      // billing system's number, and the order gets the one on record.
-      externalCode: fromAppointment?.externalCode ?? null,
-    },
-  })
-  const workOrderId = workOrderRes.data.workOrder_insert.id
+  const orderFields = {
+    code,
+    locationCode,
+    sequenceNumber,
+    customerId,
+    boatId,
+    createdById: callerUid,
+    assetLocation: assetLocation.trim(),
+    description: description || null,
+    // Read from the appointment here, not sent by the form: it's the
+    // billing system's number, and the order gets the one on record.
+    externalCode: fromAppointment?.externalCode ?? null,
+  }
+  // An appointment technicians already went to has a visit order holding
+  // their hours: that order becomes this one, so the hours come along. It
+  // starts the normal way from here - quote first - so whoever was on the
+  // visit is taken off it, and anyone still clocked in is clocked out.
+  const visit = fromAppointment?.visitOrders[0] ?? null
+  let workOrderId
+  if (visit) {
+    const now = new Date()
+    await clockOutOpenShifts(visit.id, now)
+    await unassignEveryone(visit.id, now)
+    await dataConnect.executeGraphql(PROMOTE_VISIT_ORDER_MUTATION, {
+      variables: { id: visit.id, ...orderFields },
+    })
+    workOrderId = visit.id
+  } else {
+    const workOrderRes = await dataConnect.executeGraphql(CREATE_WORK_ORDER_MUTATION, {
+      variables: orderFields,
+    })
+    workOrderId = workOrderRes.data.workOrder_insert.id
+  }
 
   for (const task of tasks) {
     await dataConnect.executeGraphql(CREATE_WORK_ORDER_TASK_MUTATION, {
@@ -1000,6 +1054,7 @@ exports.createWorkOrder = onCall(async (request) => {
         ? {
             fromAppointment: { id: fromAppointment.id, title: fromAppointment.title },
             ...(fromAppointment.externalCode ? { externalCode: fromAppointment.externalCode } : {}),
+            ...(visit ? { fromVisitOrder: visit.code } : {}),
           }
         : null,
     },
@@ -1409,12 +1464,13 @@ exports.assignTechnicians = onCall(async (request) => {
     .doc(`technicianChats/${workOrderId}`)
     .set({ participants: assignments.map((a) => a.technicianId) }, { merge: true })
 
+  const visitTitle = currentRes.data.workOrder?.visitAppointment?.title
   if (newlyAssigned.length > 0 && code) {
     await sendToUsers(
       newlyAssigned.map((a) => a.technicianId),
       {
         title: 'Nueva asignación',
-        body: `Has sido asignado a la orden ${code}`,
+        body: visitTitle ? `Has sido asignado a la cita «${visitTitle}»` : `Has sido asignado a la orden ${code}`,
         data: { orderId: workOrderId },
       },
     )
@@ -2483,6 +2539,10 @@ const HOURS_LOG_TIME_LOG_FIELDS = `
     boat {
       name
     }
+    visitAppointment {
+      title
+      boatDetails
+    }
   }
 `
 const LIST_TIME_LOGS_IN_RANGE_QUERY = `
@@ -2589,7 +2649,9 @@ async function loadHoursLog({ from, to, orderCode }) {
         id: log.workOrder.id,
         code: log.workOrder.code,
         externalCode: log.workOrder.externalCode ?? null,
-        boatName: log.workOrder.boat?.name ?? null,
+        boatName: log.workOrder.visitAppointment
+          ? `Cita: ${log.workOrder.visitAppointment.boatDetails || log.workOrder.visitAppointment.title}`
+          : (log.workOrder.boat?.name ?? null),
         deleted: !!log.workOrder.deletedAt,
       },
     })),
@@ -2834,6 +2896,13 @@ const CREATE_WORKSHOP_ORDER_MUTATION = `
 `
 
 async function workshopCustomerAndBoat(locationCode) {
+  return internalCustomerAndBoat(`Taller ${WORKSHOP_LOCATION_LABEL[locationCode]}`)
+}
+
+// The internal customer, and a "boat" of it by that name, made the first time
+// they're needed - for orders that are somewhere to clock hours rather than a
+// job on someone's boat (workshop and appointment visits).
+async function internalCustomerAndBoat(boatName) {
   const customerRes = await dataConnect.executeGraphqlRead(FIND_CUSTOMER_BY_NAME_QUERY, {
     variables: { name: WORKSHOP_CUSTOMER_NAME },
   })
@@ -2845,7 +2914,6 @@ async function workshopCustomerAndBoat(locationCode) {
     customerId = created.data.customer_insert.id
   }
 
-  const boatName = `Taller ${WORKSHOP_LOCATION_LABEL[locationCode]}`
   const boatRes = await dataConnect.executeGraphqlRead(FIND_BOAT_BY_NAME_QUERY, {
     variables: { ownerId: customerId, name: boatName },
   })
@@ -3126,6 +3194,14 @@ const GET_CALENDAR_APPOINTMENT_QUERY = `
       externalCode
       closedAt
       workOrderId
+      visitOrders: workOrders_on_visitAppointment(where: { deletedAt: { isNull: true } }, limit: 1) {
+        id
+        code
+        status
+        timeLogs: timeLogs_on_workOrder(limit: 1) {
+          id
+        }
+      }
     }
   }
 `
@@ -3136,6 +3212,157 @@ const LINK_CALENDAR_APPOINTMENT_ORDER_MUTATION = `
 `
 
 const ORDER_LOCATIONS = ['ALGECIRAS', 'LA_LINEA', 'SOTOGRANDE']
+
+// ---------------------------------------------------------------------------
+// Appointment visits - an appointment technicians are sent to before there's
+// any real order gets one of its own, so they clock in on it exactly as on
+// any order (see WorkOrder.visitAppointmentId). It's made the first time
+// someone goes to assign technicians, and the existing order screen takes it
+// from there: "Añadir técnicos", "Trabajar en esta orden", Turnos.
+// ---------------------------------------------------------------------------
+
+const VISIT_BOAT_NAME = 'Citas'
+
+// Same shape as the workshop orders: sequenceNumber 0 keeps it out of the
+// per-location numbering, and the location only matters once it becomes a
+// real order (when it's picked on the form); an appointment somewhere else
+// ("Cádiz") files its visit under Algeciras until then.
+const CREATE_VISIT_ORDER_MUTATION = `
+  mutation CreateVisitOrderAdmin(
+    $code: String!
+    $locationCode: OrderLocation!
+    $customerId: UUID!
+    $boatId: UUID!
+    $createdById: String!
+    $assetLocation: String!
+    $visitAppointmentId: UUID!
+  ) {
+    workOrder_insert(
+      data: {
+        code: $code
+        locationCode: $locationCode
+        sequenceNumber: 0
+        customerId: $customerId
+        boatId: $boatId
+        createdById: $createdById
+        assetLocation: $assetLocation
+        status: IN_PROGRESS
+        visitAppointmentId: $visitAppointmentId
+      }
+    )
+  }
+`
+const GET_APPOINTMENT_FOR_VISIT_QUERY = `
+  query GetAppointmentForVisitAdmin($id: UUID!) {
+    calendarAppointment(id: $id) {
+      id
+      title
+      locationCode
+      customLocation
+      closedAt
+      workOrderId
+      visitOrders: workOrders_on_visitAppointment(where: { deletedAt: { isNull: true } }, limit: 1) {
+        id
+      }
+    }
+  }
+`
+const REOPEN_WORK_ORDER_MUTATION = `
+  mutation ReopenWorkOrderAdmin($id: UUID!) {
+    workOrder_update(id: $id, data: { status: IN_PROGRESS, completedAt: null })
+  }
+`
+// Detached from the appointment as well, or PostgreSQL would refuse to delete
+// the appointment while this still points at it.
+const DISCARD_VISIT_ORDER_MUTATION = `
+  mutation DiscardVisitOrderAdmin($id: UUID!, $deletedAt: Timestamp!) {
+    workOrder_update(id: $id, data: { deletedAt: $deletedAt, visitAppointmentId: null })
+  }
+`
+
+// Its own counter, never mixed with the per-location ones: CITA-000001...
+async function reserveVisitSequenceNumber() {
+  const ref = admin.firestore().collection('orderSequenceCounters').doc('CITA')
+  return admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    const next = (snap.exists ? snap.data().lastNumber : 0) + 1
+    tx.set(ref, { lastNumber: next })
+    return next
+  })
+}
+
+// Closes whatever shifts are still open on an order, at `at` - what
+// completeOrder does for the order's own completion.
+async function clockOutOpenShifts(workOrderId, at) {
+  const res = await dataConnect.executeGraphqlRead(GET_ACTIVE_TIME_LOGS_QUERY, { variables: { workOrderId } })
+  for (const log of res.data.timeLogs) {
+    await dataConnect.executeGraphql(CLOCK_OUT_MUTATION, {
+      variables: {
+        timeLogId: log.id,
+        clockOut: at.toISOString(),
+        durationMinutes: minutesBetween(log.clockIn, at),
+      },
+    })
+  }
+  return res.data.timeLogs.length
+}
+
+async function unassignEveryone(workOrderId, at) {
+  const res = await dataConnect.executeGraphqlRead(GET_ORDER_ASSIGNMENTS_QUERY, { variables: { workOrderId } })
+  for (const { technicianId } of res.data.technicianAssignments) {
+    await dataConnect.executeGraphql(UNASSIGN_TECHNICIAN_MUTATION, {
+      variables: { workOrderId, technicianId, unassignedAt: at.toISOString() },
+    })
+  }
+  return res.data.technicianAssignments.map((a) => a.technicianId)
+}
+
+// Returns the appointment's visit order, making it if it isn't there yet.
+// Idempotent: pressing "Técnicos" twice opens the same one.
+exports.openAppointmentVisit = onCall(async (request) => {
+  requirePermission(request, 'admin:assigntechnicians')
+
+  const { appointmentId } = request.data ?? {}
+  if (typeof appointmentId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la cita.')
+  }
+  const res = await dataConnect.executeGraphqlRead(GET_APPOINTMENT_FOR_VISIT_QUERY, {
+    variables: { id: appointmentId },
+  })
+  const appointment = res.data.calendarAppointment
+  if (!appointment) {
+    throw new HttpsError('not-found', 'La cita ya no existe.')
+  }
+  const existing = appointment.visitOrders[0]
+  if (existing) return { workOrderId: existing.id }
+  if (appointment.closedAt || appointment.workOrderId) {
+    throw new HttpsError('failed-precondition', 'La cita ya está completada.')
+  }
+
+  const { customerId, boatId } = await internalCustomerAndBoat(VISIT_BOAT_NAME)
+  const code = `CITA-${String(await reserveVisitSequenceNumber()).padStart(6, '0')}`
+  const created = await dataConnect.executeGraphql(CREATE_VISIT_ORDER_MUTATION, {
+    variables: {
+      code,
+      locationCode: appointment.locationCode ?? 'ALGECIRAS',
+      customerId,
+      boatId,
+      createdById: request.auth.uid,
+      assetLocation: appointment.customLocation ?? WORKSHOP_LOCATION_LABEL[appointment.locationCode] ?? '-',
+      visitAppointmentId: appointmentId,
+    },
+  })
+  const workOrderId = created.data.workOrder_insert.id
+  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+    variables: {
+      workOrderId,
+      actorId: request.auth.uid,
+      eventType: 'ORDER_CREATED',
+      metadata: { appointmentVisit: { id: appointment.id, title: appointment.title } },
+    },
+  })
+  return { workOrderId }
+})
 
 async function getCalendarAppointment(appointmentId) {
   const res = await dataConnect.executeGraphqlRead(GET_CALENDAR_APPOINTMENT_QUERY, {
@@ -3223,6 +3450,25 @@ exports.setCalendarAppointmentClosed = onCall(async (request) => {
   await dataConnect.executeGraphql(SET_CALENDAR_APPOINTMENT_CLOSED_MUTATION, {
     variables: { id: appointmentId, closedAt: closed ? new Date().toISOString() : null },
   })
+
+  // Its visit order follows: completed with it (anyone still clocked in is
+  // clocked out, as when an order is finished), back in progress if it's
+  // reopened.
+  const visit = (await getCalendarAppointment(appointmentId))?.visitOrders[0]
+  if (visit) {
+    const now = new Date()
+    if (closed && visit.status !== 'COMPLETED') {
+      await clockOutOpenShifts(visit.id, now)
+      await dataConnect.executeGraphql(COMPLETE_WORK_ORDER_MUTATION, {
+        variables: { id: visit.id, completedAt: now.toISOString() },
+      })
+      await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+        variables: { workOrderId: visit.id, actorId: request.auth.uid, eventType: 'ORDER_COMPLETED' },
+      })
+    } else if (!closed && visit.status === 'COMPLETED') {
+      await dataConnect.executeGraphql(REOPEN_WORK_ORDER_MUTATION, { variables: { id: visit.id } })
+    }
+  }
   return { success: true }
 })
 
@@ -3290,6 +3536,20 @@ exports.deleteCalendarAppointment = onCall(async (request) => {
       'failed-precondition',
       'Esta cita generó una orden de trabajo; no se puede eliminar.',
     )
+  }
+  const visit = appointment?.visitOrders[0]
+  if (visit?.timeLogs.length) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Ya hay horas fichadas en esta cita; complétala en vez de eliminarla.',
+    )
+  }
+  if (visit) {
+    const now = new Date()
+    await unassignEveryone(visit.id, now)
+    await dataConnect.executeGraphql(DISCARD_VISIT_ORDER_MUTATION, {
+      variables: { id: visit.id, deletedAt: now.toISOString() },
+    })
   }
 
   await dataConnect.executeGraphql(DELETE_CALENDAR_APPOINTMENT_DATES_MUTATION, {

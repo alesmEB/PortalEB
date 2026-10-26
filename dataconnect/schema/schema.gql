@@ -244,6 +244,16 @@ type WorkOrder @table(name: "work_orders") {
   # Every list of real orders filters on this being null; their own screen
   # and the top of Asignaciones are where they show.
   workshopMonth: String
+  # Set only on an appointment's visit order: the same idea as the workshop
+  # orders, for a calendar appointment that technicians are sent to before
+  # any real order exists (openAppointmentVisit in functions/index.js). It
+  # gives them somewhere to clock in, with code CITA-NNNNNN, IN_PROGRESS and
+  # nothing else. If the appointment becomes an order, createWorkOrder turns
+  # this one into it - real code, customer, boat, jobs - so the visit's hours
+  # stay on the order, and clears this field. Lists of real orders filter on
+  # it being null.
+  visitAppointmentId: UUID
+  visitAppointment: CalendarAppointment @ref(fields: ["visitAppointmentId"])
 }
 
 # The list of jobs to perform, captured at order creation.
