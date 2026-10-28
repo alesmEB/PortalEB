@@ -135,6 +135,14 @@ function OrderBadges({ order }: { order: OrderRow }) {
       {order.deletedAt && (
         <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-600">Eliminada</span>
       )}
+      {order.direct && (
+        <span
+          className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800"
+          title="Orden directa, sin presupuesto"
+        >
+          Directa
+        </span>
+      )}
       <span className={`rounded-full px-2.5 py-1 text-xs ${workOrderStatusColor[order.status]}`}>
         {workOrderStatusLabel[order.status]}
       </span>

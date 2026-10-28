@@ -8,6 +8,20 @@ tu versión.
 
 ## 28 de octubre de 2026
 
+- Órdenes directas, para el trabajo de mostrador (sobre todo La Línea): al
+  crear una orden se puede marcar "Orden directa (sin presupuesto)", que viene
+  marcada al elegir La Línea. No pide motores ni ubicación y empieza en curso.
+  - Cualquier técnico la coge pulsando "Trabajar en esta orden". Las que
+    están sin coger salen en Asignaciones, en "Trabajos de mostrador".
+  - Los técnicos anotan lo que hacen en "Trabajos realizados"; administración
+    puede corregirlo.
+  - Se termina sin fotos obligatorias. Al ajustarla, el protocolo queda como
+    "no procedía", y al marcarla como facturada se genera el **parte de
+    trabajo** en PDF (lo pedido, lo hecho y las horas), en Documentos.
+  - También se puede crear desde una cita. Si la cita ya tenía técnicos,
+    siguen asignados a la orden directa con sus horas, y quien estuviera
+    fichando sigue fichando.
+
 - Citas: ahora se les pueden poner fotos y vídeos. Administración desde la
   propia cita (al editarla), y los técnicos asignados desde la orden de la
   cita. Se ven en la cita y, si de ella sale una orden, pasan a esa orden.

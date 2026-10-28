@@ -225,6 +225,34 @@ export async function toggleWorkOrderTask(taskId: string, isCompleted: boolean) 
   return res.data
 }
 
+const callAddWorkLine = httpsCallable<{ workOrderId: string; description: string }, { success: boolean }>(
+  functions,
+  'addWorkLine',
+)
+
+/** A line of what was done, on a direct order (see WorkOrderWorkLine). */
+export async function addWorkLine(workOrderId: string, description: string) {
+  const res = await callAddWorkLine({ workOrderId, description })
+  return res.data
+}
+
+const callUpdateWorkLine = httpsCallable<{ lineId: string; description: string }, { success: boolean }>(
+  functions,
+  'updateWorkLine',
+)
+
+export async function updateWorkLine(lineId: string, description: string) {
+  const res = await callUpdateWorkLine({ lineId, description })
+  return res.data
+}
+
+const callDeleteWorkLine = httpsCallable<{ lineId: string }, { success: boolean }>(functions, 'deleteWorkLine')
+
+export async function deleteWorkLine(lineId: string) {
+  const res = await callDeleteWorkLine({ lineId })
+  return res.data
+}
+
 const callStartWorking = httpsCallable<
   { workOrderId: string; clockIn?: string },
   { switchedFrom?: string | null; skipped?: boolean }

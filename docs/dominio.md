@@ -91,6 +91,34 @@ Se ven en dos sitios: las del mes, arriba en Asignaciones; todas, en "Órdenes
 de taller". Las listas de órdenes reales (la lista, el calendario) las
 excluyen filtrando por `workshopMonth` nulo.
 
+### Órdenes directas (trabajo de mostrador)
+
+Sobre todo en La Línea, mucho trabajo entra por el mostrador sin presupuesto:
+se hace, se anota y se factura. Para eso, al crear una orden se puede marcar
+"Orden directa" (`WorkOrder.direct`; marcada por defecto al elegir La Línea).
+Una orden directa:
+
+- No pide motores ni ubicación (queda "Mostrador") y nace **en curso**, sin
+  presupuesto ni asignación.
+- La coge cualquier técnico con `orders:assignable` al fichar en ella:
+  `startWorking` le asigna como "Autorizado" y lo anota (`DIRECT_ORDER_TAKEN`).
+  Las abiertas salen en Asignaciones, en "Trabajos de mostrador".
+- Los técnicos anotan lo hecho en **Trabajos realizados**
+  (`WorkOrderWorkLine`); cada uno puede corregir lo suyo mientras está en
+  curso, y administración cualquier línea en cualquier momento (queda en el
+  historial como `WORK_LINES_EDITED`).
+- Se termina sin fotos obligatorias. Al marcarla como **ajustada**, el
+  protocolo de servicio se registra solo como "no procedía"; al marcarla como
+  **facturada** se genera el **parte de trabajo** (`workReportPdf.js`, en
+  `work-orders/{código}/parte-de-trabajo.pdf`, `WorkOrder.workReportUrl`): lo
+  pedido, lo realizado, los materiales si los hay y las horas, redondeadas como
+  en el registro de horas.
+- Creada desde una cita con orden de visita, a diferencia de una orden
+  normal, conserva a los técnicos de la visita y no les cierra el turno: el
+  trabajo sigue sin esperar a ningún presupuesto.
+- `WorkOrderMaterial` existe para anotar materiales más adelante; la app aún no
+  los escribe, pero el parte ya los imprime si los hay.
+
 ## Intervenciones
 
 **Intervention** digitaliza el parte de recepción en papel ("Orden de

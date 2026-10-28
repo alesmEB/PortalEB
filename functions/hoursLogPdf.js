@@ -422,6 +422,7 @@ async function renderHoursLogPdfBuffer(data) {
 
 module.exports = {
   renderHoursLogPdfBuffer,
+  roundShiftsForReport,
   buildDays,
   closedMinutes,
   formatMinutes,

@@ -9,6 +9,7 @@ const sanitizeHtml = require('sanitize-html')
 const { GoogleGenAI, Type } = require('@google/genai')
 const { renderWorkOrderPdfBuffer } = require('./workOrderPdf')
 const { renderRatingsPdfBuffer } = require('./ratingsPdf')
+const { renderWorkReportPdfBuffer } = require('./workReportPdf')
 const nodemailer = require('nodemailer')
 const {
   renderHoursLogPdfBuffer,
@@ -148,6 +149,20 @@ const PROMOTE_VISIT_ORDER_MUTATION = `
         visitAppointmentId: null
       }
     )
+  }
+`
+const MAKE_DIRECT_ORDER_MUTATION = `
+  mutation MakeDirectOrderAdmin($id: UUID!) {
+    workOrder_update(id: $id, data: { direct: true, status: IN_PROGRESS })
+  }
+`
+const GET_ORDER_FOR_CLOCK_IN_QUERY = `
+  query GetOrderForClockInAdmin($id: UUID!) {
+    workOrder(id: $id) {
+      direct
+      status
+      deletedAt
+    }
   }
 `
 const CREATE_WORK_ORDER_TASK_MUTATION = `
@@ -932,17 +947,21 @@ exports.createWorkOrder = onCall(async (request) => {
     skipQuote,
     pdfData,
     appointmentId,
+    direct,
   } = request.data ?? {}
 
+  const isDirect = direct === true
   if (
     typeof locationCode !== 'string' ||
     typeof assetLocation !== 'string' ||
-    !assetLocation.trim() ||
+    (!assetLocation.trim() && !isDirect) ||
     !Array.isArray(tasks) ||
     tasks.length === 0
   ) {
     throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
   }
+  // Counter work often has nowhere to say: the job is on the counter.
+  const orderAssetLocation = assetLocation.trim() || 'Mostrador'
   if (skipQuote && !permissions.includes('admin:lab')) {
     throw new HttpsError('permission-denied', 'skipQuote requiere admin:lab.')
   }
@@ -1012,22 +1031,32 @@ exports.createWorkOrder = onCall(async (request) => {
     customerId,
     boatId,
     createdById: callerUid,
-    assetLocation: assetLocation.trim(),
+    assetLocation: orderAssetLocation,
     description: description || null,
     // Read from the appointment here, not sent by the form: it's the
     // billing system's number, and the order gets the one on record.
     externalCode: fromAppointment?.externalCode ?? null,
   }
   // An appointment technicians already went to has a visit order holding
-  // their hours: that order becomes this one, so the hours come along. It
-  // starts the normal way from here - quote first - so whoever was on the
-  // visit is taken off it, and anyone still clocked in is clocked out.
+  // their hours: that order becomes this one, so the hours come along. A
+  // normal order starts over from here - quote first - so whoever was on the
+  // visit is taken off it, and anyone still clocked in is clocked out. A
+  // direct one has no quote to wait for: the job just carries on, so the
+  // same technicians stay on it and an open shift keeps running.
   const visit = fromAppointment?.visitOrders[0] ?? null
   let workOrderId
+  let keptTechnicianIds = []
   if (visit) {
     const now = new Date()
-    await clockOutOpenShifts(visit.id, now)
-    await unassignEveryone(visit.id, now)
+    if (isDirect) {
+      const res = await dataConnect.executeGraphqlRead(GET_ORDER_ASSIGNMENTS_QUERY, {
+        variables: { workOrderId: visit.id },
+      })
+      keptTechnicianIds = res.data.technicianAssignments.map((a) => a.technicianId)
+    } else {
+      await clockOutOpenShifts(visit.id, now)
+      await unassignEveryone(visit.id, now)
+    }
     await dataConnect.executeGraphql(PROMOTE_VISIT_ORDER_MUTATION, {
       variables: { id: visit.id, ...orderFields },
     })
@@ -1082,7 +1111,11 @@ exports.createWorkOrder = onCall(async (request) => {
     })
   }
 
-  if (skipQuote) {
+  if (isDirect) {
+    // No quote and nobody assigned: it's under way from the counter, and the
+    // first technician to clock in on it takes it (see startWorking).
+    await dataConnect.executeGraphql(MAKE_DIRECT_ORDER_MUTATION, { variables: { id: workOrderId } })
+  } else if (skipQuote) {
     await dataConnect.executeGraphql(UPDATE_WORK_ORDER_STATUS_MUTATION, {
       variables: { id: workOrderId, status: 'AWAITING_ASSIGNMENT' },
     })
@@ -1099,7 +1132,7 @@ exports.createWorkOrder = onCall(async (request) => {
       ...pdfData,
       code,
       createdAt: new Date(),
-      assetLocation: assetLocation.trim(),
+      assetLocation: orderAssetLocation,
       tasks,
       comments: description || undefined,
     })
@@ -1120,7 +1153,7 @@ exports.createWorkOrder = onCall(async (request) => {
     { merge: true },
   )
   await firestore.doc(`technicianChats/${workOrderId}`).set(
-    { participants: [], lastMessageAt: null, lastRead: {} },
+    { participants: keptTechnicianIds, lastMessageAt: null, lastRead: {} },
     { merge: true },
   )
 
@@ -1556,7 +1589,14 @@ exports.completeOrder = onCall(async (request) => {
   }
 
   const { workOrderId, photos } = request.data ?? {}
-  if (typeof workOrderId !== 'string' || !Array.isArray(photos) || photos.length === 0) {
+  if (typeof workOrderId !== 'string' || !Array.isArray(photos)) {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  // Counter work is finished without the closing photos a boat job needs.
+  const completingOrder = (
+    await dataConnect.executeGraphqlRead(GET_ORDER_FOR_CLOCK_IN_QUERY, { variables: { id: workOrderId } })
+  ).data.workOrder
+  if (photos.length === 0 && !completingOrder?.direct) {
     throw new HttpsError('invalid-argument', 'Se requiere al menos 1 foto o vídeo.')
   }
 
@@ -1578,14 +1618,16 @@ exports.completeOrder = onCall(async (request) => {
       },
     })
   }
-  await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
-    variables: {
-      workOrderId,
-      actorId: callerUid,
-      eventType: 'PHOTO_UPLOADED',
-      metadata: { stage: 'FINAL', count: photos.length },
-    },
-  })
+  if (photos.length > 0) {
+    await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+      variables: {
+        workOrderId,
+        actorId: callerUid,
+        eventType: 'PHOTO_UPLOADED',
+        metadata: { stage: 'FINAL', count: photos.length },
+      },
+    })
+  }
 
   const activeLogsRes = await dataConnect.executeGraphqlRead(GET_ACTIVE_TIME_LOGS_QUERY, {
     variables: { workOrderId },
@@ -1701,6 +1743,7 @@ const GET_WORK_ORDER_PROCESS_QUERY = `
   query GetWorkOrderProcessAdmin($id: UUID!) {
     workOrder(id: $id) {
       status
+      direct
       adjustedAt
       serviceProtocolDone
       serviceProtocolAt
@@ -1757,6 +1800,21 @@ exports.adjustOrder = onCall(async (request) => {
   await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
     variables: { workOrderId, actorId: request.auth.uid, eventType: 'ORDER_ADJUSTED' },
   })
+  // Counter work never has a service protocol: recorded as "no procedía"
+  // along with the adjustment, so invoicing is the next and last step.
+  if (wo.direct) {
+    await dataConnect.executeGraphql(RECORD_SERVICE_PROTOCOL_MUTATION, {
+      variables: { id: workOrderId, serviceProtocolDone: false, serviceProtocolAt: now },
+    })
+    await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+      variables: {
+        workOrderId,
+        actorId: request.auth.uid,
+        eventType: 'SERVICE_PROTOCOL_RECORDED',
+        metadata: { done: false, automatic: true },
+      },
+    })
+  }
 
   return { success: true }
 })
@@ -1810,6 +1868,12 @@ exports.invoiceOrder = onCall(async (request) => {
     throw new HttpsError('failed-precondition', 'La orden ya está marcada como facturada.')
   }
 
+  // A direct order's work report is made first: invoicing one without it
+  // would leave nothing to hand the customer or the billing system.
+  if (wo.direct) {
+    await generateWorkReport(workOrderId, new Date())
+  }
+
   const now = new Date().toISOString()
   await dataConnect.executeGraphql(INVOICE_WORK_ORDER_MUTATION, {
     variables: { id: workOrderId, invoicedAt: now },
@@ -1820,6 +1884,210 @@ exports.invoiceOrder = onCall(async (request) => {
 
   return { success: true }
 })
+
+// ---------------------------------------------------------------------------
+// Direct orders: what was done (WorkOrderWorkLine) and the work report.
+// ---------------------------------------------------------------------------
+
+const GET_ORDER_FOR_WORK_LINES_QUERY = `
+  query GetOrderForWorkLinesAdmin($id: UUID!) {
+    workOrder(id: $id) {
+      id
+      direct
+      status
+      deletedAt
+    }
+  }
+`
+const GET_WORK_LINE_QUERY = `
+  query GetWorkLineAdmin($id: UUID!) {
+    workOrderWorkLine(id: $id) {
+      id
+      description
+      authorId
+      workOrderId
+      workOrder {
+        status
+      }
+    }
+  }
+`
+const CREATE_WORK_LINE_MUTATION = `
+  mutation CreateWorkLineAdmin($workOrderId: UUID!, $description: String!, $authorId: String!) {
+    workOrderWorkLine_insert(data: { workOrderId: $workOrderId, description: $description, authorId: $authorId })
+  }
+`
+const UPDATE_WORK_LINE_MUTATION = `
+  mutation UpdateWorkLineAdmin($id: UUID!, $description: String!, $updatedAt: Timestamp!) {
+    workOrderWorkLine_update(id: $id, data: { description: $description, updatedAt: $updatedAt })
+  }
+`
+const DELETE_WORK_LINE_MUTATION = `
+  mutation DeleteWorkLineAdmin($id: UUID!) {
+    workOrderWorkLine_delete(id: $id)
+  }
+`
+const WORK_LINE_MAX_LENGTH = 500
+
+function workLineText(description) {
+  const text = typeof description === 'string' ? description.trim() : ''
+  if (!text) throw new HttpsError('invalid-argument', 'Escribe qué se ha hecho.')
+  if (text.length > WORK_LINE_MAX_LENGTH) {
+    throw new HttpsError('invalid-argument', `Como mucho ${WORK_LINE_MAX_LENGTH} caracteres por línea.`)
+  }
+  return text
+}
+
+// The office may change any line at any time (and it's logged); a
+// technician only their own, while the order is still in progress.
+async function requireWorkLineEditor(request, line) {
+  if (isAdminOrLab(request)) return 'office'
+  if (line.authorId === request.auth.uid && line.workOrder.status === 'IN_PROGRESS') return 'author'
+  throw new HttpsError('permission-denied', 'Solo administración puede cambiar esta línea.')
+}
+
+exports.addWorkLine = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  const { workOrderId, description } = request.data ?? {}
+  if (typeof workOrderId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la orden.')
+  }
+  const text = workLineText(description)
+  const order = (
+    await dataConnect.executeGraphqlRead(GET_ORDER_FOR_WORK_LINES_QUERY, { variables: { id: workOrderId } })
+  ).data.workOrder
+  if (!order || order.deletedAt || !order.direct) {
+    throw new HttpsError('failed-precondition', 'Esta orden no lleva trabajos realizados.')
+  }
+  if (!isAdminOrLab(request)) {
+    if (order.status !== 'IN_PROGRESS') {
+      throw new HttpsError('failed-precondition', 'La orden ya no está en curso.')
+    }
+    if (!(await getMyAssignment(workOrderId, request.auth.uid))) {
+      throw new HttpsError('permission-denied', 'Ficha en la orden para poder anotar trabajos.')
+    }
+  }
+  await dataConnect.executeGraphql(CREATE_WORK_LINE_MUTATION, {
+    variables: { workOrderId, description: text, authorId: request.auth.uid },
+  })
+  return { success: true }
+})
+
+exports.updateWorkLine = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  const { lineId, description } = request.data ?? {}
+  if (typeof lineId !== 'string') throw new HttpsError('invalid-argument', 'Falta la línea.')
+  const text = workLineText(description)
+  const line = (await dataConnect.executeGraphqlRead(GET_WORK_LINE_QUERY, { variables: { id: lineId } })).data
+    .workOrderWorkLine
+  if (!line) throw new HttpsError('not-found', 'Esa línea ya no existe.')
+  const editor = await requireWorkLineEditor(request, line)
+  await dataConnect.executeGraphql(UPDATE_WORK_LINE_MUTATION, {
+    variables: { id: lineId, description: text, updatedAt: new Date().toISOString() },
+  })
+  if (editor === 'office' && line.authorId !== request.auth.uid) {
+    await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+      variables: {
+        workOrderId: line.workOrderId,
+        actorId: request.auth.uid,
+        eventType: 'WORK_LINES_EDITED',
+        metadata: { before: line.description, after: text },
+      },
+    })
+  }
+  return { success: true }
+})
+
+exports.deleteWorkLine = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  const { lineId } = request.data ?? {}
+  if (typeof lineId !== 'string') throw new HttpsError('invalid-argument', 'Falta la línea.')
+  const line = (await dataConnect.executeGraphqlRead(GET_WORK_LINE_QUERY, { variables: { id: lineId } })).data
+    .workOrderWorkLine
+  if (!line) throw new HttpsError('not-found', 'Esa línea ya no existe.')
+  const editor = await requireWorkLineEditor(request, line)
+  await dataConnect.executeGraphql(DELETE_WORK_LINE_MUTATION, { variables: { id: lineId } })
+  if (editor === 'office' && line.authorId !== request.auth.uid) {
+    await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+      variables: {
+        workOrderId: line.workOrderId,
+        actorId: request.auth.uid,
+        eventType: 'WORK_LINES_EDITED',
+        metadata: { before: line.description, after: null },
+      },
+    })
+  }
+  return { success: true }
+})
+
+const GET_WORK_REPORT_DATA_QUERY = `
+  query GetWorkReportDataAdmin($id: UUID!) {
+    workOrder(id: $id) {
+      id
+      code
+      externalCode
+      locationCode
+      assetLocation
+      description
+      createdAt
+      completedAt
+      customer {
+        name
+        contactName
+        phone
+      }
+      boat {
+        name
+        registrationNumber
+      }
+      tasks: workOrderTasks_on_workOrder(limit: 200) {
+        description
+      }
+      workLines: workOrderWorkLines_on_workOrder(orderBy: { createdAt: ASC }, limit: 500) {
+        description
+        createdAt
+        author {
+          displayName
+        }
+      }
+      materials: workOrderMaterials_on_workOrder(orderBy: { createdAt: ASC }, limit: 500) {
+        description
+        quantity
+        unit
+      }
+      timeLogs: timeLogs_on_workOrder(orderBy: { clockIn: ASC }, limit: 2000) {
+        id
+        technicianId
+        clockIn
+        clockOut
+        technician {
+          displayName
+        }
+      }
+    }
+  }
+`
+const SET_WORK_REPORT_URL_MUTATION = `
+  mutation SetWorkReportUrlAdmin($id: UUID!, $workReportUrl: String!) {
+    workOrder_update(id: $id, data: { workReportUrl: $workReportUrl })
+  }
+`
+
+// Rebuilt from the database every time (invoicing again after an undo makes
+// a fresh one over the same file), so it shows the order as it was billed.
+async function generateWorkReport(workOrderId, generatedAt) {
+  const wo = (await dataConnect.executeGraphqlRead(GET_WORK_REPORT_DATA_QUERY, { variables: { id: workOrderId } }))
+    .data.workOrder
+  if (!wo) throw new HttpsError('not-found', 'La orden no existe.')
+  const buffer = await renderWorkReportPdfBuffer({
+    ...wo,
+    locationLabel: ORDER_LOCATION_LABEL[wo.locationCode] ?? wo.locationCode,
+    generatedAt,
+  })
+  const url = await uploadPdfAndGetDownloadUrl(`work-orders/${wo.code}/parte-de-trabajo.pdf`, buffer)
+  await dataConnect.executeGraphql(SET_WORK_REPORT_URL_MUTATION, { variables: { id: workOrderId, workReportUrl: url } })
+  return url
+}
 
 // ---------------------------------------------------------------------------
 // Undoing those three steps. Separate permission from "orders:closing": being
@@ -2296,6 +2564,33 @@ exports.startWorking = onCall(async (request) => {
   })
   if (existingRes.data.timeLogs.length > 0) {
     return { skipped: true }
+  }
+
+  // Counter work isn't assigned beforehand: whoever clocks in on an open
+  // direct order is put on it, as "Autorizado" so they can finish it too.
+  const clockInOrder = (
+    await dataConnect.executeGraphqlRead(GET_ORDER_FOR_CLOCK_IN_QUERY, { variables: { id: workOrderId } })
+  ).data.workOrder
+  if (
+    clockInOrder?.direct &&
+    clockInOrder.status === 'IN_PROGRESS' &&
+    !clockInOrder.deletedAt &&
+    !(await getMyAssignment(workOrderId, callerUid))
+  ) {
+    requirePermission(request, 'orders:assignable')
+    await dataConnect.executeGraphql(ASSIGN_TECHNICIAN_MUTATION, {
+      variables: {
+        workOrderId,
+        technicianId: callerUid,
+        assignedById: callerUid,
+        assignedAt: clockIn.toISOString(),
+        isAllowed: true,
+        isLead: false,
+      },
+    })
+    await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+      variables: { workOrderId, actorId: callerUid, eventType: 'DIRECT_ORDER_TAKEN' },
+    })
   }
 
   const activeRes = await dataConnect.executeGraphqlRead(GET_MY_ACTIVE_TIME_LOG_QUERY, {

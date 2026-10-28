@@ -24,6 +24,8 @@ export interface CreateWorkOrderInput {
   appointmentId?: string
   /** Skips straight to AWAITING_ASSIGNMENT - requires admin:lab. */
   skipQuote?: boolean
+  /** Counter work: no quote, nobody assigned, born in progress (WorkOrder.direct). */
+  direct?: boolean
   /** Omit to skip report generation entirely (used by the lab quick-create shortcut). */
   pdfData?: {
     customerName: string

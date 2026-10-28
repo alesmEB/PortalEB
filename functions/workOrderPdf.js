@@ -123,7 +123,9 @@ function buildWorkOrderDocument(data) {
         data.registrationNumber ? labelRow('Matrícula', data.registrationNumber) : null,
         labelRow('Ubicación', data.assetLocation),
       ),
-      React.createElement(
+      data.engines.length === 0
+        ? null
+        : React.createElement(
         View,
         { style: styles.section },
         React.createElement(Text, { style: styles.sectionTitle }, 'Motores'),

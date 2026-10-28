@@ -5,7 +5,9 @@ import {
   WorkOrderStatus,
   getMyActiveTimeLog,
   listMyAssignedWorkOrders,
+  listOpenDirectOrders,
   type ListMyAssignedWorkOrdersData,
+  type ListOpenDirectOrdersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
 import { HasPermission } from '../components/HasPermission'
@@ -21,6 +23,7 @@ import { workOrderStatusColor, workOrderStatusLabel } from '../lib/orderStatus'
 import { WORKSHOP_LOCATIONS, formatWorkshopMonth } from '../lib/workshop'
 
 type Assignment = ListMyAssignedWorkOrdersData['technicianAssignments'][number]
+type DirectOrder = ListOpenDirectOrdersData['workOrders'][number]
 
 export function AssignmentsPage() {
   const navigate = useNavigate()
@@ -32,6 +35,10 @@ export function AssignmentsPage() {
   const [loadError, setLoadError] = useState(false)
   // Set when the list on screen is the copy kept in the phone, not a fresh read.
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null)
+  // Counter work anyone can pick up (WorkOrder.direct) - for those who clock in.
+  const canPickUpDirect = usePermission('orders:assignable')
+  const [directOrders, setDirectOrders] = useState<DirectOrder[] | null>(null)
+  const [directError, setDirectError] = useState(false)
 
   const load = useCallback(() => {
     setLoadError(false)
@@ -57,7 +64,13 @@ export function AssignmentsPage() {
     getMyActiveTimeLog(FRESH)
       .then((res) => setWorkingOrderId(pickActiveShift(res.data.timeLogs)?.workOrderId ?? null))
       .catch(() => {})
-  }, [profile])
+    if (canPickUpDirect) {
+      setDirectError(false)
+      listOpenDirectOrders(FRESH)
+        .then((res) => setDirectOrders(res.data.workOrders))
+        .catch(() => setDirectError(true))
+    }
+  }, [profile, canPickUpDirect])
 
   useEffect(load, [load])
 
@@ -87,6 +100,11 @@ export function AssignmentsPage() {
     )
   const orderAssignments = pendingAssignments?.filter(
     (assignment) => !assignment.workOrder.workshopMonth,
+  )
+  // The ones nobody has picked up yet, or someone else did: the ones this
+  // technician is already on are in their own list below.
+  const directToPickUp = directOrders?.filter(
+    (order) => !order.assignments.some((a) => a.technicianId === profile?.id),
   )
 
   return (
@@ -140,6 +158,52 @@ export function AssignmentsPage() {
               )
             })}
           </div>
+        )}
+        {canPickUpDirect && (directError || (directToPickUp && directToPickUp.length > 0)) && (
+          <section className="rounded-xl border border-amber-300 bg-amber-50/70 p-3">
+            <h2 className="text-sm font-semibold text-amber-900">
+              Trabajos de mostrador{directToPickUp ? ` (${directToPickUp.length})` : ''}
+            </h2>
+            <p className="text-xs text-amber-800">
+              Órdenes directas sin presupuesto. Ábrela y pulsa "Trabajar en esta orden" para cogerla.
+            </p>
+            {directError && (
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                <span>No se han podido cargar los trabajos de mostrador.</span>
+                <button onClick={load} className="shrink-0 font-semibold underline">
+                  Reintentar
+                </button>
+              </div>
+            )}
+            <ul className="mt-2 space-y-2">
+              {directToPickUp?.map((order) => (
+                <li key={order.id}>
+                  <button
+                    onClick={() => navigate(`/orders/${order.id}`, { state: { from: '/assignments' } })}
+                    className="w-full rounded-lg border border-amber-200 bg-white/90 p-3 text-left hover:border-amber-400"
+                  >
+                    <p className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-mono text-sm font-semibold text-eb-blue-dark">{order.code}</span>
+                      <span className="text-sm text-slate-700">
+                        {order.boat.name} · {order.customer.name}
+                      </span>
+                    </p>
+                    {order.tasks.length > 0 && (
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        {order.tasks.map((t) => t.description).join(' · ')}
+                      </p>
+                    )}
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      {orderLocationLabel[order.locationCode]} ·{' '}
+                      {order.assignments.length > 0
+                        ? `Con ${order.assignments.map((a) => a.technician.displayName).join(', ')}`
+                        : 'Sin coger'}
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         {orderAssignments?.length === 0 && (
           <p className="text-sm text-slate-500">No tienes órdenes asignadas pendientes.</p>

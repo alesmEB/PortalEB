@@ -52,6 +52,14 @@ export function NewOrderPage() {
   const [locationCode, setLocationCode] = useState<OrderLocation | ''>(
     fromAppointment?.locationCode ?? '',
   )
+  // Counter work ("orden directa"): ticked by default for La Línea, where
+  // most jobs come in over the counter with no quote. Picking a location
+  // sets it; ticking or unticking it by hand afterwards is left alone.
+  const [direct, setDirect] = useState(fromAppointment?.locationCode === OrderLocation.LA_LINEA)
+  function chooseLocation(loc: OrderLocation) {
+    setLocationCode(loc)
+    setDirect(loc === OrderLocation.LA_LINEA)
+  }
 
   const [customerName, setCustomerName] = useState('')
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
@@ -186,12 +194,12 @@ export function NewOrderPage() {
       list.push({ field: 'phone', label: 'Teléfono del responsable' })
     }
     if (!boatName.trim()) list.push({ field: 'boatName', label: 'Nombre de la embarcación/máquina' })
-    if (!assetLocation.trim()) {
+    if (!assetLocation.trim() && !direct) {
       list.push({ field: 'assetLocation', label: 'Ubicación de la embarcación/máquina' })
     }
     if (halfFilledEngine) {
       list.push({ field: 'engines', label: 'Un motor a medias: rellena sus tres datos o vacíalo' })
-    } else if (existingEngines.length + filledNewEngines.length === 0) {
+    } else if (existingEngines.length + filledNewEngines.length === 0 && !direct) {
       list.push({ field: 'engines', label: 'Al menos un motor, con sus tres datos' })
     }
     if (filledTasks.length === 0) list.push({ field: 'tasks', label: 'Al menos un trabajo a realizar' })
@@ -204,6 +212,7 @@ export function NewOrderPage() {
     phone,
     boatName,
     assetLocation,
+    direct,
     halfFilledEngine,
     existingEngines.length,
     filledNewEngines.length,
@@ -241,6 +250,7 @@ export function NewOrderPage() {
         assetLocation: assetLocation.trim(),
         description: comments.trim() || undefined,
         tasks: filledTasks,
+        ...(direct ? { direct: true } : {}),
         ...(fromAppointment ? { appointmentId: fromAppointment.id } : {}),
         pdfData: {
           customerName: customerName.trim(),
@@ -329,7 +339,7 @@ export function NewOrderPage() {
             <button
               key={loc}
               type="button"
-              onClick={() => setLocationCode(loc)}
+              onClick={() => chooseLocation(loc)}
               className={`rounded-lg border px-3 py-2 text-sm ${
                 locationCode === loc
                   ? 'border-eb-blue bg-eb-blue text-white'
@@ -340,6 +350,21 @@ export function NewOrderPage() {
             </button>
           ))}
         </div>
+        <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={direct}
+            onChange={(e) => setDirect(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium">Orden directa (sin presupuesto)</span>
+            <span className="block text-xs text-slate-500">
+              Trabajo de mostrador: empieza en curso, cualquier técnico la coge al fichar y anota lo
+              que hace. Motores y ubicación no son obligatorios.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className="mt-4 rounded-xl border border-slate-200 bg-white/90 p-4 backdrop-blur-sm">
@@ -451,7 +476,7 @@ export function NewOrderPage() {
 
         <label className="mt-3 block text-sm font-medium text-slate-600">
           Ubicación de la embarcación/máquina
-          <RequiredMark />
+          {!direct && <RequiredMark />}
           <input
             value={assetLocation}
             onChange={(e) => setAssetLocation(e.target.value)}
@@ -477,7 +502,7 @@ export function NewOrderPage() {
         <div className="mt-4">
           <p className="text-xs font-medium text-slate-500">
             {existingEngines.length > 0 ? 'Añadir motor nuevo' : 'Motores'}
-            {existingEngines.length === 0 && <RequiredMark />}
+            {existingEngines.length === 0 && !direct && <RequiredMark />}
           </p>
           {isMissing('engines') && (
             <p className="mt-1 text-xs text-red-600">

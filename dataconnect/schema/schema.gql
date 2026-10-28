@@ -101,6 +101,10 @@ enum OrderEventType {
   # On an appointment's visit order (see CalendarAppointment.doneAt).
   VISIT_MARKED_DONE
   VISIT_DONE_UNMARKED
+  # Direct orders: a technician picked it up, and the office corrected
+  # what was written down as done.
+  DIRECT_ORDER_TAKEN
+  WORK_LINES_EDITED
 }
 
 # ---------------------------------------------------------------------------
@@ -260,6 +264,42 @@ type WorkOrder @table(name: "work_orders") {
   # it being null.
   visitAppointmentId: UUID
   visitAppointment: CalendarAppointment @ref(fields: ["visitAppointmentId"])
+  # Counter work ("orden directa", mostly La Línea): no quote and nobody
+  # assigned up front. It's created IN_PROGRESS, any orders:assignable
+  # technician picks it up by clocking in (startWorking assigns them), they
+  # write down what they did (WorkOrderWorkLine) and the office invoices it -
+  # at which point the work report is generated (workReportUrl).
+  direct: Boolean
+  # The "parte de trabajo" PDF of a direct order, made when it's invoiced.
+  workReportUrl: String
+}
+
+# What was actually done on a direct order, written by the technicians as
+# they go (the order's tasks are what the customer asked for). The office
+# can correct any line; a technician only their own, while the order is open.
+type WorkOrderWorkLine @table(name: "work_order_work_lines") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  description: String!
+  authorId: String!
+  author: User! @ref(fields: ["authorId"])
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp
+}
+
+# Materials and parts used on an order. Not written by the app yet: the
+# table is here so that adding them later is only a screen, not a migration.
+type WorkOrderMaterial @table(name: "work_order_materials") {
+  id: UUID! @default(expr: "uuidV4()")
+  workOrderId: UUID!
+  workOrder: WorkOrder! @ref(fields: ["workOrderId"])
+  description: String!
+  quantity: Float!
+  unit: String
+  addedById: String!
+  addedBy: User! @ref(fields: ["addedById"])
+  createdAt: Timestamp! @default(expr: "request.time")
 }
 
 # The list of jobs to perform, captured at order creation.

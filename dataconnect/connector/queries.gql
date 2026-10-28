@@ -131,6 +131,7 @@ query ListWorkOrders @auth(level: USER) {
     id
     code
     externalCode
+    direct
     status
     locationCode
     assetLocation
@@ -229,6 +230,7 @@ query ListMyAssignedWorkOrders @auth(level: USER) {
       status
       locationCode
       workshopMonth
+      direct
       visitAppointment {
         title
         boatDetails
@@ -476,6 +478,18 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
     externalCode
     deletedAt
     workshopMonth
+    direct
+    workReportUrl
+    workLines: workOrderWorkLines_on_workOrder(orderBy: { createdAt: ASC }, limit: 500) {
+      id
+      description
+      createdAt
+      updatedAt
+      authorId
+      author {
+        displayName
+      }
+    }
     visitAppointment {
       id
       title
@@ -843,5 +857,36 @@ query ListAvailableEbScreens @auth(level: USER) {
     reference
     model
     serialNumber
+  }
+}
+
+# Counter work waiting for anyone to pick it up (WorkOrder.direct): every
+# open one, with who's already on it, so Asignaciones can list the ones the
+# technician isn't on yet.
+query ListOpenDirectOrders @auth(level: USER) {
+  workOrders(
+    where: { direct: { eq: true }, status: { eq: IN_PROGRESS }, deletedAt: { isNull: true } }
+    orderBy: { createdAt: ASC }
+    limit: 500
+  ) {
+    id
+    code
+    locationCode
+    createdAt
+    customer {
+      name
+    }
+    boat {
+      name
+    }
+    tasks: workOrderTasks_on_workOrder(limit: 20) {
+      description
+    }
+    assignments: technicianAssignments_on_workOrder(where: { unassignedAt: { isNull: true } }, limit: 50) {
+      technicianId
+      technician {
+        displayName
+      }
+    }
   }
 }

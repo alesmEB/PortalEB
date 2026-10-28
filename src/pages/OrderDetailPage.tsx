@@ -44,7 +44,9 @@ import {
   adminDeleteTimeLog,
   adminUpdateTimeLog,
   assignTechnicians,
+  addWorkLine,
   completeOrder,
+  deleteWorkLine,
   forceCompleteOrder,
   invoiceOrder,
   recordServiceProtocol,
@@ -56,6 +58,7 @@ import {
   startWorking,
   stopWorking,
   toggleWorkOrderTask,
+  updateWorkLine,
   updateWorkOrderTasks,
 } from '../lib/orderWorkflow'
 import type { AdminProcessStep, ResumeWorkshop, WorkOrderTaskInput } from '../lib/orderWorkflow'
@@ -648,6 +651,144 @@ function EditTimeLogModal({
   )
 }
 
+/** What was actually done on a direct order (WorkOrderWorkLine): the
+ * technicians write it as they go, the office can correct it - see
+ * addWorkLine/updateWorkLine/deleteWorkLine for who may do what. */
+function WorkLinesSection({
+  workOrderId,
+  lines,
+  canAdd,
+  canEditAny,
+  myUid,
+  orderInProgress,
+  runAction,
+  onChanged,
+}: {
+  workOrderId: string
+  lines: { id: string; description: string; createdAt: string; updatedAt?: string | null; authorId: string; author: { displayName: string } }[]
+  canAdd: boolean
+  canEditAny: boolean
+  myUid: string | null
+  orderInProgress: boolean
+  runAction: (label: string, action: () => Promise<unknown>) => Promise<void>
+  onChanged: () => Promise<unknown>
+}) {
+  const [draft, setDraft] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
+
+  const canEdit = (line: { authorId: string }) => canEditAny || (line.authorId === myUid && orderInProgress)
+
+  async function handleAdd() {
+    const text = draft.trim()
+    if (!text) return
+    await runAction('Anotando el trabajo...', async () => {
+      await addWorkLine(workOrderId, text)
+      setDraft('')
+      await onChanged()
+    })
+  }
+
+  async function handleSave(lineId: string) {
+    const text = editText.trim()
+    if (!text) return
+    await runAction('Guardando el cambio...', async () => {
+      await updateWorkLine(lineId, text)
+      setEditingId(null)
+      await onChanged()
+    })
+  }
+
+  async function handleDelete(lineId: string) {
+    if (!confirm('¿Borrar esta línea de trabajo realizado?')) return
+    await runAction('Borrando la línea...', async () => {
+      await deleteWorkLine(lineId)
+      await onChanged()
+    })
+  }
+
+  return (
+    <section className="mt-4 rounded-xl border border-amber-200 bg-white/90 p-4 backdrop-blur-sm">
+      <h2 className="text-sm font-semibold text-eb-teal-dark">Trabajos realizados</h2>
+      {lines.length === 0 && <p className="mt-1 text-xs text-slate-500">Todavía no se ha anotado nada.</p>}
+      <ul className="mt-2 space-y-2">
+        {lines.map((line) => (
+          <li key={line.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            {editingId === line.id ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  className="w-full rounded-lg border border-slate-300 px-2 py-1 text-sm outline-none focus:border-eb-blue"
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingId(null)} className="text-xs text-slate-500 underline">
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleSave(line.id)}
+                    disabled={!editText.trim()}
+                    className="text-xs font-semibold text-eb-blue underline disabled:opacity-50"
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="whitespace-pre-line">{line.description}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-slate-400">
+                  <span>
+                    {line.author.displayName} · {new Date(line.createdAt).toLocaleString('es-ES')}
+                    {line.updatedAt && ' · corregido'}
+                  </span>
+                  {canEdit(line) && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setEditingId(line.id)
+                          setEditText(line.description)
+                        }}
+                        className="text-eb-blue underline"
+                      >
+                        Editar
+                      </button>
+                      <button onClick={() => handleDelete(line.id)} className="text-red-600 underline">
+                        Borrar
+                      </button>
+                    </>
+                  )}
+                </p>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      {canAdd && (
+        <div className="mt-3 flex gap-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="Qué se ha hecho (por ejemplo, «Cambio de impulsor de la bomba de agua»)"
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-eb-blue"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={!draft.trim()}
+            className="self-end rounded-lg bg-eb-blue px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Anotar
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
 const photoStageLabel: Record<PhotoStage, string> = {
   [PhotoStage.START]: 'Inicio',
   [PhotoStage.INCIDENT]: 'Incidencia',
@@ -672,10 +813,13 @@ function PhotoUploadModal({
   stage,
   onClose,
   onConfirm,
+  optional = false,
 }: {
   stage: typeof PhotoStage.START | typeof PhotoStage.FINAL
   onClose: () => void
   onConfirm: (files: File[]) => Promise<void>
+  /** Counter work is finished without photos if there aren't any. */
+  optional?: boolean
 }) {
   const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -698,7 +842,9 @@ function PhotoUploadModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
       <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl">
         <h2 className="text-sm font-semibold text-eb-blue-dark">{copy.title}</h2>
-        <p className="mt-1 text-xs text-slate-500">{copy.subtitle}</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {optional ? 'Si quieres, añade fotos o vídeos del resultado (no es obligatorio).' : copy.subtitle}
+        </p>
 
         <MediaPicker files={files} onFilesChange={setFiles} />
 
@@ -715,7 +861,7 @@ function PhotoUploadModal({
             Cancelar
           </button>
           <button
-            disabled={files.length === 0 || submitting}
+            disabled={(files.length === 0 && !optional) || submitting}
             onClick={handleConfirm}
             className="flex-1 rounded-lg bg-eb-blue py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
@@ -1032,6 +1178,8 @@ export function OrderDetailPage() {
   const canViewAdminProcess = usePermission('orders:closing')
   const canRevertAdminProcess = usePermission('admin:reopen')
   const isLab = usePermission('admin:lab')
+  // Who may pick up counter work by clocking in on it (WorkOrder.direct).
+  const canPickUpDirect = usePermission('orders:assignable')
   const canCreateOrders = usePermission('orders:create')
   const canAssignTechnicians = usePermission('admin:assigntechnicians')
   const canEditExternalCode = profile?.role === UserRole.ADMIN || isLab
@@ -1070,6 +1218,7 @@ export function OrderDetailPage() {
     if (!order) return []
     const docs: DocumentOption[] = []
     if (order.finalReportUrl) docs.push({ label: 'Informe', url: order.finalReportUrl })
+    if (order.workReportUrl) docs.push({ label: 'Parte de trabajo', url: order.workReportUrl })
     if (canViewQuotes) {
       for (const quote of order.quotes) {
         docs.push({ label: `Presupuesto ${quote.attemptNumber}`, url: quote.fileUrl })
@@ -1449,7 +1598,14 @@ export function OrderDetailPage() {
     <div className="flex-1 p-4">
       <BackButton to={backTo} />
       <div className="flex items-center justify-between">
-        <h1 className="font-mono text-lg font-semibold text-eb-blue-dark">{order.code}</h1>
+        <h1 className="flex items-center gap-2 font-mono text-lg font-semibold text-eb-blue-dark">
+          {order.code}
+          {order.direct && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-sans text-xs font-semibold text-amber-800">
+              Directa
+            </span>
+          )}
+        </h1>
         <span className="rounded-full bg-eb-teal/10 px-2.5 py-1 text-xs text-eb-teal-dark">
           {workOrderStatusLabel[order.status]}
         </span>
@@ -1635,7 +1791,7 @@ export function OrderDetailPage() {
               Añadir incidencia
             </button>
           )}
-        {!!myAssignment && order.status === WorkOrderStatus.IN_PROGRESS && (
+        {(!!myAssignment || (!!order.direct && canPickUpDirect)) && order.status === WorkOrderStatus.IN_PROGRESS && (
           <button
             disabled={busy}
             onClick={amWorkingHere ? handleStopWorking : handleStartWorking}
@@ -1778,6 +1934,19 @@ export function OrderDetailPage() {
           </ul>
           )}
         </section>
+      )}
+
+      {order.direct && (
+        <WorkLinesSection
+          workOrderId={order.id}
+          lines={order.workLines}
+          canAdd={isOffice || (!!myAssignment && order.status === WorkOrderStatus.IN_PROGRESS)}
+          canEditAny={isOffice}
+          myUid={profile?.id ?? null}
+          orderInProgress={order.status === WorkOrderStatus.IN_PROGRESS}
+          runAction={runPageAction}
+          onChanged={loadOrder}
+        />
       )}
 
       {order.description && (
@@ -2061,6 +2230,7 @@ export function OrderDetailPage() {
       {completingOrder && (
         <PhotoUploadModal
           stage={PhotoStage.FINAL}
+          optional={!!order.direct}
           onClose={() => setCompletingOrder(false)}
           onConfirm={handleCompleteOrder}
         />
@@ -2094,7 +2264,11 @@ export function OrderDetailPage() {
       {adminStepModal === 'adjust' && (
         <AdminStepModal
           title="Marcar como ajustada"
-          description="¿Confirmas que la orden ha sido ajustada por administración?"
+          description={
+            order.direct
+              ? '¿Confirmas que la orden ha sido ajustada por administración? Al ser una orden directa, el protocolo de servicio queda como "no procedía".'
+              : '¿Confirmas que la orden ha sido ajustada por administración?'
+          }
           onClose={() => setAdminStepModal(null)}
           actions={[
             {
@@ -2158,7 +2332,11 @@ export function OrderDetailPage() {
       {adminStepModal === 'invoice' && (
         <AdminStepModal
           title="Marcar como facturada"
-          description="¿Confirmas que esta orden ya ha sido facturada al cliente?"
+          description={
+            order.direct
+              ? '¿Confirmas que esta orden ya ha sido facturada al cliente? Se generará el parte de trabajo con lo realizado y las horas; quedará en Documentos.'
+              : '¿Confirmas que esta orden ya ha sido facturada al cliente?'
+          }
           onClose={() => setAdminStepModal(null)}
           actions={[
             {

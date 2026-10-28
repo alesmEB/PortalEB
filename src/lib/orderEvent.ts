@@ -29,4 +29,6 @@ export const orderEventTypeLabel: Record<OrderEventType, string> = {
   [OrderEventType.ORDER_FORCE_COMPLETED]: 'Completó la orden directamente',
   [OrderEventType.VISIT_MARKED_DONE]: 'Marcó la cita como realizada',
   [OrderEventType.VISIT_DONE_UNMARKED]: 'Quitó la marca de cita realizada',
+  [OrderEventType.DIRECT_ORDER_TAKEN]: 'Cogió el trabajo',
+  [OrderEventType.WORK_LINES_EDITED]: 'Corrigió los trabajos realizados',
 }
