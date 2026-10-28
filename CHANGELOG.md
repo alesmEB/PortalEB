@@ -6,6 +6,16 @@ Para saber qué versión tienes abierta, mira el pie de página: `v<código> · 
 Esa fecha es la de la compilación, y te dice hasta qué día de esta lista incluye
 tu versión.
 
+## 28 de octubre de 2026
+
+- Citas: ahora se les pueden poner fotos y vídeos. Administración desde la
+  propia cita (al editarla), y los técnicos asignados desde la orden de la
+  cita. Se ven en la cita y, si de ella sale una orden, pasan a esa orden.
+- Citas: el técnico asignado puede marcar la cita como **realizada** desde
+  la orden de la cita. Si seguía fichado, se le cierra el turno, y a quien
+  creó la cita le llega un aviso. En el calendario sale "Realizada" en verde
+  hasta que administración la completa, con orden o sin ella, como siempre.
+
 ## 26 de octubre de 2026
 
 - Calendario: ya se pueden asignar técnicos a una cita y que fichen en ella.

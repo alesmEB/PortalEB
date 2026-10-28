@@ -102,6 +102,18 @@ service firebase.storage {
     // the id from the route params. Gated by chat:write, the same permission
     // Firestore's message-create rule already requires. Document mimetypes
     // kept in sync by hand with DOCUMENT_ACCEPT in src/lib/media.ts.
+    // An appointment's photos (CalendarAppointmentPhoto): same limits as an
+    // order's. Who may attach them to which appointment is checked by
+    // addAppointmentPhotos; this only gates the upload itself.
+    match /appointments/{appointmentId}/photos/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if hasPermission('photos:upload') &&
+        ((request.resource.contentType.matches('image/.*') &&
+          request.resource.size < 15 * 1024 * 1024) ||
+         (request.resource.contentType.matches('video/.*') &&
+          request.resource.size < 20 * 1024 * 1024));
+    }
+
     match /chat-media/{orderId}/{kind}/{fileName} {
       allow read: if isSignedIn();
       allow write: if hasPermission('chat:write') &&

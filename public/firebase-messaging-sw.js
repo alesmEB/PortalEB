@@ -47,7 +47,10 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const { orderId, kind } = event.notification.data ?? {}
-  const url = kind ? `/chat/${kind}/${orderId}` : orderId ? `/orders/${orderId}` : '/'
+  const { orderId, kind, path } = event.notification.data ?? {}
+  // `path` is for a screen that isn't an order or a chat (the calendar, for
+  // an appointment); only app-relative paths, never another site.
+  const ownPath = typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') ? path : null
+  const url = ownPath ?? (kind ? `/chat/${kind}/${orderId}` : orderId ? `/orders/${orderId}` : '/')
   event.waitUntil(self.clients.openWindow(url))
 })

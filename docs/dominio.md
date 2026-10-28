@@ -181,6 +181,16 @@ interna en la nueva (código real, cliente, embarcación, trabajos), así que la
 horas de la visita quedan en la orden; empieza en "Pendiente de presupuesto"
 con nadie asignado.
 
+**Fotos y "realizada".** Una cita tiene sus propias fotos
+(`CalendarAppointmentPhoto`, en Storage bajo `appointments/{id}/photos/`):
+administración las pone desde la cita y los técnicos asignados desde su orden
+de la cita (`addAppointmentPhotos` comprueba quién). Al crear una orden desde
+la cita se copian a ella con etapa `APPOINTMENT`. El técnico marca la cita como
+realizada (`markAppointmentDone`, `CalendarAppointment.doneAt`): le cierra el
+turno si seguía en ella y avisa a quien creó la cita, pero cerrarla sigue
+siendo cosa de administración, que decide si hay orden o no. Reabrir la cita
+quita la marca.
+
 ## Lo que no está en PostgreSQL
 
 - **Firestore**: el chat de cada orden (`clientChats/{orderId}`,

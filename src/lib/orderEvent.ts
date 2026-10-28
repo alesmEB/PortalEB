@@ -27,4 +27,6 @@ export const orderEventTypeLabel: Record<OrderEventType, string> = {
   [OrderEventType.EXTERNAL_CODE_UPDATED]: 'Actualizó el número del gestor interno',
   [OrderEventType.ORDER_DELETED]: 'Eliminó la orden',
   [OrderEventType.ORDER_FORCE_COMPLETED]: 'Completó la orden directamente',
+  [OrderEventType.VISIT_MARKED_DONE]: 'Marcó la cita como realizada',
+  [OrderEventType.VISIT_DONE_UNMARKED]: 'Quitó la marca de cita realizada',
 }

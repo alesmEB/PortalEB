@@ -1044,6 +1044,19 @@ exports.createWorkOrder = onCall(async (request) => {
       variables: { workOrderId, description: task },
     })
   }
+  // Same files, not copies: only the rows are duplicated.
+  for (const photo of fromAppointment?.photos ?? []) {
+    await dataConnect.executeGraphql(CREATE_WORK_ORDER_PHOTO_MUTATION, {
+      variables: {
+        workOrderId,
+        stage: 'APPOINTMENT',
+        storageUrl: photo.storageUrl,
+        mediaType: photo.mediaType,
+        uploadedById: photo.uploadedById,
+        incidentId: null,
+      },
+    })
+  }
 
   await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
     variables: {
@@ -3194,6 +3207,8 @@ const GET_CALENDAR_APPOINTMENT_QUERY = `
       externalCode
       closedAt
       workOrderId
+      createdById
+      doneAt
       visitOrders: workOrders_on_visitAppointment(where: { deletedAt: { isNull: true } }, limit: 1) {
         id
         code
@@ -3201,6 +3216,11 @@ const GET_CALENDAR_APPOINTMENT_QUERY = `
         timeLogs: timeLogs_on_workOrder(limit: 1) {
           id
         }
+      }
+      photos: calendarAppointmentPhotos_on_appointment(orderBy: { createdAt: ASC }, limit: 100) {
+        storageUrl
+        mediaType
+        uploadedById
       }
     }
   }
@@ -3364,6 +3384,196 @@ exports.openAppointmentVisit = onCall(async (request) => {
   return { workOrderId }
 })
 
+// ---------------------------------------------------------------------------
+// Appointment photos and "realizada". The office (admin, or the admin:lab
+// bypass) can do both on any appointment; a technician only on one whose
+// visit order they're assigned to - the ones they were actually sent to.
+// ---------------------------------------------------------------------------
+
+const CREATE_APPOINTMENT_PHOTO_MUTATION = `
+  mutation CreateAppointmentPhotoAdmin(
+    $appointmentId: UUID!
+    $storageUrl: String!
+    $mediaType: MediaType!
+    $uploadedById: String!
+  ) {
+    calendarAppointmentPhoto_insert(
+      data: {
+        appointmentId: $appointmentId
+        storageUrl: $storageUrl
+        mediaType: $mediaType
+        uploadedById: $uploadedById
+      }
+    )
+  }
+`
+const GET_APPOINTMENT_PHOTO_QUERY = `
+  query GetAppointmentPhotoAdmin($id: UUID!) {
+    calendarAppointmentPhoto(id: $id) {
+      id
+    }
+  }
+`
+const DELETE_APPOINTMENT_PHOTO_MUTATION = `
+  mutation DeleteAppointmentPhotoAdmin($id: UUID!) {
+    calendarAppointmentPhoto_delete(id: $id)
+  }
+`
+const DELETE_APPOINTMENT_PHOTOS_MUTATION = `
+  mutation DeleteAppointmentPhotosAdmin($appointmentId: UUID!) {
+    calendarAppointmentPhoto_deleteMany(where: { appointmentId: { eq: $appointmentId } })
+  }
+`
+const SET_APPOINTMENT_DONE_MUTATION = `
+  mutation SetAppointmentDoneAdmin($id: UUID!, $doneAt: Timestamp!, $doneById: String!) {
+    calendarAppointment_update(id: $id, data: { doneAt: $doneAt, doneById: $doneById })
+  }
+`
+const CLEAR_APPOINTMENT_DONE_MUTATION = `
+  mutation ClearAppointmentDoneAdmin($id: UUID!) {
+    calendarAppointment_update(id: $id, data: { doneAt: null, doneById: null })
+  }
+`
+
+function isAdminOrLab(request) {
+  const permissions = Array.isArray(request.auth?.token?.permissions) ? request.auth.token.permissions : []
+  return request.auth?.token?.role === 'ADMIN' || permissions.includes('admin:lab')
+}
+
+// The appointment, if the caller may work on it; throws otherwise.
+async function requireAppointmentWorker(request, appointmentId) {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Debes iniciar sesión.')
+  }
+  if (typeof appointmentId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la cita.')
+  }
+  const appointment = await getCalendarAppointment(appointmentId)
+  if (!appointment) {
+    throw new HttpsError('not-found', 'La cita ya no existe.')
+  }
+  if (isAdminOrLab(request)) return appointment
+  const visit = appointment.visitOrders[0]
+  if (visit && (await getMyAssignment(visit.id, request.auth.uid))) return appointment
+  throw new HttpsError('permission-denied', 'Solo pueden hacerlo los técnicos asignados a la cita.')
+}
+
+// Only files the app itself put in this appointment's folder (see
+// storage.rules): the stored link is shown to everyone who opens it.
+function isAppointmentPhotoUrl(url, appointmentId) {
+  if (typeof url !== 'string') return false
+  try {
+    const parsed = new URL(url)
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.hostname === 'firebasestorage.googleapis.com' &&
+      parsed.pathname.includes(`/o/appointments%2F${appointmentId}%2Fphotos%2F`)
+    )
+  } catch {
+    return false
+  }
+}
+
+exports.addAppointmentPhotos = onCall(async (request) => {
+  const { appointmentId, photos } = request.data ?? {}
+  const appointment = await requireAppointmentWorker(request, appointmentId)
+  if (!Array.isArray(photos) || photos.length === 0 || photos.length > 30) {
+    throw new HttpsError('invalid-argument', 'Añade entre 1 y 30 fotos o vídeos.')
+  }
+  for (const photo of photos) {
+    if (!isAppointmentPhotoUrl(photo?.url, appointment.id) || !['PHOTO', 'VIDEO'].includes(photo?.mediaType)) {
+      throw new HttpsError('invalid-argument', 'Alguna foto no es válida.')
+    }
+  }
+  for (const photo of photos) {
+    await dataConnect.executeGraphql(CREATE_APPOINTMENT_PHOTO_MUTATION, {
+      variables: {
+        appointmentId: appointment.id,
+        storageUrl: photo.url,
+        mediaType: photo.mediaType,
+        uploadedById: request.auth.uid,
+      },
+    })
+  }
+  return { added: photos.length }
+})
+
+// Only the office removes a photo: one a technician took is part of the
+// record of the visit. The file stays in Storage, as with orders.
+exports.deleteAppointmentPhoto = onCall(async (request) => {
+  requireAdminOrLab(request)
+  const { photoId } = request.data ?? {}
+  if (typeof photoId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Falta el identificador de la foto.')
+  }
+  const res = await dataConnect.executeGraphqlRead(GET_APPOINTMENT_PHOTO_QUERY, { variables: { id: photoId } })
+  if (!res.data.calendarAppointmentPhoto) {
+    throw new HttpsError('not-found', 'Esa foto ya no existe.')
+  }
+  await dataConnect.executeGraphql(DELETE_APPOINTMENT_PHOTO_MUTATION, { variables: { id: photoId } })
+  return { success: true }
+})
+
+// A technician tells the office the visit is over; the office still decides
+// how it ends (with or without an order). Marking it clocks the technician
+// out of the visit if they're still on it, and lets whoever created the
+// appointment know.
+exports.markAppointmentDone = onCall(async (request) => {
+  const { appointmentId, done } = request.data ?? {}
+  if (typeof done !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'Faltan campos obligatorios.')
+  }
+  const appointment = await requireAppointmentWorker(request, appointmentId)
+  if (appointment.closedAt) {
+    throw new HttpsError('failed-precondition', 'La cita ya está completada.')
+  }
+  const visit = appointment.visitOrders[0]
+  const callerUid = request.auth.uid
+  const now = new Date()
+
+  if (!done) {
+    await dataConnect.executeGraphql(CLEAR_APPOINTMENT_DONE_MUTATION, { variables: { id: appointment.id } })
+    if (visit) {
+      await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+        variables: { workOrderId: visit.id, actorId: callerUid, eventType: 'VISIT_DONE_UNMARKED' },
+      })
+    }
+    return { success: true }
+  }
+  if (appointment.doneAt) return { success: true }
+
+  await dataConnect.executeGraphql(SET_APPOINTMENT_DONE_MUTATION, {
+    variables: { id: appointment.id, doneAt: now.toISOString(), doneById: callerUid },
+  })
+  if (visit) {
+    const activeRes = await dataConnect.executeGraphqlRead(GET_MY_ACTIVE_TIME_LOG_QUERY, {
+      variables: { technicianId: callerUid },
+    })
+    const active = pickActiveTimeLog(activeRes.data.timeLogs)
+    if (active?.workOrderId === visit.id) {
+      await dataConnect.executeGraphql(CLOCK_OUT_MUTATION, {
+        variables: {
+          timeLogId: active.id,
+          clockOut: now.toISOString(),
+          durationMinutes: minutesBetween(active.clockIn, now),
+        },
+      })
+      await sendToUsers([callerUid], { data: { tag: activeShiftTag(callerUid), action: 'close' } }).catch(() => {})
+    }
+    await dataConnect.executeGraphql(LOG_ORDER_EVENT_MUTATION, {
+      variables: { workOrderId: visit.id, actorId: callerUid, eventType: 'VISIT_MARKED_DONE' },
+    })
+  }
+  if (appointment.createdById && appointment.createdById !== callerUid) {
+    await sendToUsers([appointment.createdById], {
+      title: 'Cita realizada',
+      body: `La cita «${appointment.title}» está realizada y pendiente de completar.`,
+      data: { path: '/calendar' },
+    }).catch(() => {})
+  }
+  return { success: true }
+})
+
 async function getCalendarAppointment(appointmentId) {
   const res = await dataConnect.executeGraphqlRead(GET_CALENDAR_APPOINTMENT_QUERY, {
     variables: { id: appointmentId },
@@ -3469,6 +3679,10 @@ exports.setCalendarAppointmentClosed = onCall(async (request) => {
       await dataConnect.executeGraphql(REOPEN_WORK_ORDER_MUTATION, { variables: { id: visit.id } })
     }
   }
+  // Reopened means the visit isn't over after all.
+  if (!closed) {
+    await dataConnect.executeGraphql(CLEAR_APPOINTMENT_DONE_MUTATION, { variables: { id: appointmentId } })
+  }
   return { success: true }
 })
 
@@ -3555,6 +3769,7 @@ exports.deleteCalendarAppointment = onCall(async (request) => {
   await dataConnect.executeGraphql(DELETE_CALENDAR_APPOINTMENT_DATES_MUTATION, {
     variables: { appointmentId },
   })
+  await dataConnect.executeGraphql(DELETE_APPOINTMENT_PHOTOS_MUTATION, { variables: { appointmentId } })
   await dataConnect.executeGraphql(DELETE_CALENDAR_APPOINTMENT_MUTATION, {
     variables: { id: appointmentId },
   })

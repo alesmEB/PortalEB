@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { Camera, ChevronDown, FileText, Images, Paperclip, Video, X } from 'lucide-react'
+import { ChevronDown, FileText, Paperclip, Video, X } from 'lucide-react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   MediaType,
@@ -15,7 +15,9 @@ import {
   type ListAssignableUsersData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { AppointmentPhotos } from '../components/AppointmentPhotos'
 import { BusyOverlay } from '../components/BusyOverlay'
+import { MediaPicker } from '../components/MediaPicker'
 import { HasPermission } from '../components/HasPermission'
 import { OrderDocumentsViewer, type DocumentOption } from '../components/OrderDocumentsViewer'
 import { useAuth } from '../contexts/AuthContext'
@@ -31,7 +33,7 @@ import {
 import { FRESH } from '../lib/dataConnectOptions'
 import { enqueue, isConnectivityError } from '../lib/offlineQueue'
 import { formatSnapshotTime, readSnapshot, writeSnapshot } from '../lib/offlineStore'
-import { mediaTypeOf, validateMediaFile } from '../lib/media'
+import { mediaTypeOf } from '../lib/media'
 import { orderLocationLabel } from '../lib/orderCode'
 import { orderEventTypeLabel } from '../lib/orderEvent'
 import {
@@ -60,7 +62,7 @@ import type { AdminProcessStep, ResumeWorkshop, WorkOrderTaskInput } from '../li
 import { workOrderStatusLabel } from '../lib/orderStatus'
 import { uploadWorkOrderPhoto } from '../lib/photoStorage'
 import { formatWorkshopMonth } from '../lib/workshop'
-import { appointmentLocationLabel } from '../lib/calendar'
+import { appointmentLocationLabel, markAppointmentDone } from '../lib/calendar'
 import { uploadQuotePdf } from '../lib/quoteStorage'
 
 type WorkOrder = NonNullable<GetWorkOrderDetailData['workOrder']>
@@ -275,105 +277,6 @@ function TechnicianAssignModal({
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-/** Shared photo/video picker with size/duration validation (see lib/media.ts). */
-function MediaPicker({
-  files,
-  onFilesChange,
-}: {
-  files: File[]
-  onFilesChange: (files: File[]) => void
-}) {
-  const [validating, setValidating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleFilesSelected(e: ChangeEvent<HTMLInputElement>) {
-    const picked = Array.from(e.target.files ?? [])
-    e.target.value = ''
-    setValidating(true)
-    setError(null)
-    try {
-      const errors: string[] = []
-      const valid: File[] = []
-      for (const file of picked) {
-        const err = await validateMediaFile(file)
-        if (err) errors.push(err)
-        else valid.push(file)
-      }
-      setError(errors.length > 0 ? errors.join(' · ') : null)
-      if (valid.length > 0) onFilesChange([...files, ...valid])
-    } finally {
-      setValidating(false)
-    }
-  }
-
-  return (
-    <div>
-      {/* Separate single-mimetype inputs for photo vs video capture -
-          `capture` only reliably jumps straight to the camera/camcorder app
-          when `accept` is unambiguous; combining "image/*,video/*" on one
-          input leaves Android unsure which capture mode to launch, so it
-          falls back to the gallery picker instead. */}
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-3 text-center text-xs text-eb-blue">
-          <Camera className="h-5 w-5" />
-          {validating ? '...' : 'Foto'}
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            disabled={validating}
-            className="hidden"
-            onChange={handleFilesSelected}
-          />
-        </label>
-        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-3 text-center text-xs text-eb-blue">
-          <Video className="h-5 w-5" />
-          {validating ? '...' : 'Vídeo'}
-          <input
-            type="file"
-            accept="video/*"
-            capture="environment"
-            disabled={validating}
-            className="hidden"
-            onChange={handleFilesSelected}
-          />
-        </label>
-        <label className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-slate-300 p-3 text-center text-xs text-eb-blue">
-          <Images className="h-5 w-5" />
-          {validating ? '...' : 'Galería'}
-          <input
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            disabled={validating}
-            className="hidden"
-            onChange={handleFilesSelected}
-          />
-        </label>
-      </div>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-      {files.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {files.map((file, i) => (
-            <li
-              key={i}
-              className="flex items-center justify-between rounded-lg bg-slate-50 px-2 py-1.5 text-xs text-slate-600"
-            >
-              <span className="truncate">{file.name}</span>
-              <button
-                onClick={() => onFilesChange(files.filter((_, idx) => idx !== i))}
-                className="ml-2 text-slate-400"
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   )
 }
@@ -749,6 +652,7 @@ const photoStageLabel: Record<PhotoStage, string> = {
   [PhotoStage.START]: 'Inicio',
   [PhotoStage.INCIDENT]: 'Incidencia',
   [PhotoStage.FINAL]: 'Final',
+  [PhotoStage.APPOINTMENT]: 'De la cita',
 }
 
 const photoModalCopy = {
@@ -1284,6 +1188,25 @@ export function OrderDetailPage() {
     })
   }
 
+  // "Realizada" on the appointment behind a visit order (see
+  // markAppointmentDone): the confirm comes first, outside the busy veil.
+  async function handleVisitDone(done: boolean) {
+    const visit = order?.visitAppointment
+    if (!visit) return
+    const proceed = confirm(
+      done
+        ? 'Se avisará a administración de que la visita está hecha, para que complete la cita. ' +
+            'Si sigues fichado en ella, se cerrará tu turno. ¿Marcar la cita como realizada?'
+        : '¿Quitar la marca de realizada? La cita volverá a quedar pendiente.',
+    )
+    if (!proceed) return
+    await runPageAction(done ? 'Marcando la cita como realizada...' : 'Quitando la marca...', async () => {
+      await markAppointmentDone(visit.id, done)
+      await loadOrder()
+      await loadMyActiveLog()
+    })
+  }
+
   async function handleCompleteOrder(files: File[]) {
     if (!order) return
     setActionError(null)
@@ -1482,6 +1405,9 @@ export function OrderDetailPage() {
   // calendar, never from here.
   const visit = order.visitAppointment ?? null
   const isInternal = isWorkshop || !!visit
+  // Administration: may mark, unmark and manage an appointment's photos
+  // without being on it.
+  const isOffice = profile?.role === UserRole.ADMIN || isLab
   // Whoever can create an order can also correct its job list, but only
   // while the order can still change: a completed order's jobs are already
   // written into its report, and a cancelled one isn't going anywhere.
@@ -1548,6 +1474,42 @@ export function OrderDetailPage() {
             Orden de la cita, para fichar las horas de la visita. Se completa o se convierte en
             orden desde la cita, en el calendario.
           </p>
+
+          {visit.doneAt ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800">
+              <span>
+                Realizada por {visit.doneBy?.displayName ?? '—'} el{' '}
+                {new Date(visit.doneAt).toLocaleString('es-ES')}
+                {!visit.closedAt && ' · pendiente de que administración la complete'}
+              </span>
+              {!visit.closedAt && (!!myAssignment || isOffice) && (
+                <button onClick={() => handleVisitDone(false)} className="font-semibold underline">
+                  Quitar marca
+                </button>
+              )}
+            </div>
+          ) : (
+            !visit.closedAt &&
+            (!!myAssignment || isOffice) && (
+              <button
+                onClick={() => handleVisitDone(true)}
+                disabled={busy}
+                className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Marcar cita como realizada
+              </button>
+            )
+          )}
+
+          <div className="mt-3">
+            <AppointmentPhotos
+              appointmentId={visit.id}
+              photos={visit.photos}
+              canAdd={isOffice || (!!myAssignment && !visit.closedAt)}
+              canDelete={isOffice}
+              onChanged={loadOrder}
+            />
+          </div>
         </section>
       )}
 

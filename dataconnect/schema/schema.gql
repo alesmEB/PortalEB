@@ -54,6 +54,9 @@ enum PhotoStage {
   START
   INCIDENT
   FINAL
+  # Carried over from the appointment the order came from (see
+  # CalendarAppointmentPhoto), so what was seen on the visit stays with it.
+  APPOINTMENT
 }
 
 enum MediaType {
@@ -95,6 +98,9 @@ enum OrderEventType {
   # Admin skipped the technician-side workflow (photos, clock-out) and marked
   # the order COMPLETED directly - see forceCompleteOrder in functions/index.js.
   ORDER_FORCE_COMPLETED
+  # On an appointment's visit order (see CalendarAppointment.doneAt).
+  VISIT_MARKED_DONE
+  VISIT_DONE_UNMARKED
 }
 
 # ---------------------------------------------------------------------------
@@ -309,6 +315,13 @@ type CalendarAppointment @table(name: "calendar_appointments") {
   # why they're separate from `notes` and have their own callable
   # (setCalendarAppointmentRemarks) instead of the full edit form.
   remarks: String
+  # Set by a technician on the appointment's visit order when the visit is
+  # over (markAppointmentDone). Not the same as closedAt: closing stays with
+  # the office, who decides whether it turns into an order - this only
+  # tells them it's ready to decide. Cleared if it's reopened.
+  doneAt: Timestamp
+  doneById: String
+  doneBy: User @ref(fields: ["doneById"])
   # Completed appointments drop out of the "citas" panel but keep the days
   # they were scheduled on visible in the calendar, same as a COMPLETED
   # order's past days - deleting is for entries created by mistake.
@@ -320,6 +333,21 @@ type CalendarAppointment @table(name: "calendar_appointments") {
   workOrder: WorkOrder @ref(fields: ["workOrderId"])
   createdById: String!
   createdBy: User! @ref(fields: ["createdById"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Photos and videos of an appointment: what the customer sent, or what the
+# technicians saw on the visit. The office adds them from the appointment,
+# technicians from its visit order (addAppointmentPhotos). When the
+# appointment becomes an order they're copied onto it (PhotoStage.APPOINTMENT).
+type CalendarAppointmentPhoto @table(name: "calendar_appointment_photos") {
+  id: UUID! @default(expr: "uuidV4()")
+  appointmentId: UUID!
+  appointment: CalendarAppointment! @ref(fields: ["appointmentId"])
+  storageUrl: String!
+  mediaType: MediaType! @default(value: PHOTO)
+  uploadedById: String!
+  uploadedBy: User! @ref(fields: ["uploadedById"])
   createdAt: Timestamp! @default(expr: "request.time")
 }
 

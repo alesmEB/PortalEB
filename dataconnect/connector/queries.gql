@@ -345,6 +345,18 @@ query ListCalendarAppointments @auth(level: USER) {
     externalCode
     notes
     remarks
+    doneAt
+    doneBy {
+      displayName
+    }
+    photos: calendarAppointmentPhotos_on_appointment(orderBy: { createdAt: ASC }, limit: 100) {
+      id
+      storageUrl
+      mediaType
+      uploadedBy {
+        displayName
+      }
+    }
     closedAt
     workOrderId
     workOrder {
@@ -383,6 +395,13 @@ query ListCalendarAppointmentDates @auth(level: USER) {
       externalCode
       notes
       remarks
+      doneAt
+      doneBy {
+        displayName
+      }
+      photos: calendarAppointmentPhotos_on_appointment(limit: 100) {
+        id
+      }
       closedAt
       workOrderId
       workOrder {
@@ -465,6 +484,19 @@ query GetWorkOrderDetail($id: UUID!) @auth(level: USER) {
       customLocation
       notes
       externalCode
+      closedAt
+      doneAt
+      doneBy {
+        displayName
+      }
+      photos: calendarAppointmentPhotos_on_appointment(orderBy: { createdAt: ASC }, limit: 100) {
+        id
+        storageUrl
+        mediaType
+        uploadedBy {
+          displayName
+        }
+      }
     }
     customer {
       name

@@ -1,3 +1,13 @@
+/** Uploads one of an appointment's photos (see CalendarAppointmentPhoto). */
+export async function uploadAppointmentPhoto(appointmentId: string, file: File): Promise<string> {
+  const { storage } = await import('./firebase')
+  const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage')
+
+  const storageRef = ref(storage, `appointments/${appointmentId}/photos/${Date.now()}-${file.name}`)
+  await uploadBytes(storageRef, file, { contentType: file.type })
+  return getDownloadURL(storageRef)
+}
+
 /** Uploads a work order photo into its Storage folder (see storage.rules). */
 export async function uploadWorkOrderPhoto(
   code: string,

@@ -103,6 +103,43 @@ export async function openAppointmentVisit(appointmentId: string) {
   return res.data
 }
 
+const callAddAppointmentPhotos = httpsCallable<
+  { appointmentId: string; photos: { url: string; mediaType: 'PHOTO' | 'VIDEO' }[] },
+  { added: number }
+>(functions, 'addAppointmentPhotos')
+
+/** The office on any appointment; a technician on one they're assigned to. */
+export async function addAppointmentPhotos(
+  appointmentId: string,
+  photos: { url: string; mediaType: 'PHOTO' | 'VIDEO' }[],
+) {
+  const res = await callAddAppointmentPhotos({ appointmentId, photos })
+  return res.data
+}
+
+const callDeleteAppointmentPhoto = httpsCallable<{ photoId: string }, { success: boolean }>(
+  functions,
+  'deleteAppointmentPhoto',
+)
+
+/** Admin (or lab) only. */
+export async function deleteAppointmentPhoto(photoId: string) {
+  const res = await callDeleteAppointmentPhoto({ photoId })
+  return res.data
+}
+
+const callMarkAppointmentDone = httpsCallable<
+  { appointmentId: string; done: boolean },
+  { success: boolean }
+>(functions, 'markAppointmentDone')
+
+/** "Realizada": the visit is over and the office can decide how it ends.
+ * Clocks the caller out of the visit if they're still on it. */
+export async function markAppointmentDone(appointmentId: string, done: boolean) {
+  const res = await callMarkAppointmentDone({ appointmentId, done })
+  return res.data
+}
+
 const callDeleteCalendarAppointment = httpsCallable<
   { appointmentId: string },
   { success: boolean }

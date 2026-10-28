@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, MapPin, StickyNote, Users, X } from 'lucide-react'
+import { CalendarDays, Camera, CheckCircle2, MapPin, StickyNote, Users, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   OrderLocation,
@@ -15,6 +15,7 @@ import {
   type ListWorkOrderScheduledDatesData,
 } from '@dataconnect/generated'
 import { BackButton } from '../components/BackButton'
+import { AppointmentPhotos } from '../components/AppointmentPhotos'
 import { BusyOverlay } from '../components/BusyOverlay'
 import { useAuth } from '../contexts/AuthContext'
 import { usePermission } from '../hooks/usePermission'
@@ -55,6 +56,36 @@ type AppointmentEntry =
   ListCalendarAppointmentDatesData['calendarAppointmentDates'][number]
 
 type VisitOrder = Appointment['visitOrders'][number]
+
+/** "Realizada por X" (a technician says the visit is over, see
+ * markAppointmentDone) and the photo count - what the office needs to spot
+ * on an appointment before opening it. */
+function AppointmentStateLine({
+  appointment,
+  small = false,
+}: {
+  appointment: { doneAt?: string | null; doneBy?: { displayName: string } | null; closedAt?: string | null; photos: unknown[] }
+  small?: boolean
+}) {
+  const showDone = !!appointment.doneAt && !appointment.closedAt
+  if (!showDone && appointment.photos.length === 0) return null
+  return (
+    <p className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 ${small ? 'text-[11px]' : 'text-xs'}`}>
+      {showDone && (
+        <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800">
+          <CheckCircle2 className="h-3 w-3" />
+          Realizada{appointment.doneBy ? ` · ${appointment.doneBy.displayName}` : ''}
+        </span>
+      )}
+      {appointment.photos.length > 0 && (
+        <span className="flex items-center gap-1 opacity-80" title="Fotos de la cita">
+          <Camera className="h-3 w-3" />
+          {appointment.photos.length}
+        </span>
+      )}
+    </p>
+  )
+}
 
 /** Who's been sent to an appointment - its visit order, see
  * openAppointmentVisit in functions/index.js - and the way into that order:
@@ -544,7 +575,9 @@ export function CalendarPage() {
                           entry.appointment.externalCode ? ` · Nº interno ${entry.appointment.externalCode}` : ''
                         }${
                           entry.appointment.workOrder ? ` · Orden ${entry.appointment.workOrder.code}` : ''
-                        }${entry.appointment.remarks ? ` · Notas: ${entry.appointment.remarks}` : ''}`}
+                        }${entry.appointment.remarks ? ` · Notas: ${entry.appointment.remarks}` : ''}${
+                          entry.appointment.doneAt && !entry.appointment.closedAt ? ' · Realizada' : ''
+                        }`}
                         className={`block w-full cursor-pointer rounded border px-1 py-0.5 text-left text-[9px] ${
                           appointmentCardClass[appointmentStatus(entry.appointment)]
                         }`}
@@ -694,6 +727,7 @@ export function CalendarPage() {
                                   {appointment.externalCode}
                                 </p>
                               )}
+                              <AppointmentStateLine small appointment={appointment} />
                               <AppointmentVisitRow
                                 small
                                 visit={appointment.visitOrders[0]}
@@ -917,6 +951,7 @@ export function CalendarPage() {
                         </div>
                       </div>
                       <div className="text-amber-900">
+                        <AppointmentStateLine appointment={appointment} />
                         <AppointmentVisitRow
                           visit={appointment.visitOrders[0]}
                           canStart={canAssign}
@@ -1065,6 +1100,12 @@ export function CalendarPage() {
             setEditingAppointment(null)
             load()
           }}
+          livePhotos={
+            editingAppointment === 'new'
+              ? []
+              : (appointments.find((a) => a.id === editingAppointment.id)?.photos ?? editingAppointment.photos)
+          }
+          onPhotosChanged={load}
         />
       )}
 
@@ -1114,6 +1155,8 @@ function AppointmentModal({
   onComplete,
   onClose,
   onSaved,
+  livePhotos,
+  onPhotosChanged,
 }: {
   appointment: Appointment | null
   /** "YYYY-MM-DD" to schedule a new appointment on right after creating it. */
@@ -1122,6 +1165,10 @@ function AppointmentModal({
   onComplete?: () => void
   onClose: () => void
   onSaved: () => void
+  /** The appointment's photos as the page last loaded them - they change
+   * under the open dialog when some are added. */
+  livePhotos: Appointment['photos']
+  onPhotosChanged: () => void
 }) {
   const [title, setTitle] = useState(appointment?.title ?? '')
   const [boatDetails, setBoatDetails] = useState(appointment?.boatDetails ?? '')
@@ -1237,6 +1284,17 @@ function AppointmentModal({
               className={`mt-1 ${inputClass}`}
             />
           </label>
+          {/* Photos go straight to the appointment, apart from "Guardar":
+              they need it to exist, so a new one gets them after creating. */}
+          {appointment && (
+            <AppointmentPhotos
+              appointmentId={appointment.id}
+              photos={livePhotos}
+              canAdd
+              canDelete
+              onChanged={onPhotosChanged}
+            />
+          )}
         </div>
 
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
