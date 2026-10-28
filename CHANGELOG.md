@@ -8,6 +8,11 @@ tu versión.
 
 ## 28 de octubre de 2026
 
+- Calendario, vista de mes: las citas y las órdenes tienen los mismos botones
+  que en la vista de semana (notas, cambiar días, asignar técnicos, completar
+  y quitar el día), en pequeño. Al pulsar un día, además de crear una cita,
+  la pestaña "Órdenes" deja marcar qué órdenes asignadas se trabajan ese día.
+
 - Órdenes directas, para el trabajo de mostrador (sobre todo La Línea): al
   crear una orden se puede marcar "Orden directa (sin presupuesto)", que viene
   marcada al elegir La Línea. No pide motores ni ubicación y empieza en curso.

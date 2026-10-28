@@ -148,6 +148,51 @@ function TaskList({ tasks }: { tasks: { description: string; isCompleted: boolea
   )
 }
 
+/** The month view's chips are divs (they hold buttons, and buttons can't
+ * nest), so Enter/Space are wired by hand - ignoring keys aimed at a button
+ * inside, which already clicks itself. */
+function clickOnEnterOrSpace(e: React.KeyboardEvent<HTMLElement>) {
+  if (e.target !== e.currentTarget) return
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    e.currentTarget.click()
+  }
+}
+
+/** An action on a month-view chip: the same ones the week view's cards
+ * have, shrunk to an icon. */
+function ChipIconButton({
+  title,
+  onClick,
+  disabled = false,
+  danger = false,
+  children,
+}: {
+  title: string
+  onClick: () => void
+  disabled?: boolean
+  danger?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      className={`shrink-0 rounded p-0.5 opacity-70 hover:bg-white/70 hover:opacity-100 disabled:opacity-30 ${
+        danger ? 'hover:text-red-600' : ''
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 function dateFromKey(key: string) {
   const [year, month, day] = key.split('-').map(Number)
   return new Date(year, month - 1, day)
@@ -210,6 +255,9 @@ export function CalendarPage() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [completingAppointment, setCompletingAppointment] = useState<Appointment | null>(null)
   const [editingDaysId, setEditingDaysId] = useState<string | null>(null)
+  // The week the days dialog offers to tick: the one on screen in the week
+  // view, the one of the clicked chip in the month view.
+  const [daysWeekStart, setDaysWeekStart] = useState(() => startOfWeek(new Date()))
   const [editingRemarksId, setEditingRemarksId] = useState<string | null>(null)
   const [showClosedAppointments, setShowClosedAppointments] = useState(false)
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
@@ -228,17 +276,21 @@ export function CalendarPage() {
   const monthGridColsClass = showWeekends ? 'grid-cols-7' : 'grid-cols-5'
   const todayKey = toDateKey(new Date())
 
+  // Resolves once everything is back, so a dialog can keep its "saving"
+  // state until the refetched days are on screen.
   function load() {
-    listAssignedWorkOrders(FRESH).then((res) => setAssignedOrders(res.data.workOrders))
-    listWorkOrderScheduledDates(FRESH).then((res) =>
-      setScheduledEntries(res.data.workOrderScheduledDates),
-    )
-    listCalendarAppointments(FRESH).then((res) =>
-      setAppointments(res.data.calendarAppointments),
-    )
-    listCalendarAppointmentDates(FRESH).then((res) =>
-      setAppointmentEntries(res.data.calendarAppointmentDates),
-    )
+    return Promise.all([
+      listAssignedWorkOrders(FRESH).then((res) => setAssignedOrders(res.data.workOrders)),
+      listWorkOrderScheduledDates(FRESH).then((res) =>
+        setScheduledEntries(res.data.workOrderScheduledDates),
+      ),
+      listCalendarAppointments(FRESH).then((res) =>
+        setAppointments(res.data.calendarAppointments),
+      ),
+      listCalendarAppointmentDates(FRESH).then((res) =>
+        setAppointmentEntries(res.data.calendarAppointmentDates),
+      ),
+    ]).then(() => undefined)
   }
 
   useEffect(() => {
@@ -273,6 +325,14 @@ export function CalendarPage() {
   // with the new days as soon as the refetch lands.
   const appointmentBeingScheduled = appointments.find((a) => a.id === editingDaysId) ?? null
   const appointmentBeingNoted = appointments.find((a) => a.id === editingRemarksId) ?? null
+  const daysModalDays = Array.from({ length: 7 }, (_, i) => addDays(daysWeekStart, i)).filter(
+    (d) => showWeekends || !isWeekend(d),
+  )
+
+  function openAppointmentDays(appointmentId: string, inWeekOf: Date) {
+    setDaysWeekStart(startOfWeek(inWeekOf))
+    setEditingDaysId(appointmentId)
+  }
 
   async function handleToggleAppointment(
     appointmentId: string,
@@ -281,9 +341,12 @@ export function CalendarPage() {
   ) {
     const key = `cita-${appointmentId}-${dateKey}`
     setSavingKey(key)
+    setPageError(null)
     try {
       await setCalendarAppointmentScheduledDate(appointmentId, dateKey, scheduled)
       load()
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'No se pudo cambiar el día de la cita.')
     } finally {
       setSavingKey(null)
     }
@@ -346,9 +409,12 @@ export function CalendarPage() {
   async function handleToggle(workOrderId: string, dateKey: string, scheduled: boolean) {
     const key = `${workOrderId}-${dateKey}`
     setSavingKey(key)
+    setPageError(null)
     try {
       await setWorkOrderScheduledDate(workOrderId, dateKey, scheduled)
       load()
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : 'No se pudo cambiar el día de la orden.')
     } finally {
       setSavingKey(null)
     }
@@ -522,20 +588,37 @@ export function CalendarPage() {
                     {dayEntries.map((entry) => {
                       const completed = entry.workOrder.status === WorkOrderStatus.COMPLETED
                       return (
-                        <button
+                        <div
+                          role="button"
+                          tabIndex={0}
                           key={entry.workOrder.id}
+                          onKeyDown={clickOnEnterOrSpace}
                           onClick={(e) => {
                             e.stopPropagation()
                             navigate(`/orders/${entry.workOrder.id}`)
                           }}
                           title={`${entry.workOrder.code} · ${entry.workOrder.customer.name}`}
-                          className={`block w-full rounded px-1 py-0.5 text-left text-[9px] ${
+                          className={`block w-full cursor-pointer rounded px-1 py-0.5 text-left text-[9px] ${
                             completed
                               ? 'bg-green-500/15 text-green-800'
                               : workOrderStatusColor[entry.workOrder.status]
                           }`}
                         >
-                          <p className="truncate font-semibold">{entry.workOrder.boat.name}</p>
+                          <div className="flex items-start gap-0.5">
+                            <p className="min-w-0 flex-1 truncate font-semibold">
+                              {entry.workOrder.boat.name}
+                            </p>
+                            {canManage && !completed && (
+                              <ChipIconButton
+                                title="Quitar este día"
+                                danger
+                                disabled={savingKey === `${entry.workOrder.id}-${key}`}
+                                onClick={() => handleToggle(entry.workOrder.id, key, false)}
+                              >
+                                <X className="h-3 w-3" />
+                              </ChipIconButton>
+                            )}
+                          </div>
                           <TaskList tasks={entry.workOrder.tasks} />
                           <p className="mt-0.5 flex items-center gap-0.5 opacity-80">
                             <MapPin className="h-2.5 w-2.5 shrink-0" />
@@ -544,29 +627,28 @@ export function CalendarPage() {
                               {entry.workOrder.assetLocation && ` · ${entry.workOrder.assetLocation}`}
                             </span>
                           </p>
-                        </button>
+                        </div>
                       )
                     })}
-                    {(appointmentsByDate.get(key) ?? []).map((entry) => (
-                      // A div rather than a button: it holds the notes button,
-                      // and buttons can't nest. Keyboard access is kept by hand.
+                    {(appointmentsByDate.get(key) ?? []).map((entry) => {
+                      const appointment = entry.appointment
+                      const status = appointmentStatus(appointment)
+                      const full = appointments.find((a) => a.id === appointment.id)
+                      const visit = appointment.visitOrders[0]
+                      const technicianNames = visit?.assignments.map((a) => a.technician.displayName) ?? []
+                      const canOpenVisit = !!visit || (canAssign && status === 'open')
+                      return (
                       <div
                         role="button"
                         tabIndex={0}
                         key={entry.appointment.id}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            e.currentTarget.click()
-                          }
-                        }}
+                        onKeyDown={clickOnEnterOrSpace}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (entry.appointment.workOrderId) {
                             navigate(`/orders/${entry.appointment.workOrderId}`)
                             return
                           }
-                          const full = appointments.find((a) => a.id === entry.appointment.id)
                           if (canManage && full) setEditingAppointment(full)
                         }}
                         title={`Cita · ${entry.appointment.title}${
@@ -585,24 +667,9 @@ export function CalendarPage() {
                         {/* Same reading order as an order's chip - boat, then the
                             job, then where - so both kinds scan alike. The boat is
                             optional on an appointment, so the job moves up. */}
-                        <div className="flex items-start gap-0.5">
-                          <p className="min-w-0 flex-1 truncate font-semibold">
-                            {entry.appointment.boatDetails || entry.appointment.title}
-                          </p>
-                          {canManage && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setEditingRemarksId(entry.appointment.id)
-                              }}
-                              title="Notas de la cita"
-                              className="shrink-0 opacity-60 hover:opacity-100"
-                            >
-                              <StickyNote className="h-2.5 w-2.5" />
-                            </button>
-                          )}
-                        </div>
+                        <p className="truncate font-semibold">
+                          {entry.appointment.boatDetails || entry.appointment.title}
+                        </p>
                         {entry.appointment.boatDetails && (
                           <p className="truncate">{entry.appointment.title}</p>
                         )}
@@ -618,8 +685,63 @@ export function CalendarPage() {
                             <span className="truncate">{entry.appointment.remarks}</span>
                           </p>
                         )}
+                        {technicianNames.length > 0 && (
+                          <p className="mt-0.5 flex items-center gap-0.5">
+                            <Users className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{technicianNames.join(', ')}</span>
+                          </p>
+                        )}
+                        {/* Same actions as the week view's card, in the same
+                            cases; opening the visit is for technicians too. */}
+                        {(canManage || canOpenVisit) && (
+                          <div className="mt-0.5 flex flex-wrap items-center justify-end gap-0.5">
+                            {canManage && (
+                              <ChipIconButton
+                                title="Notas de la cita"
+                                onClick={() => setEditingRemarksId(appointment.id)}
+                              >
+                                <StickyNote className="h-3 w-3" />
+                              </ChipIconButton>
+                            )}
+                            {canManage && status === 'open' && (
+                              <ChipIconButton
+                                title="Cambiar los días de esta cita"
+                                onClick={() => openAppointmentDays(appointment.id, day)}
+                              >
+                                <CalendarDays className="h-3 w-3" />
+                              </ChipIconButton>
+                            )}
+                            {canOpenVisit && (
+                              <ChipIconButton
+                                title={visit ? 'Abrir la orden de la cita' : 'Asignar técnicos'}
+                                onClick={() => openVisit(appointment.id, visit)}
+                              >
+                                <Users className="h-3 w-3" />
+                              </ChipIconButton>
+                            )}
+                            {canManage && status === 'open' && full && (
+                              <ChipIconButton
+                                title="Completar la cita"
+                                onClick={() => setCompletingAppointment(full)}
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                              </ChipIconButton>
+                            )}
+                            {canManage && status === 'open' && (
+                              <ChipIconButton
+                                title="Quitar este día"
+                                danger
+                                disabled={savingKey === `cita-${appointment.id}-${key}`}
+                                onClick={() => handleToggleAppointment(appointment.id, key, false)}
+                              >
+                                <X className="h-3 w-3" />
+                              </ChipIconButton>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )
@@ -748,7 +870,7 @@ export function CalendarPage() {
                             )}
                             {canManage && status === 'open' && (
                               <button
-                                onClick={() => setEditingDaysId(appointment.id)}
+                                onClick={() => openAppointmentDays(appointment.id, weekStart)}
                                 title="Cambiar los días de esta cita"
                                 className="text-amber-500 hover:text-amber-700"
                               >
@@ -1106,6 +1228,10 @@ export function CalendarPage() {
               : (appointments.find((a) => a.id === editingAppointment.id)?.photos ?? editingAppointment.photos)
           }
           onPhotosChanged={load}
+          dayOrders={
+            editingAppointment === 'new' && newAppointmentDay ? (assignedOrders ?? []) : undefined
+          }
+          onDayOrdersChanged={load}
         />
       )}
 
@@ -1123,7 +1249,8 @@ export function CalendarPage() {
       {appointmentBeingScheduled && (
         <AppointmentDaysModal
           appointment={appointmentBeingScheduled}
-          weekDays={visibleDays}
+          weekDays={daysModalDays}
+          weekLabel={formatWeekRange(daysWeekStart)}
           onClose={() => setEditingDaysId(null)}
           onChanged={load}
         />
@@ -1157,6 +1284,8 @@ function AppointmentModal({
   onSaved,
   livePhotos,
   onPhotosChanged,
+  dayOrders,
+  onDayOrdersChanged,
 }: {
   appointment: Appointment | null
   /** "YYYY-MM-DD" to schedule a new appointment on right after creating it. */
@@ -1169,7 +1298,12 @@ function AppointmentModal({
    * under the open dialog when some are added. */
   livePhotos: Appointment['photos']
   onPhotosChanged: () => void
+  /** Only when a month-view day was clicked: the orders that can be put on
+   * that day, shown in a second tab - the month view has no panel for it. */
+  dayOrders?: AssignedOrder[]
+  onDayOrdersChanged: () => Promise<void>
 }) {
+  const [tab, setTab] = useState<'appointment' | 'orders'>('appointment')
   const [title, setTitle] = useState(appointment?.title ?? '')
   const [boatDetails, setBoatDetails] = useState(appointment?.boatDetails ?? '')
   // OTHER_LOCATION picks the free-text field instead of one of our three.
@@ -1217,14 +1351,48 @@ function AppointmentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 sm:items-center">
       <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-xl bg-white p-4 shadow-xl">
-        <h2 className="text-sm font-semibold text-eb-blue-dark">
-          {appointment
-            ? 'Editar cita'
-            : scheduleOn
-              ? `Nueva cita · ${formatDayLabel(dateFromKey(scheduleOn))}`
-              : 'Nueva cita'}
-        </h2>
-        <p className="mt-0.5 text-xs text-slate-500">
+        {dayOrders && scheduleOn ? (
+          <>
+            <h2 className="text-sm font-semibold capitalize text-eb-blue-dark">
+              {formatDayLabel(dateFromKey(scheduleOn))}
+            </h2>
+            <div className="mt-2 flex rounded-lg border border-slate-300 p-0.5">
+              <button
+                type="button"
+                onClick={() => setTab('appointment')}
+                className={`flex-1 rounded-md px-2.5 py-1 text-sm ${
+                  tab === 'appointment' ? 'bg-eb-blue text-white' : 'text-slate-600'
+                }`}
+              >
+                Nueva cita
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('orders')}
+                className={`flex-1 rounded-md px-2.5 py-1 text-sm ${
+                  tab === 'orders' ? 'bg-eb-blue text-white' : 'text-slate-600'
+                }`}
+              >
+                Órdenes ({dayOrders.length})
+              </button>
+            </div>
+          </>
+        ) : (
+          <h2 className="text-sm font-semibold text-eb-blue-dark">
+            {appointment ? 'Editar cita' : 'Nueva cita'}
+          </h2>
+        )}
+
+        {tab === 'orders' && dayOrders && scheduleOn ? (
+          <DayOrdersTab
+            date={scheduleOn}
+            orders={dayOrders}
+            onChanged={onDayOrdersChanged}
+            onClose={onClose}
+          />
+        ) : (
+        <>
+        <p className="mt-2 text-xs text-slate-500">
           Una visita sin orden de trabajo, del estilo "Mirar problema barco X".
         </p>
 
@@ -1326,8 +1494,120 @@ function AppointmentModal({
             {submitting ? 'Guardando...' : appointment ? 'Guardar cambios' : 'Crear cita'}
           </button>
         </div>
+        </>
+        )}
       </div>
     </div>
+  )
+}
+
+/** The week view's "Órdenes asignadas" panel, for a single day: tick the
+ * orders that will be worked on it. The page's list is passed in live, so a
+ * tick shows once the refetch lands - the row stays "saving" until then. */
+function DayOrdersTab({
+  date,
+  orders,
+  onChanged,
+  onClose,
+}: {
+  date: string
+  orders: AssignedOrder[]
+  onChanged: () => Promise<void>
+  onClose: () => void
+}) {
+  const [search, setSearch] = useState('')
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const term = search.trim().toLowerCase()
+  const shown = term
+    ? orders.filter((o) =>
+        [o.code, o.customer.name, o.boat.name].some((v) => v.toLowerCase().includes(term)),
+      )
+    : orders
+
+  async function toggle(orderId: string, scheduled: boolean) {
+    setSavingId(orderId)
+    setError(null)
+    try {
+      await setWorkOrderScheduledDate(orderId, date, scheduled)
+      await onChanged()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cambiar el día de la orden.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  return (
+    <>
+      <p className="mt-2 text-xs text-slate-500">
+        Órdenes con técnicos asignados. Marca las que se van a trabajar este día.
+      </p>
+      {orders.length > 5 && (
+        <input
+          placeholder="Buscar por orden, cliente o barco"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-eb-blue"
+        />
+      )}
+      <div className="mt-2 space-y-2">
+        {shown.map((order) => {
+          const checked = order.scheduledDates.some((d) => d.date === date)
+          const saving = savingId === order.id
+          return (
+            <label
+              key={order.id}
+              className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 ${
+                checked ? 'border-eb-teal bg-eb-teal/10' : 'border-slate-200'
+              } ${saving ? 'opacity-50' : ''}`}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+                disabled={savingId !== null}
+                checked={checked}
+                onChange={(e) => toggle(order.id, e.target.checked)}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block font-mono text-sm font-semibold text-eb-blue-dark">
+                  {order.code}
+                </span>
+                <span className="block text-xs text-slate-600">
+                  {order.customer.name} · {order.boat.name}
+                  {taskProgressLabel(order.tasks) && ` · ${taskProgressLabel(order.tasks)}`}
+                </span>
+                {order.assignments.length > 0 && (
+                  <span className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
+                    <Users className="h-3 w-3 shrink-0" />
+                    <span className="truncate">
+                      {order.assignments.map((a) => a.technician.displayName).join(', ')}
+                    </span>
+                  </span>
+                )}
+              </span>
+            </label>
+          )
+        })}
+        {orders.length === 0 && (
+          <p className="text-xs text-slate-400">Ninguna orden con técnicos asignados.</p>
+        )}
+        {orders.length > 0 && shown.length === 0 && (
+          <p className="text-xs text-slate-400">Ninguna orden coincide con la búsqueda.</p>
+        )}
+      </div>
+
+      {error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
+
+      <button
+        onClick={onClose}
+        disabled={savingId !== null}
+        className="mt-4 w-full rounded-lg border border-slate-300 py-2 text-sm text-slate-600 disabled:opacity-50"
+      >
+        Cerrar
+      </button>
+    </>
   )
 }
 
@@ -1494,11 +1774,13 @@ function AppointmentRemarksModal({
 function AppointmentDaysModal({
   appointment,
   weekDays,
+  weekLabel,
   onClose,
   onChanged,
 }: {
   appointment: Appointment
   weekDays: Date[]
+  weekLabel: string
   onClose: () => void
   onChanged: () => void
 }) {
@@ -1556,7 +1838,7 @@ function AppointmentDaysModal({
           </ul>
         )}
 
-        <p className="mt-3 text-xs font-medium text-slate-500">Semana en pantalla</p>
+        <p className="mt-3 text-xs font-medium text-slate-500">Semana del {weekLabel}</p>
         <div className="mt-1 flex flex-wrap gap-2">
           {weekDays.map((day) => {
             const key = toDateKey(day)
